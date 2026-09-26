@@ -61,13 +61,13 @@ public class LocationTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var data = await client.GraphQLAsync("""
             query ($city: String!) {
               locations(search: $city, where: { isTarget: { eq: true } }) { nodes { city listingCount } }
-              listings(where: { locations: { some: { location: { isTarget: { eq: true } } } } }) { nodes { id } }
+              listings(where: { locations: { some: { location: { isTarget: { eq: true } } } } }) { items { id } }
             }
             """, new { city = target });
 
         var location = Assert.Single(data.GetProperty("locations").GetProperty("nodes").EnumerateArray());
         Assert.Equal(1, location.GetProperty("listingCount").GetInt32());
-        var ids = data.GetProperty("listings").GetProperty("nodes").EnumerateArray()
+        var ids = data.GetProperty("listings").GetProperty("items").EnumerateArray()
             .Select(n => n.GetProperty("id").GetInt32()).ToList();
         Assert.Contains(inTarget.GetProperty("id").GetInt32(), ids);
         Assert.Single(ids);

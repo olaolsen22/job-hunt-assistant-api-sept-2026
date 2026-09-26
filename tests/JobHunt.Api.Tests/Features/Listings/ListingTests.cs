@@ -251,13 +251,13 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var data = await guest.GraphQLAsync("""
             query ($id: Int!, $company: String!) {
               listingById(id: $id) { id }
-              listings { nodes { id } }
+              listings { items { id } }
               companies(search: $company) { nodes { id } }
             }
             """, new { id, company });
 
         Assert.Equal(JsonValueKind.Null, data.GetProperty("listingById").ValueKind);
-        Assert.DoesNotContain(data.GetProperty("listings").GetProperty("nodes").EnumerateArray(),
+        Assert.DoesNotContain(data.GetProperty("listings").GetProperty("items").EnumerateArray(),
             n => n.GetProperty("id").GetInt32() == id);
         Assert.Empty(data.GetProperty("companies").GetProperty("nodes").EnumerateArray());
 
@@ -291,7 +291,7 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
     [Fact]
     public async Task GraphQL_WhenAnonymous_Returns401()
     {
-        var response = await factory.CreateClient().PostAsJsonAsync("/graphql", new { query = "{ listings { nodes { id } } }" });
+        var response = await factory.CreateClient().PostAsJsonAsync("/graphql", new { query = "{ listings { items { id } } }" });
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }

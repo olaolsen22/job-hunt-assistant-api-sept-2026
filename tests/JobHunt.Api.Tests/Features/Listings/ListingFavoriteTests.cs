@@ -16,7 +16,7 @@ public class ListingFavoriteTests(ApiFactory factory) : IClassFixture<ApiFactory
 
     private const string Favorites = """
         {
-          listings(where: { favoritedAt: { neq: null } }, order: [{ favoritedAt: DESC }]) { nodes { id } }
+          listings(where: { favoritedAt: { neq: null } }, order: [{ favoritedAt: DESC }]) { items { id } }
         }
         """;
 
@@ -65,6 +65,6 @@ public class ListingFavoriteTests(ApiFactory factory) : IClassFixture<ApiFactory
         .GetProperty("setListingFavorite").GetProperty("listing");
 
     private static async Task<int[]> FavoriteIdsAsync(HttpClient client) =>
-        (await client.GraphQLAsync(Favorites)).GetProperty("listings").GetProperty("nodes").EnumerateArray()
+        (await client.GraphQLAsync(Favorites)).GetProperty("listings").GetProperty("items").EnumerateArray()
         .Select(n => n.GetProperty("id").GetInt32()).ToArray();
 }

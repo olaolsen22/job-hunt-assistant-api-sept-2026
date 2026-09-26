@@ -6,7 +6,8 @@ namespace JobHunt.Api.Features.Listings;
 [QueryType]
 public static class ListingQueries
 {
-    [UsePaging]
+    // Offset paging (skip/take), not cursors: the UI shows numbered pages and jumps straight to page N.
+    [UseOffsetPaging(DefaultPageSize = 20, MaxPageSize = 100, IncludeTotalCount = true)]
     [UseProjection]
     [UseFiltering]
     [UseSorting]
