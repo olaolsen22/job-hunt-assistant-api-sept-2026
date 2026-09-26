@@ -1,0 +1,271 @@
+# Job Hunt Assistant API — Plan
+
+A hobby backend for tracking job applications, with LLM-assisted job-posting parsing.
+Frontend: Nuxt / Vue (separate repo). Not production-grade, but it should be clean enough
+that other developers browsing GitHub can find their way around.
+
+## 1. Decisions from the interview
+
+| Topic | Decision |
+|---|---|
+| Runtime | .NET 10 (LTS), **Minimal APIs** (learning goal: modern .NET coming from .NET Framework 4) |
+| Database | SQLite + EF Core 10 |
+| Auth | ASP.NET Core Identity + **HttpOnly cookie** auth. Two seeded accounts: Owner (you) and Guest |
+| Guest account | Sandbox: full CRUD, data reset nightly, AI calls heavily capped |
+| MVP scope | Tracker: applications + status history, notes, contacts, CVs, dashboard stats |
+| AI in MVP | **Job-posting parsing only**, from pasted text; includes language detection, language requirements, and an English summary |
+| AI later | CV ↔ job matching, PDF/image parsing, more providers (Claude, OpenAI) |
+| LLM providers | Gemini `gemini-3.1-flash-lite` (free tier) by default; Ollama optional. **Chosen per user**. No Ollama container: if Ollama can't be reached, fail cleanly |
+| SSE | Parse progress + background job queue events |
+| Token saving | Hash-based cache, structured JSON output, input trimming |
+| Usage | **Track only, no quotas** for Owner: daily trends, model, tokens, estimated cost. Guest keeps a small daily cap |
+| Hosting | Docker (docker-compose) on a VPS or home server; SQLite on a volume |
+| CV storage | Structured data in the DB (see §4). *Assumption: "actual data" = structured fields, not a blob* |
+
+## 2. Solution layout
+
+A vertical-slice layout: code is grouped by feature, not by technical layer. It is easy to learn,
+easy to navigate on GitHub, and doesn't have the ceremony of a four-project Clean Architecture setup.
+
+```
+job-hunt-assistant-api/
+├─ src/JobHunt.Api/
+│  ├─ Program.cs                  # composition root, kept short
+│  ├─ Features/
+│  │  ├─ Auth/                    # login, logout, guest login, /me
+│  │  ├─ Applications/            # CRUD, status changes, history
+│  │  ├─ Notes/
+│  │  ├─ Contacts/
+│  │  ├─ Cvs/
+│  │  ├─ Dashboard/
+│  │  ├─ JobPostings/             # parse request, results, queue worker
+│  │  ├─ Usage/                   # LLM usage stats
+│  │  └─ Settings/                # per-user provider/model preference
+│  ├─ Llm/                        # provider abstraction, Gemini/Ollama, prompt, trimming, cache
+│  ├─ Events/                     # SSE broker (per-user fan-out)
+│  ├─ Data/                       # AppDbContext, migrations, seeding
+│  └─ Common/                     # auth policies, ProblemDetails, extensions
+├─ tests/JobHunt.Api.Tests/       # xUnit + WebApplicationFactory + in-memory SQLite
+├─ docs/PLAN.md
+├─ Directory.Build.props          # nullable, warnings-as-errors, LangVersion
+├─ Directory.Packages.props       # central package management
+├─ .editorconfig
+├─ Dockerfile
+├─ docker-compose.yml
+├─ .github/workflows/ci.yml       # build + test
+└─ README.md                      # setup, architecture sketch, screenshots of Scalar
+```
+
+Each feature folder has an `XxxEndpoints.cs` with a `MapXxx(this IEndpointRouteBuilder)` extension
+that uses `MapGroup("/api/xxx")`, plus its request/response records. EF entities live next to
+their feature.
+
+**Conventions**
+- Built-in OpenAPI (`Microsoft.AspNetCore.OpenApi`) + **Scalar** UI at `/scalar`. The Nuxt app can
+  generate TS types from `/openapi/v1.json` (e.g. `openapi-typescript`).
+- .NET 10 built-in minimal-API validation (`AddValidation()` + DataAnnotations).
+- `ProblemDetails` for every error response.
+- `TimeProvider` injected everywhere, not `DateTime.UtcNow`, so time can be controlled in tests.
+- Secrets: `dotnet user-secrets` in dev, environment variables in Docker. The API key never reaches the UI.
+
+## 3. Authentication
+
+- `AddIdentityCore<AppUser>()` + `SignInManager` + cookie scheme. **Custom endpoints** instead of
+  `MapIdentityApi()`, because that one exposes `/register` and we want registration closed.
+- Roles: `Owner`, `Guest`. Both users are seeded at startup from config
+  (`Seed:OwnerEmail`, `Seed:OwnerPassword`). The guest has a fixed, public login.
+- Cookie: `HttpOnly`, `Secure`, `SameSite=Lax`. Return 401/403 on API calls instead of redirecting.
+- **Nuxt integration:** proxy `/api/**` through Nuxt (`routeRules: { '/api/**': { proxy: ... } }`)
+  so the browser treats API and UI as same-origin. Cookies and `EventSource` then work with no CORS
+  or `SameSite=None` hacks. Allow CORS with credentials only as a dev fallback.
+- Built-in rate limiter on the login endpoints.
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/auth/login` | email + password → cookie |
+| `POST /api/auth/guest` | one-click guest login (for the demo button) |
+| `POST /api/auth/logout` | |
+| `GET /api/auth/me` | id, email, role, provider preference |
+
+**Guest sandbox:** a `GuestResetService` (`BackgroundService`) wipes the guest's rows at a
+configurable time each night and re-seeds sample data (a handful of applications, a CV, some
+parsed postings). Guest AI cap: `Guest:DailyLlmRequests` (default 5). Cache hits don't count.
+
+## 4. Data model
+
+All user-owned tables have `UserId`. A global EF query filter scopes every query to the current
+user, so one user can never read another's data even if an endpoint forgets to filter.
+
+```
+AppUser (Identity) ── UserSettings (PreferredProvider, PreferredModel)
+
+Application
+  Id, UserId, CompanyName, JobTitle, Location, WorkMode (Onsite/Hybrid/Remote),
+  Status, SourceUrl, SalaryText, AppliedAt?, FollowUpAt?, JobPostingId?,
+  CreatedAt, UpdatedAt
+  ├─ ApplicationStatusChange  (FromStatus, ToStatus, ChangedAt)   ← history for stats
+  ├─ Note                     (Body, CreatedAt, UpdatedAt)
+  └─ Contact                  (Name, Role, Email, Phone, LinkedInUrl, Notes)
+
+Status: Saved → Applied → Screening → Interviewing → Offer → Accepted
+        (+ Rejected, Withdrawn, Ghosted from any state)
+
+Cv
+  Id, UserId, Name, IsDefault, FullName, Headline, Summary, Email, Phone, Location, Links[]
+  ├─ Experiences[]    (Company, Title, Start, End?, Description, Highlights[])
+  ├─ Educations[]     (School, Degree, Field, Start, End?)
+  ├─ Skills[]         (Name, Level?, Category?)
+  ├─ Languages[]      (Language, Proficiency)
+  └─ Certifications[] (Name, Issuer, Date?)
+  → Relational tables with FKs. Skills and Languages must be comparable with JobPosting
+    skills/language requirements for the CV ↔ job matching on the roadmap. db-architect designs this
+    in M3 (e.g. a shared Skill lookup table). JSON columns only for leaf data like Highlights[] and Links[].
+
+JobPosting                         ← cache + parsed result, deduplicated
+  Id, ContentHash (unique with PromptVersion), PromptVersion, NormalizedText,
+  ParsedJson, Title, Company, PostingLanguage, Provider, Model, CreatedAt
+
+ParseJob                           ← queue item, one per user request
+  Id, UserId, JobPostingId?, RawText, Status (Queued/Running/Succeeded/Failed),
+  Error?, Provider, CreatedAt, StartedAt?, CompletedAt?
+
+LlmUsage                           ← one row per LLM call attempt (and per cache hit)
+  Id, UserId, Provider, Model, Operation ("parse-posting"), CacheHit,
+  InputTokens, OutputTokens, LatencyMs, Success, ErrorCode?, CreatedAt
+```
+
+## 5. LLM layer
+
+**Abstraction: `Microsoft.Extensions.AI` (`IChatClient`).** It is the standard .NET abstraction,
+and adding Claude/OpenAI later means registering another client, not writing a new code path.
+
+- Providers are registered as **keyed services** (`"gemini"`, `"ollama"`, later `"anthropic"`, `"openai"`).
+- `LlmProviderResolver` picks the client from `UserSettings.PreferredProvider`, with config as fallback.
+- **Gemini client:** decide at scaffold time between the official Google GenAI .NET SDK (if its
+  `IChatClient` adapter is mature) and Gemini's OpenAI-compatible endpoint through the OpenAI
+  `IChatClient`. Both support JSON-schema output. *To verify: the exact model id in AI Studio
+  (it may carry a `-preview` suffix). It will be config-driven either way.*
+- **Ollama** (`OllamaSharp`, implements `IChatClient`): before use, a cached health check
+  (`GET /api/tags`, 2s timeout, result cached ~30s). If unreachable → `ProviderUnavailable`
+  → 503 ProblemDetails, plus an SSE `parse.failed` event with a readable message.
+  No container; `Llm:Ollama:BaseUrl` is optional config.
+- Every call goes through a wrapper that writes an `LlmUsage` row (tokens from the response's
+  `UsageDetails`).
+
+### Parse pipeline (token-frugal)
+
+```
+pasted text
+  → Normalize: collapse whitespace, strip boilerplate (cookie/EEO/"apply now" regex list),
+               cap at Llm:MaxInputChars (≈12k chars ≈ 3k tokens)
+  → SHA-256(normalized) + PromptVersion
+  → cache hit?  yes → link existing JobPosting, log CacheHit usage, done (0 tokens)
+                no  → one LLM call, structured output, low temperature
+  → validate JSON against the C# record → save JobPosting → done
+```
+
+- **One call does everything**: fields + language detection + language requirements + summary.
+- Short system prompt, schema-constrained output (no prose), `maxOutputTokens` capped.
+- Bump `PromptVersion` whenever the prompt or schema changes; old cache rows then stop matching.
+- The cache is global across users (postings aren't private), so a guest pasting a demo posting
+  you already parsed costs nothing.
+
+**Output schema (compact):**
+```jsonc
+{
+  "title": "", "company": "", "location": "", "workMode": "onsite|hybrid|remote|unknown",
+  "employmentType": "", "seniority": "",
+  "salary": { "min": null, "max": null, "currency": "", "period": "year|month|hour" },
+  "skills": { "required": [], "niceToHave": [] },
+  "languages": {
+    "postingLanguage": "no",                       // ISO 639-1
+    "requirements": [{ "language": "Norwegian", "level": "fluent", "required": true }]
+  },
+  "summaryEn": "",                                 // ≤ 60 words, always English
+  "deadline": null
+}
+```
+
+## 6. Background queue + SSE
+
+```
+POST /api/job-postings/parse  { text }
+  → create ParseJob(Queued) → write to Channel<Guid> → 202 { parseJobId }
+
+ParseWorker (BackgroundService)
+  → reads the channel; a TokenBucket rate limiter paces calls to the free-tier RPM (config)
+  → on 429: respect Retry-After, requeue with backoff (max N tries), emit parse.retrying
+  → publishes events through SseBroker
+
+GET /api/events   (text/event-stream, one long-lived stream per browser tab)
+  → TypedResults.ServerSentEvents(...) (native in .NET 10)
+  → SseBroker keeps a Channel per connection, keyed by UserId
+  → heartbeat comment every ~20s so proxies don't close the stream
+```
+
+Events: `parse.queued`, `parse.started`, `parse.cache-hit`, `parse.retrying`,
+`parse.succeeded` (includes `jobPostingId`), `parse.failed` (includes a message).
+
+- On startup, `Queued`/`Running` ParseJobs are re-enqueued, so the queue survives restarts.
+- If the UI misses an event, it can always fall back to `GET /api/job-postings/parse/{id}`.
+- Single instance only (in-memory broker); fine for SQLite + one container.
+
+## 7. Endpoints (MVP)
+
+```
+Applications   GET/POST /api/applications            (filter: status, search, sort, paging)
+               GET/PUT/DELETE /api/applications/{id}
+               POST /api/applications/{id}/status    (writes history row)
+               GET  /api/applications/{id}/history
+               POST /api/applications/from-posting/{jobPostingId}   (prefill from parse)
+Notes          GET/POST /api/applications/{id}/notes,  PUT/DELETE /api/notes/{id}
+Contacts       GET/POST /api/applications/{id}/contacts, PUT/DELETE /api/contacts/{id}
+CVs            GET/POST /api/cvs, GET/PUT/DELETE /api/cvs/{id}, POST /api/cvs/{id}/default
+Job postings   POST /api/job-postings/parse, GET /api/job-postings/parse/{id},
+               GET /api/job-postings, GET /api/job-postings/{id}
+Dashboard      GET /api/dashboard/stats
+               → counts by status, applications/week (last 12w), response rate,
+                 avg days to first response, upcoming follow-ups
+Usage          GET /api/usage/daily?from&to        → per day × provider × model: calls,
+                                                     cache hits, tokens in/out, est. cost
+               GET /api/usage/summary
+Settings       GET/PUT /api/settings               → preferred provider/model,
+                                                     available providers + health
+Events         GET /api/events                     (SSE)
+Auth           see §3
+```
+
+**Estimated cost:** the free tier costs $0, so usage stats compute a "would cost" figure from a
+price table in config (`Llm:Pricing:{model}:InputPerMTok/OutputPerMTok`). You fill in the
+current paid-tier prices, and the numbers update without code changes.
+
+## 8. Docker
+
+- Multi-stage `Dockerfile` (SDK build → `aspnet` runtime image, non-root user).
+- `docker-compose.yml`: `api` service only; volume for `/data/jobhunt.db` and DataProtection keys
+  (so cookies survive restarts); env vars for secrets. No Ollama service.
+- EF migrations applied at startup (acceptable for a hobby project).
+
+## 9. Milestones
+
+| # | Milestone | Done when |
+|---|---|---|
+| M0 | Install .NET 10 SDK in WSL; scaffold solution, props files, CI, Scalar, EF Core + SQLite, Dockerfile + compose | `dotnet test` + `docker build` green in CI |
+| M1 | Identity + cookie auth, seeded Owner/Guest, user query filter | can log in as both via Scalar |
+| M2 | Applications + status history + notes + contacts | CRUD + history tested |
+| M3 | Structured CVs | CV CRUD with JSON columns |
+| M4 | Dashboard stats | stats endpoint tested with seeded data |
+| M5 | LLM layer: Gemini client, Ollama health handler, usage logging, settings | one parse call works end-to-end synchronously |
+| M6 | Parse queue + SSE + cache + trimming + retries | UI receives events; repeat paste = cache hit |
+| M7 | Guest sandbox: nightly reset, sample data, AI cap | guest resets, capped at N calls |
+| M8 | Deploy to VPS, DataProtection keys volume, README polish (incl. "Design decisions": why vertical slices, why no repository layer, why cookies over JWT, token-saving strategy) | runs on the VPS |
+
+**After MVP:** CV ↔ job match, PDF/image posting input, Claude/OpenAI providers,
+URL scraping, maybe Postgres.
+
+## 10. Open questions (can be decided during build)
+
+1. Contacts: per application (current plan), or a shared contact list linked to many applications?
+2. Guest daily AI cap: is 5 right? And the nightly reset time?
+3. Future providers: your keys only (server config), or bring-your-own-key per user?
+4. The exact Gemini model id and free-tier RPM/RPD limits: read them from AI Studio and put them in config.
