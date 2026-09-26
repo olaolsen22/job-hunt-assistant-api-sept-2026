@@ -122,7 +122,7 @@ Location (City?, NormalizedCity ("" if none), CountryCode ISO 3166, IsTarget)  u
 
 Listing                                          ← built
   Id, UserId, Title (as in the ad), CompanyId, JobRoleId, Seniority?, EmploymentType?,
-  Schedule? (FullTime/PartTime), WorkMode?, Description?, Url (required), PostedOn? (DateOnly),
+  Schedule? (FullTime/PartTime), WorkMode?, Description?, Url (required), PostedOn (required, DateOnly),
   DeadlineType (Date/Asap/Rolling/Unspecified), DeadlineOn?, PostingLanguage?, CreatedAt, UpdatedAt
   ├─ ListingSkill     (SkillId, Level 1–5, MinYears?, IsRequired)   ← no 0: a CV without the skill has no row
   ├─ ListingLanguage  (Language, Level A1–C2?, IsRequired)
@@ -134,7 +134,7 @@ Tracking (design pending owner adjustments):
   ├─ ListingStatusChange (Status, OccurredAt (user-settable, UTC), Note?)   ← the "saved at / applied at" log
   ├─ Note, Contact
   Counts (per company/role/skill/location) are computed with DataLoaders, never stored.
-Favorites (later): Listing.FavoritedAt DateTime? (+ FavoriteRank? if drag-to-rank); named lists → ListingList + items table.
+Favorites: Listing.FavoritedAt DateTime? ← built. Later if wanted: FavoriteRank? (drag-to-rank); named lists → ListingList + items table.
 
 Cv
   Id, UserId, Name, IsDefault, FullName, Headline, Summary, Email, Phone, Location, Links[]

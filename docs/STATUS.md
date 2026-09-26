@@ -1,6 +1,6 @@
 # Project Status
 
-Updated: 2026-09-26 · Last logged commit: accc804
+Updated: 2026-09-26 · Last logged commit: c7f5741
 
 ## Milestones
 | # | Milestone | Status |
@@ -28,7 +28,7 @@ All endpoints require auth (fallback policy) unless marked anon.
   - Query: `listings` / `companies(search)` / `jobRoles(search)` / `skills(search)` / `locations(search: city)` — cursor paging (default 10, `totalCount`), projection, `where`, `order`; `listingById(id)`
   - `listingParsePrompt { version instructions }` — copy-paste prompt for external AIs (UI appends `<posting>…</posting>`); enums from C#, user's role/skill names (max 100 each), today's date. `ListingParsePromptQueries.Version` = 1
   - `Company|JobRole|Skill|Location.listingCount` — computed via DataLoader (one GROUP BY per page)
-  - Mutation (conventions, typed errors): `createListing(input:{listing})`, `updateListing(input:{id, listing})` (full replace incl. skills/languages), `deleteListing(input:{id})` → `id`, `updateCompany(input:{id, name, location: LocationInput})`, `saveLocation(input:{city?, countryCode, isTarget})` (find-or-create)
+  - Mutation (conventions, typed errors): `createListing(input:{listing})`, `updateListing(input:{id, listing})` (full replace incl. skills/languages), `deleteListing(input:{id})` → `id`, `updateCompany(input:{id, name, location: LocationInput})`, `saveLocation(input:{city?, countryCode, isTarget})` (find-or-create), `setListingFavorite(input:{id, isFavorite})` (keeps first FavoritedAt; UpdatedAt untouched)
   - Errors: `InvalidListingError`, `ListingNotFoundError`, `InvalidCompanyError`, `CompanyNotFoundError`, `InvalidLocationError`
   - `ListingInput` takes `companyName`/`jobRoleName`/skill `name`/`locations: [{city?, countryCode}]` → found case-insensitively or created. Defaults: skill `level: 3`, `isRequired: true`, `deadlineType: UNSPECIFIED`
 
@@ -36,7 +36,7 @@ All endpoints require auth (fallback policy) unless marked anon.
 - `AppUser : IdentityUser` (string Id) + Identity tables (incl. UserLogins/UserTokens for future SSO/2FA)
 - Roles: `Owner`, `Guest` (`Features/Auth/AppUser.cs`)
 - `AppDbContext : IdentityDbContext<AppUser>` in `Data/`; configs via `IEntityTypeConfiguration` + `ApplyConfigurationsFromAssembly`. Migrations applied at startup, then `AuthSeeder` runs.
-- `Listing` (`Features/Listings/Listing.cs`): Title, CompanyId, JobRoleId, Seniority?, EmploymentType?, Schedule?, WorkMode?, Location?, Description?, Url?, PostedOn?/DeadlineOn? (DateOnly), DeadlineType, PostingLanguage?, Url (required, http/https only), CreatedAt/UpdatedAt (UTC)
+- `Listing` (`Features/Listings/Listing.cs`): Title, CompanyId, JobRoleId, Seniority?, EmploymentType?, Schedule?, WorkMode?, Location?, Description?, Url?, PostedOn (required, not future; UI pre-fills today) / DeadlineOn? (DateOnly), DeadlineType, PostingLanguage?, Url (required, http/https only), CreatedAt/UpdatedAt (UTC), FavoritedAt? (null = not favorited)
   - `ListingLocation` PK (ListingId, LocationId)
   - `ListingSkill` PK (ListingId, SkillId): Level 1–5, MinYears? (as stated in ad), IsRequired · `ListingLanguage` PK (ListingId, Language): Level CEFR?, IsRequired
 - Lookups per user, unique (UserId, NormalizedName): `Company` (+LocationId? head office, SetNull), `JobRole` (core role, English), `Skill`.
@@ -44,7 +44,7 @@ All endpoints require auth (fallback policy) unless marked anon.
 - Hot Chocolate has a global `Location` type: files referencing ours use `using Location = JobHunt.Api.Features.Locations.Location;` `Names.Normalize` = Trim + ToUpperInvariant
 - Enums stored as strings (`ConfigureConventions`). Global filter `UserId == CurrentUserId` (from `IHttpContextAccessor`); child rows filtered via Listing
 - FKs: AppUser → all user tables cascade; Listing → Company/JobRole NoAction; children cascade from Listing/Skill
-- Migrations: `AddSamples`, `RemoveSamples`, `AddIdentity`, `AddListings`, `AddLocations` (dropped free-text Location columns; no rows existed), `RequireUrlAddMinYears`
+- Migrations: `AddSamples`, `RemoveSamples`, `AddIdentity`, `AddListings`, `AddLocations` (dropped free-text Location columns; no rows existed), `RequireUrlAddMinYears`, `RequirePostedOn` (backfills null PostedOn from CreatedAt), `AddListingFavorites`
 
 ## Config keys
 - `ConnectionStrings:Default` — `Data Source=jobhunt.db` (dev), `/data/jobhunt.db` (Docker)
@@ -74,5 +74,5 @@ All endpoints require auth (fallback policy) unless marked anon.
 ## Next up
 - Tracking (status history, notes, contacts) once the owner's adjustments are in.
 - `topSkills` (GROUP BY skill: listingCount, requiredCount, averageLevel) with dashboard stats; target-cities widget uses existing `locations`/`listings` filters.
-- Favorites: `Listing.FavoritedAt` + `setListingFavorite` (owner: later).
+- Favorites: drag-to-rank (`FavoriteRank`) or named lists only if wanted.
 - M8: forwarded headers (rate limiter IP behind proxy), DataProtection keys volume.
