@@ -218,7 +218,7 @@ type Listing {
   workMode: WorkMode
   description: String
   url: String!
-  postedOn: LocalDate
+  postedOn: LocalDate!
   deadlineType: DeadlineType!
   deadlineOn: LocalDate
   postingLanguage: Language
@@ -526,7 +526,7 @@ input ListingInput {
   workMode: WorkMode
   description: String
   url: String!
-  postedOn: LocalDate
+  postedOn: LocalDate!
   deadlineType: DeadlineType! = UNSPECIFIED
   deadlineOn: LocalDate
   postingLanguage: Language

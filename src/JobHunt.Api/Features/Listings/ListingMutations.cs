@@ -19,7 +19,7 @@ public record ListingInput(
     WorkMode? WorkMode,
     string? Description,
     string Url,
-    DateOnly? PostedOn,
+    DateOnly PostedOn,
     [property: DefaultValue(DeadlineType.Unspecified)] DeadlineType DeadlineType,
     DateOnly? DeadlineOn,
     Language? PostingLanguage,
@@ -52,7 +52,7 @@ public static class ListingMutations
     {
         var now = time.GetUtcNow().UtcDateTime;
         var entity = new Listing { UserId = db.CurrentUserId!, CreatedAt = now, UpdatedAt = now };
-        await ApplyAsync(entity, listing, db, ct);
+        await ApplyAsync(entity, listing, DateOnly.FromDateTime(now), db, ct);
         db.Listings.Add(entity);
         await db.SaveChangesAsync(ct);
         return entity;
@@ -73,8 +73,9 @@ public static class ListingMutations
             .Include(l => l.Locations).ThenInclude(l => l.Location)
             .FirstOrDefaultAsync(l => l.Id == id, ct)
             ?? throw new ListingNotFoundException(id);
-        await ApplyAsync(entity, listing, db, ct);
-        entity.UpdatedAt = time.GetUtcNow().UtcDateTime;
+        var now = time.GetUtcNow().UtcDateTime;
+        await ApplyAsync(entity, listing, DateOnly.FromDateTime(now), db, ct);
+        entity.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
         return entity;
     }
@@ -89,9 +90,10 @@ public static class ListingMutations
         return id;
     }
 
-    private static async Task ApplyAsync(Listing entity, ListingInput input, AppDbContext db, CancellationToken ct)
+    private static async Task ApplyAsync(
+        Listing entity, ListingInput input, DateOnly today, AppDbContext db, CancellationToken ct)
     {
-        Validate(input);
+        Validate(input, today);
 
         entity.Title = input.Title.Trim();
         entity.Seniority = input.Seniority;
@@ -145,7 +147,7 @@ public static class ListingMutations
             entity.Locations.Add(new ListingLocation { Location = await LocationLookup.FindOrCreateAsync(location, db, ct) });
     }
 
-    private static void Validate(ListingInput input)
+    private static void Validate(ListingInput input, DateOnly today)
     {
         if (string.IsNullOrWhiteSpace(input.Title))
             throw new InvalidListingException("Title is required.");
@@ -156,6 +158,9 @@ public static class ListingMutations
         // http(s) only: the UI renders this as a link, and a javascript: URL would run on click.
         if (!Uri.TryCreate(input.Url.Trim(), UriKind.Absolute, out var url) || url.Scheme is not ("http" or "https"))
             throw new InvalidListingException("Url must be an http(s) link.");
+        // One day of slack: today is UTC here, and just after midnight in Norway it's still yesterday in UTC.
+        if (input.PostedOn > today.AddDays(1))
+            throw new InvalidListingException("Posted date can't be in the future.");
         if ((input.DeadlineType == DeadlineType.Date) != (input.DeadlineOn is not null))
             throw new InvalidListingException("Set deadlineOn if and only if deadlineType is DATE.");
 

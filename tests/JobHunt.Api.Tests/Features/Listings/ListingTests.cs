@@ -173,6 +173,18 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task CreateListing_WithFuturePostedDate_ReturnsInvalidListingError()
+    {
+        var client = await factory.GetOwnerClientAsync();
+
+        var data = await client.GraphQLAsync(CreateListing,
+            new { listing = NewListing(Unique("Acme"), postedOn: "2999-01-01") });
+
+        var error = Assert.Single(data.GetProperty("createListing").GetProperty("errors").EnumerateArray());
+        Assert.Equal("InvalidListingError", error.GetProperty("__typename").GetString());
+    }
+
+    [Fact]
     public async Task CreateListing_WithDateDeadlineButNoDate_ReturnsInvalidListingError()
     {
         var client = await factory.GetOwnerClientAsync();
@@ -292,12 +304,13 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         string jobRoleName = "Backend Developer",
         string deadlineType = "UNSPECIFIED",
         string url = "https://www.finn.no/job/123",
+        string postedOn = "2026-09-20",
         object[]? skills = null,
         object[]? languages = null,
         object[]? locations = null) =>
         new
         {
-            title, companyName, jobRoleName, deadlineType, url,
+            title, companyName, jobRoleName, deadlineType, url, postedOn,
             skills = skills ?? [], languages = languages ?? [], locations = locations ?? [],
         };
 

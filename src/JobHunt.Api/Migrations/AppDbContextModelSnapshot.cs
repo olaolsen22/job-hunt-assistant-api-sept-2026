@@ -166,7 +166,7 @@ namespace JobHunt.Api.Migrations
                     b.Property<int>("JobRoleId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateOnly?>("PostedOn")
+                    b.Property<DateOnly>("PostedOn")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("PostingLanguage")

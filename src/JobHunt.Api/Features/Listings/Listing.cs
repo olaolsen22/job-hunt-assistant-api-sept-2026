@@ -24,7 +24,7 @@ public class Listing
     public WorkMode? WorkMode { get; set; }
     public string? Description { get; set; }
     public string Url { get; set; } = null!;
-    public DateOnly? PostedOn { get; set; }
+    public DateOnly PostedOn { get; set; }
     public DeadlineType DeadlineType { get; set; }
     public DateOnly? DeadlineOn { get; set; }
     public Language? PostingLanguage { get; set; }
