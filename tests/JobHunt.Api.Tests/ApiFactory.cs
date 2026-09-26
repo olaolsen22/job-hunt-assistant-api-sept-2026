@@ -8,6 +8,10 @@ namespace JobHunt.Api.Tests;
 // stays open, so we hold one here for the factory's lifetime.
 public class ApiFactory : WebApplicationFactory<Program>
 {
+    public const string OwnerEmail = "owner@test.local";
+    public const string OwnerPassword = "Test-Passw0rd!";
+    public const string GuestEmail = "guest@jobhunt.local";
+
     private readonly string _connectionString = $"Data Source=test-{Guid.NewGuid()};Mode=Memory;Cache=Shared";
     private readonly SqliteConnection _keepAlive;
 
@@ -17,8 +21,12 @@ public class ApiFactory : WebApplicationFactory<Program>
         _keepAlive.Open();
     }
 
-    protected override void ConfigureWebHost(IWebHostBuilder builder) =>
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
         builder.UseSetting("ConnectionStrings:Default", _connectionString);
+        builder.UseSetting("Seed:OwnerEmail", OwnerEmail);
+        builder.UseSetting("Seed:OwnerPassword", OwnerPassword);
+    }
 
     protected override void Dispose(bool disposing)
     {
