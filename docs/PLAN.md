@@ -91,6 +91,13 @@ their feature.
 configurable time each night and re-seeds sample data (a handful of applications, a CV, some
 parsed postings). Guest AI cap: `Guest:DailyLlmRequests` (default 5). Cache hits don't count.
 
+**SSO / 2FA later (no migration needed):** Identity's schema already has `AspNetUserLogins`
+(external logins) and `AspNetUserTokens` (authenticator key, recovery codes). Three M1 choices keep
+these additive: `AddIdentityCookies()` (registers the External + TwoFactor schemes), login response
+carries `requiresTwoFactor`, and SSO only links to existing users (provider key, then verified
+email; never auto-create). Guest may never enable 2FA, change password, or link SSO.
+Seeded users are `EmailConfirmed = true`; no email sending until registration opens.
+
 ## 4. Data model
 
 All user-owned tables have `UserId`. A global EF query filter scopes every query to the current
@@ -262,6 +269,15 @@ current paid-tier prices, and the numbers update without code changes.
 
 **After MVP:** CV ↔ job match, PDF/image posting input, Claude/OpenAI providers,
 URL scraping, maybe Postgres.
+
+**If it ever goes public (open registration):**
+- Auth (small): register endpoint, email confirmation + forgot password (needs an email provider
+  like Resend/Postmark + SPF/DKIM DNS), SSO/2FA as in §3.
+- LLM cost: per-user daily caps. Build M7's guest cap per-user/per-role, not guest-only.
+- Abuse: CAPTCHA (Turnstile) + rate limits on register/forgot-password.
+- Privacy/GDPR: delete-account + export-data endpoints.
+- Keep it cheap meanwhile: authorize by role/policy, never by a specific email; per-user settings
+  in the DB; every user-owned entity cascade-deletes from `AppUser`; Guest is a normal user + role.
 
 ## 10. Open questions (can be decided during build)
 
