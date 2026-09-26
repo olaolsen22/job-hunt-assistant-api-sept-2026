@@ -4,7 +4,11 @@
       "Read(./**/bin/**)",
       "Read(./**/obj/**)",
       "Read(./**/Migrations/*.Designer.cs)",
-      "Read(./**/*.db)"
+      "Read(./**/*.db)",
+      "Bash(pkill:*)",
+      "Bash(killall:*)",
+      "Bash(make run:*)",
+      "Bash(make watch:*)"
     ]
   }
 }

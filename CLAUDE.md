@@ -46,5 +46,6 @@ LLM job-posting parsing via Gemini (free tier) or Ollama, with a background queu
 - Prefer targeted reads (Grep, then a line range) over whole-file reads. Never read `bin/`, `obj/`, or `Migrations/*.Designer.cs`.
 - Answer style: direct, like pre-2020 StackOverflow/GitHub. Answer first, no preamble, no recap, no closing offers. Code over prose.
 - Show changed snippets, not whole files.
+- The owner usually has the API running (`make run`/`make watch`). Don't start or stop it. Verify with `dotnet test`; if a live probe is truly needed, ask first, then use another port and DB, and stop only that PID.
 - After finishing a milestone or a notable feature, run `/log-progress` to update `docs/STATUS.md`.
 - The owner is a senior frontend engineer (Vue/Nuxt) learning backend, and last used .NET Framework 4. When a backend or modern-.NET concept first comes up, explain *why it works that way* in 1–2 lines, with a frontend analogy if one fits. Skip HTTP/JSON/REST basics.
