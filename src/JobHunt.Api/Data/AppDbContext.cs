@@ -1,4 +1,11 @@
+using System.Security.Claims;
 using JobHunt.Api.Features.Auth;
+using JobHunt.Api.Features.Companies;
+using JobHunt.Api.Features.JobRoles;
+using JobHunt.Api.Features.Listings;
+// Hot Chocolate also has a global Location type (a position in a query document).
+using Location = JobHunt.Api.Features.Locations.Location;
+using JobHunt.Api.Features.Skills;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
@@ -6,11 +13,42 @@ namespace JobHunt.Api.Data;
 
 // IdentityDbContext adds the AspNet* tables, including UserLogins (SSO) and UserTokens (2FA),
 // so those features can be added later without a schema change.
-public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbContext<AppUser>(options)
+public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAccessor httpContextAccessor)
+    : IdentityDbContext<AppUser>(options)
 {
+    public DbSet<Listing> Listings => Set<Listing>();
+    public DbSet<ListingSkill> ListingSkills => Set<ListingSkill>();
+    public DbSet<ListingLanguage> ListingLanguages => Set<ListingLanguage>();
+    public DbSet<ListingLocation> ListingLocations => Set<ListingLocation>();
+    public DbSet<Company> Companies => Set<Company>();
+    public DbSet<JobRole> JobRoles => Set<JobRole>();
+    public DbSet<Skill> Skills => Set<Skill>();
+    public DbSet<Location> Locations => Set<Location>();
+
+    // Null outside a request (startup, seeding), so the user filters below then match nothing.
+    public string? CurrentUserId => httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        // Strings keep rows readable in the DB browser and survive reordering an enum.
+        // CEFR levels still compare correctly as text (A1 < A2 < B1 ...).
+        configurationBuilder.Properties<Enum>().HaveConversion<string>();
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+
+        // Every query is scoped to the signed-in user, so a resolver that forgets to filter can't leak data.
+        // Child rows are filtered through their listing.
+        modelBuilder.Entity<Listing>().HasQueryFilter(l => l.UserId == CurrentUserId);
+        modelBuilder.Entity<ListingSkill>().HasQueryFilter(s => s.Listing.UserId == CurrentUserId);
+        modelBuilder.Entity<ListingLanguage>().HasQueryFilter(l => l.Listing.UserId == CurrentUserId);
+        modelBuilder.Entity<ListingLocation>().HasQueryFilter(l => l.Listing.UserId == CurrentUserId);
+        modelBuilder.Entity<Company>().HasQueryFilter(c => c.UserId == CurrentUserId);
+        modelBuilder.Entity<JobRole>().HasQueryFilter(r => r.UserId == CurrentUserId);
+        modelBuilder.Entity<Skill>().HasQueryFilter(s => s.UserId == CurrentUserId);
+        modelBuilder.Entity<Location>().HasQueryFilter(l => l.UserId == CurrentUserId);
     }
 }

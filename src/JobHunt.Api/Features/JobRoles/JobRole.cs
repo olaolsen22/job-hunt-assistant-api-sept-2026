@@ -1,0 +1,24 @@
+using JobHunt.Api.Features.Auth;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+namespace JobHunt.Api.Features.JobRoles;
+
+// The core role behind a listing's title, always in English: "Backend-utvikler (.NET)" and
+// "Junior Backend Developer" are both "Backend Developer". Seniority and tech live elsewhere.
+public class JobRole
+{
+    public int Id { get; set; }
+    public string UserId { get; set; } = null!;
+    public string Name { get; set; } = null!;
+    public string NormalizedName { get; set; } = null!;
+}
+
+public class JobRoleConfiguration : IEntityTypeConfiguration<JobRole>
+{
+    public void Configure(EntityTypeBuilder<JobRole> builder)
+    {
+        builder.HasOne<AppUser>().WithMany().HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasIndex(r => new { r.UserId, r.NormalizedName }).IsUnique();
+    }
+}

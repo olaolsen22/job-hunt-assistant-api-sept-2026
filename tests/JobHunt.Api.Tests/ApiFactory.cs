@@ -1,3 +1,5 @@
+using System.Net.Http.Json;
+using JobHunt.Api.Features.Auth;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
@@ -14,6 +16,8 @@ public class ApiFactory : WebApplicationFactory<Program>
 
     private readonly string _connectionString = $"Data Source=test-{Guid.NewGuid()};Mode=Memory;Cache=Shared";
     private readonly SqliteConnection _keepAlive;
+    private HttpClient? _owner;
+    private HttpClient? _guest;
 
     public ApiFactory()
     {
@@ -26,6 +30,23 @@ public class ApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("ConnectionStrings:Default", _connectionString);
         builder.UseSetting("Seed:OwnerEmail", OwnerEmail);
         builder.UseSetting("Seed:OwnerPassword", OwnerPassword);
+    }
+
+    // Signed in once per factory and reused: the login rate limit (10/min) would trip if every test logged in.
+    public async Task<HttpClient> GetOwnerClientAsync()
+    {
+        if (_owner is not null) return _owner;
+        var client = CreateClient();
+        (await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(OwnerEmail, OwnerPassword))).EnsureSuccessStatusCode();
+        return _owner = client;
+    }
+
+    public async Task<HttpClient> GetGuestClientAsync()
+    {
+        if (_guest is not null) return _guest;
+        var client = CreateClient();
+        (await client.PostAsync("/api/auth/guest", null)).EnsureSuccessStatusCode();
+        return _guest = client;
     }
 
     protected override void Dispose(bool disposing)

@@ -6,10 +6,17 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 
+// Names the source-generated registration method: AddJobHuntTypes().
+[assembly: Module("JobHuntTypes")]
+
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDbContext<AppDbContext>(options =>
+builder.Services.AddHttpContextAccessor();
+// A factory, so GraphQL resolvers that run in parallel each get their own DbContext.
+// It also registers a scoped AppDbContext, which Identity uses.
+builder.Services.AddDbContextFactory<AppDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("Default")));
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.AddValidation();
@@ -57,6 +64,15 @@ builder.Services.AddRateLimiter(options =>
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) }));
 });
 
+builder.AddGraphQL()
+    .RegisterDbContextFactory<AppDbContext>()
+    .AddJobHuntTypes()
+    .AddMutationConventions(applyToAllMutations: true)
+    .AddProjections()
+    .AddFiltering()
+    .AddSorting()
+    .ModifyPagingOptions(options => options.IncludeTotalCount = true);
+
 var app = builder.Build();
 
 // Single instance + SQLite, so applying migrations on startup is safe and keeps deploys to one step.
@@ -81,5 +97,6 @@ app.UseAuthorization();
 
 app.MapHealthChecks("/api/health").AllowAnonymous();
 app.MapAuthEndpoints();
+app.MapGraphQL();
 
 app.Run();
