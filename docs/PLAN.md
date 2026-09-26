@@ -243,6 +243,10 @@ Query
   dashboardStats → counts by status, applications/week (last 12w), response rate,
                    avg days to first response, upcoming follow-ups
   usageDaily(from, to), usageSummary        → calls, cache hits, tokens in/out, est. cost
+  usageToday                                → token-monitor widget: requests, cache hits, tokens in/out,
+                                              est. cost, limits (RPD/RPM from config), remaining
+                                              (Guest: daily cap; Owner: RPD − requests). Own count;
+                                              Gemini has no remaining-quota API
   settings                                  → preferred provider/model, available providers + health
 
 Mutation
