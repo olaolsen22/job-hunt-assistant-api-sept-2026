@@ -5,6 +5,10 @@ services:
       - "8080:8080"
     volumes:
       - jobhunt-data:/data
+    # Values come from a gitignored .env next to this file.
+    environment:
+      - Seed__OwnerEmail=${SEED_OWNER_EMAIL:?set SEED_OWNER_EMAIL in .env}
+      - Seed__OwnerPassword=${SEED_OWNER_PASSWORD:?set SEED_OWNER_PASSWORD in .env}
     restart: unless-stopped
 
 volumes:
