@@ -114,16 +114,27 @@ user, so one user can never read another's data even if an endpoint forgets to f
 ```
 AppUser (Identity) ── UserSettings (PreferredProvider, PreferredModel)
 
-Application
-  Id, UserId, CompanyName, JobTitle, Location, WorkMode (Onsite/Hybrid/Remote),
-  Status, SourceUrl, SalaryText, AppliedAt?, FollowUpAt?, JobPostingId?,
-  CreatedAt, UpdatedAt
-  ├─ ApplicationStatusChange  (FromStatus, ToStatus, ChangedAt)   ← history for stats
-  ├─ Note                     (Body, CreatedAt, UpdatedAt)
-  └─ Contact                  (Name, Role, Email, Phone, LinkedInUrl, Notes)
+Company (Name, NormalizedName, LocationId?)    ┐ per user, found-or-created by name,
+JobRole (Name, NormalizedName)  ← core role, EN │ unique (UserId, NormalizedName)
+Skill   (Name, NormalizedName)  ← shared w/ CVs ┘
+Location (City?, NormalizedCity ("" if none), CountryCode ISO 3166, IsTarget)  unique (UserId, CountryCode, NormalizedCity)
+  City null = whole country ("Norway, anywhere" for remote). IsTarget → dashboard "jobs in your target cities".
 
-Status: Saved → Applied → Screening → Interviewing → Offer → Accepted
-        (+ Rejected, Withdrawn, Ghosted from any state)
+Listing                                          ← built
+  Id, UserId, Title (as in the ad), CompanyId, JobRoleId, Seniority?, EmploymentType?,
+  Schedule? (FullTime/PartTime), WorkMode?, Description?, Url (required), PostedOn? (DateOnly),
+  DeadlineType (Date/Asap/Rolling/Unspecified), DeadlineOn?, PostingLanguage?, CreatedAt, UpdatedAt
+  ├─ ListingSkill     (SkillId, Level 1–5, MinYears?, IsRequired)   ← no 0: a CV without the skill has no row
+  ├─ ListingLanguage  (Language, Level A1–C2?, IsRequired)
+  └─ ListingLocation  (LocationId)   ← several offices; remote-anywhere has none
+  Enums are stored as strings.
+
+Tracking (design pending owner adjustments):
+  Listing.Status + StatusChangedAt (current state, for list filter/sort)
+  ├─ ListingStatusChange (Status, OccurredAt (user-settable, UTC), Note?)   ← the "saved at / applied at" log
+  ├─ Note, Contact
+  Counts (per company/role/skill/location) are computed with DataLoaders, never stored.
+Favorites (later): Listing.FavoritedAt DateTime? (+ FavoriteRank? if drag-to-rank); named lists → ListingList + items table.
 
 Cv
   Id, UserId, Name, IsDefault, FullName, Headline, Summary, Email, Phone, Location, Links[]
@@ -185,21 +196,12 @@ pasted text
 - The cache is global across users (postings aren't private), so a guest pasting a demo posting
   you already parsed costs nothing.
 
-**Output schema (compact):**
-```jsonc
-{
-  "title": "", "company": "", "location": "", "workMode": "onsite|hybrid|remote|unknown",
-  "employmentType": "", "seniority": "",
-  "salary": { "min": null, "max": null, "currency": "", "period": "year|month|hour" },
-  "skills": { "required": [], "niceToHave": [] },
-  "languages": {
-    "postingLanguage": "no",                       // ISO 639-1
-    "requirements": [{ "language": "Norwegian", "level": "fluent", "required": true }]
-  },
-  "summaryEn": "",                                 // ≤ 60 words, always English
-  "deadline": null
-}
-```
+**Output schema:** matches `ListingInput` (minus `url`) so a result pre-fills the add-listing form.
+The prompt lives in `Features/Listings/ListingParsePromptQueries.cs` and is served as `listingParsePrompt`
+for the copy-paste path (external AI). The server-side parser reuses it.
+- **Open:** the prompt embeds the user's own role/skill names, so its output is per-user. The cache above
+  must then key on user too (or strip names from the cached prompt and match names after parsing),
+  otherwise one user's names could surface in another's result.
 
 ## 6. Background queue + subscriptions
 
