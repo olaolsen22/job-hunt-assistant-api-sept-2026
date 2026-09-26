@@ -1,6 +1,6 @@
 # Project Status
 
-Updated: 2026-09-26 · Last logged commit: c7f5741
+Updated: 2026-09-26 · Last logged commit: 30a183e
 
 ## Milestones
 | # | Milestone | Status |
@@ -25,7 +25,9 @@ All endpoints require auth (fallback policy) unless marked anon.
 - Dev only (anon): `/openapi/v1.json`, `/scalar`
 - `POST /graphql` (Hot Chocolate 16; Nitro IDE on GET in browser). All user data scoped by global query filter.
   - SDL committed at `schema.graphql` (repo root) for the UI; `SchemaTests` regenerates it and fails when it's stale
-  - Query: `listings` / `companies(search)` / `jobRoles(search)` / `skills(search)` / `locations(search: city)` — cursor paging (default 10, `totalCount`), projection, `where`, `order`; `listingById(id)`
+  - Query: `listings` / `companies(search)` / `jobRoles(search)` / `skills(search)` / `locations(search: city)` — projection, `where`, `order`; `listingById(id)`
+  - Paging: `listings` = offset (`skip`/`take`, default 20, max 100) → `{ items pageInfo { hasNextPage hasPreviousPage } totalCount }` for numbered pages; lookups = cursor (`first`/`after`, default 10) → `{ nodes pageInfo totalCount }`
+  - Default order only when no client `order` (`ISortingContext.IsDefined` + `Handled(false)`); listings: newest first, client sorts get `Id` tie-breaker
   - `listingParsePrompt { version instructions }` — copy-paste prompt for external AIs (UI appends `<posting>…</posting>`); enums from C#, user's role/skill names (max 100 each), today's date. `ListingParsePromptQueries.Version` = 1
   - `Company|JobRole|Skill|Location.listingCount` — computed via DataLoader (one GROUP BY per page)
   - Mutation (conventions, typed errors): `createListing(input:{listing})`, `updateListing(input:{id, listing})` (full replace incl. skills/languages), `deleteListing(input:{id})` → `id`, `updateCompany(input:{id, name, location: LocationInput})`, `saveLocation(input:{city?, countryCode, isTarget})` (find-or-create), `setListingFavorite(input:{id, isFavorite})` (keeps first FavoritedAt; UpdatedAt untouched)
@@ -52,7 +54,7 @@ All endpoints require auth (fallback policy) unless marked anon.
 - `Seed:GuestEmail` — `guest@jobhunt.local`; guest has no password
 
 ## Stack
-- .NET SDK 10.0.112, xunit 2.9.3, Scalar.AspNetCore 2.17.10, OpenApi/Mvc.Testing 10.0.12, HotChocolate 16.6.7 (AspNetCore, Data.EntityFramework, Types.Analyzers)
+- .NET SDK 10.0.112, xunit 2.9.3, Scalar.AspNetCore 2.17.10, OpenApi/Mvc.Testing 10.0.12, HotChocolate 16.6.7 (AspNetCore, Data.EntityFramework, Types.Analyzers, Types.OffsetPagination)
 - GraphQL types source-generated: `[assembly: Module("JobHuntTypes")]` → `AddJobHuntTypes()`. DbContext via `AddDbContextFactory` + `RegisterDbContextFactory`
 - Versions pinned in `Directory.Packages.props`; shared props in `Directory.Build.props`
 - `dotnet-ef` as local tool (`dotnet-tools.json`)
@@ -69,6 +71,7 @@ All endpoints require auth (fallback policy) unless marked anon.
 - 2026-09-26 — Deadline = enum (Date/Asap/Rolling/Unspecified) + DateOnly; EmploymentType and Schedule split because NO ads combine them ("Fast, deltid").
 - 2026-09-26 — Locations: city + ISO country code (UI names via Intl.DisplayNames), many per listing, country-only rows for remote; `IsTarget` for dashboard widget.
 - 2026-09-26 — Parsing via external AI: API serves the prompt, UI stitches ad + prompt, user pastes JSON back to pre-fill the form. Same prompt will drive the server parser. Skill level rubric: higher of years/wording.
+- 2026-09-26 — Listings use offset paging (numbered pages in UI); HC cursors on IQueryable are offsets anyway. Lookups keep cursors (autocomplete).
 - 2026-09-26 — Tracking design (not built): current Status + StatusChangedAt on Listing, history rows with user-settable OccurredAt (PLAN §4).
 
 ## Next up
