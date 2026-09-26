@@ -1,4 +1,5 @@
 using JobHunt.Api.Data;
+using JobHunt.Api.Features.Samples;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 
@@ -29,5 +30,6 @@ app.UseExceptionHandler();
 app.UseStatusCodePages();
 
 app.MapHealthChecks("/api/health");
+app.MapSampleEndpoints();
 
 app.Run();
