@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./**/bin/**)",
+      "Read(./**/obj/**)",
+      "Read(./**/Migrations/*.Designer.cs)",
+      "Read(./**/*.db)"
+    ]
+  }
+}
