@@ -1,3 +1,4 @@
+using HotChocolate.Data.Sorting;
 using JobHunt.Api.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,9 +13,14 @@ public static class LocationQueries
     [UseProjection]
     [UseFiltering]
     [UseSorting]
-    public static IQueryable<Location> GetLocations(string? search, AppDbContext db)
+    public static IQueryable<Location> GetLocations(string? search, AppDbContext db, ISortingContext sorting)
     {
-        var locations = db.Locations.OrderBy(l => l.CountryCode).ThenBy(l => l.City).AsQueryable();
+        // Default order only without a client `order`: Hot Chocolate adds that as ThenBy, so this would win.
+        // Handled(false): taking ISortingContext turns off automatic sorting otherwise.
+        sorting.Handled(false);
+        IQueryable<Location> locations = sorting.IsDefined
+            ? db.Locations
+            : db.Locations.OrderBy(l => l.CountryCode).ThenBy(l => l.City);
         if (search is null) return locations;
         var city = Names.Normalize(search);
         return locations.Where(l => l.NormalizedCity.Contains(city));

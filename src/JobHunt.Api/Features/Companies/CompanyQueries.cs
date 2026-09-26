@@ -1,3 +1,4 @@
+using HotChocolate.Data.Sorting;
 using JobHunt.Api.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,9 +12,12 @@ public static class CompanyQueries
     [UseProjection]
     [UseFiltering]
     [UseSorting]
-    public static IQueryable<Company> GetCompanies(string? search, AppDbContext db)
+    public static IQueryable<Company> GetCompanies(string? search, AppDbContext db, ISortingContext sorting)
     {
-        var companies = db.Companies.OrderBy(c => c.Name).AsQueryable();
+        // Default order only without a client `order`: Hot Chocolate adds that as ThenBy, so this would win.
+        // Handled(false): taking ISortingContext turns off automatic sorting otherwise.
+        sorting.Handled(false);
+        IQueryable<Company> companies = sorting.IsDefined ? db.Companies : db.Companies.OrderBy(c => c.Name);
         if (search is null) return companies;
         var name = Names.Normalize(search);
         return companies.Where(c => c.NormalizedName.Contains(name));

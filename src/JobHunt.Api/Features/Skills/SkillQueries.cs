@@ -1,3 +1,4 @@
+using HotChocolate.Data.Sorting;
 using JobHunt.Api.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,9 +12,12 @@ public static class SkillQueries
     [UseProjection]
     [UseFiltering]
     [UseSorting]
-    public static IQueryable<Skill> GetSkills(string? search, AppDbContext db)
+    public static IQueryable<Skill> GetSkills(string? search, AppDbContext db, ISortingContext sorting)
     {
-        var skills = db.Skills.OrderBy(s => s.Name).AsQueryable();
+        // Default order only without a client `order`: Hot Chocolate adds that as ThenBy, so this would win.
+        // Handled(false): taking ISortingContext turns off automatic sorting otherwise.
+        sorting.Handled(false);
+        IQueryable<Skill> skills = sorting.IsDefined ? db.Skills : db.Skills.OrderBy(s => s.Name);
         if (search is null) return skills;
         var name = Names.Normalize(search);
         return skills.Where(s => s.NormalizedName.Contains(name));

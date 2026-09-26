@@ -1,3 +1,4 @@
+using HotChocolate.Data.Sorting;
 using JobHunt.Api.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,9 +12,12 @@ public static class JobRoleQueries
     [UseProjection]
     [UseFiltering]
     [UseSorting]
-    public static IQueryable<JobRole> GetJobRoles(string? search, AppDbContext db)
+    public static IQueryable<JobRole> GetJobRoles(string? search, AppDbContext db, ISortingContext sorting)
     {
-        var jobRoles = db.JobRoles.OrderBy(r => r.Name).AsQueryable();
+        // Default order only without a client `order`: Hot Chocolate adds that as ThenBy, so this would win.
+        // Handled(false): taking ISortingContext turns off automatic sorting otherwise.
+        sorting.Handled(false);
+        IQueryable<JobRole> jobRoles = sorting.IsDefined ? db.JobRoles : db.JobRoles.OrderBy(r => r.Name);
         if (search is null) return jobRoles;
         var name = Names.Normalize(search);
         return jobRoles.Where(r => r.NormalizedName.Contains(name));
