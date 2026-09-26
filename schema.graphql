@@ -1,0 +1,811 @@
+schema {
+  query: Query
+  mutation: Mutation
+}
+
+type Query {
+  listingParsePrompt: ListingParsePrompt! @cost(weight: "10")
+  companies(
+    search: String
+    "Returns the first _n_ elements from the list."
+    first: Int
+    "Returns the elements in the list that come after the specified cursor."
+    after: String
+    "Returns the last _n_ elements from the list."
+    last: Int
+    "Returns the elements in the list that come before the specified cursor."
+    before: String
+    where: CompanyFilterInput @cost(weight: "10")
+    order: [CompanySortInput!] @cost(weight: "10")
+  ): CompaniesConnection
+    @listSize(
+      assumedSize: 50
+      slicingArguments: ["first", "last"]
+      slicingArgumentDefaultValue: 10
+      sizedFields: ["edges", "nodes"]
+      requireOneSlicingArgument: false
+    )
+    @cost(weight: "10")
+  jobRoles(
+    search: String
+    "Returns the first _n_ elements from the list."
+    first: Int
+    "Returns the elements in the list that come after the specified cursor."
+    after: String
+    "Returns the last _n_ elements from the list."
+    last: Int
+    "Returns the elements in the list that come before the specified cursor."
+    before: String
+    where: JobRoleFilterInput @cost(weight: "10")
+    order: [JobRoleSortInput!] @cost(weight: "10")
+  ): JobRolesConnection
+    @listSize(
+      assumedSize: 50
+      slicingArguments: ["first", "last"]
+      slicingArgumentDefaultValue: 10
+      sizedFields: ["edges", "nodes"]
+      requireOneSlicingArgument: false
+    )
+    @cost(weight: "10")
+  listings(
+    "Returns the first _n_ elements from the list."
+    first: Int
+    "Returns the elements in the list that come after the specified cursor."
+    after: String
+    "Returns the last _n_ elements from the list."
+    last: Int
+    "Returns the elements in the list that come before the specified cursor."
+    before: String
+    where: ListingFilterInput @cost(weight: "10")
+    order: [ListingSortInput!] @cost(weight: "10")
+  ): ListingsConnection
+    @listSize(
+      assumedSize: 50
+      slicingArguments: ["first", "last"]
+      slicingArgumentDefaultValue: 10
+      sizedFields: ["edges", "nodes"]
+      requireOneSlicingArgument: false
+    )
+    @cost(weight: "10")
+  listingById(id: Int!): Listing @cost(weight: "10")
+  locations(
+    search: String
+    "Returns the first _n_ elements from the list."
+    first: Int
+    "Returns the elements in the list that come after the specified cursor."
+    after: String
+    "Returns the last _n_ elements from the list."
+    last: Int
+    "Returns the elements in the list that come before the specified cursor."
+    before: String
+    where: LocationFilterInput @cost(weight: "10")
+    order: [LocationSortInput!] @cost(weight: "10")
+  ): LocationsConnection
+    @listSize(
+      assumedSize: 50
+      slicingArguments: ["first", "last"]
+      slicingArgumentDefaultValue: 10
+      sizedFields: ["edges", "nodes"]
+      requireOneSlicingArgument: false
+    )
+    @cost(weight: "10")
+  skills(
+    search: String
+    "Returns the first _n_ elements from the list."
+    first: Int
+    "Returns the elements in the list that come after the specified cursor."
+    after: String
+    "Returns the last _n_ elements from the list."
+    last: Int
+    "Returns the elements in the list that come before the specified cursor."
+    before: String
+    where: SkillFilterInput @cost(weight: "10")
+    order: [SkillSortInput!] @cost(weight: "10")
+  ): SkillsConnection
+    @listSize(
+      assumedSize: 50
+      slicingArguments: ["first", "last"]
+      slicingArgumentDefaultValue: 10
+      sizedFields: ["edges", "nodes"]
+      requireOneSlicingArgument: false
+    )
+    @cost(weight: "10")
+}
+
+type Mutation {
+  updateCompany(input: UpdateCompanyInput!): UpdateCompanyPayload!
+    @cost(weight: "10")
+  createListing(input: CreateListingInput!): CreateListingPayload!
+    @cost(weight: "10")
+  updateListing(input: UpdateListingInput!): UpdateListingPayload!
+    @cost(weight: "10")
+  deleteListing(input: DeleteListingInput!): DeleteListingPayload!
+    @cost(weight: "10")
+  saveLocation(input: SaveLocationInput!): SaveLocationPayload!
+    @cost(weight: "10")
+}
+
+"A connection to a list of items."
+type CompaniesConnection {
+  "Information to aid in pagination."
+  pageInfo: PageInfo!
+  "A list of edges."
+  edges: [CompaniesEdge!]
+  "A flattened list of the nodes."
+  nodes: [Company!]
+  "Identifies the total count of items in the connection."
+  totalCount: Int! @cost(weight: "10")
+}
+
+"An edge in a connection."
+type CompaniesEdge {
+  "A cursor for use in pagination."
+  cursor: String!
+  "The item at the end of the edge."
+  node: Company!
+}
+
+type Company {
+  listingCount: Int! @cost(weight: "10")
+  id: Int!
+  name: String!
+  locationId: Int
+  location: Location
+}
+
+type CompanyNotFoundError implements Error {
+  message: String!
+}
+
+type CreateListingPayload {
+  listing: Listing
+  errors: [CreateListingError!]
+}
+
+type DeleteListingPayload {
+  id: Int
+  errors: [DeleteListingError!]
+}
+
+type InvalidCompanyError implements Error {
+  message: String!
+}
+
+type InvalidListingError implements Error {
+  message: String!
+}
+
+type InvalidLocationError implements Error {
+  message: String!
+}
+
+type JobRole {
+  listingCount: Int! @cost(weight: "10")
+  id: Int!
+  name: String!
+}
+
+"A connection to a list of items."
+type JobRolesConnection {
+  "Information to aid in pagination."
+  pageInfo: PageInfo!
+  "A list of edges."
+  edges: [JobRolesEdge!]
+  "A flattened list of the nodes."
+  nodes: [JobRole!]
+  "Identifies the total count of items in the connection."
+  totalCount: Int! @cost(weight: "10")
+}
+
+"An edge in a connection."
+type JobRolesEdge {
+  "A cursor for use in pagination."
+  cursor: String!
+  "The item at the end of the edge."
+  node: JobRole!
+}
+
+type Listing {
+  id: Int!
+  title: String!
+  companyId: Int!
+  company: Company!
+  jobRoleId: Int!
+  jobRole: JobRole!
+  seniority: Seniority
+  employmentType: EmploymentType
+  schedule: Schedule
+  workMode: WorkMode
+  description: String
+  url: String!
+  postedOn: LocalDate
+  deadlineType: DeadlineType!
+  deadlineOn: LocalDate
+  postingLanguage: Language
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  skills: [ListingSkill!]!
+  languages: [ListingLanguage!]!
+  locations: [ListingLocation!]!
+}
+
+type ListingLanguage {
+  listingId: Int!
+  listing: Listing!
+  language: Language!
+  level: CefrLevel
+  isRequired: Boolean!
+}
+
+type ListingLocation {
+  listingId: Int!
+  listing: Listing!
+  locationId: Int!
+  location: Location!
+}
+
+type ListingNotFoundError implements Error {
+  message: String!
+}
+
+type ListingParsePrompt {
+  version: Int!
+  instructions: String!
+}
+
+"A connection to a list of items."
+type ListingsConnection {
+  "Information to aid in pagination."
+  pageInfo: PageInfo!
+  "A list of edges."
+  edges: [ListingsEdge!]
+  "A flattened list of the nodes."
+  nodes: [Listing!]
+  "Identifies the total count of items in the connection."
+  totalCount: Int! @cost(weight: "10")
+}
+
+"An edge in a connection."
+type ListingsEdge {
+  "A cursor for use in pagination."
+  cursor: String!
+  "The item at the end of the edge."
+  node: Listing!
+}
+
+type ListingSkill {
+  listingId: Int!
+  listing: Listing!
+  skillId: Int!
+  skill: Skill!
+  level: Int!
+  minYears: Int
+  isRequired: Boolean!
+}
+
+type Location {
+  listingCount: Int! @cost(weight: "10")
+  id: Int!
+  city: String
+  countryCode: String!
+  isTarget: Boolean!
+}
+
+"A connection to a list of items."
+type LocationsConnection {
+  "Information to aid in pagination."
+  pageInfo: PageInfo!
+  "A list of edges."
+  edges: [LocationsEdge!]
+  "A flattened list of the nodes."
+  nodes: [Location!]
+  "Identifies the total count of items in the connection."
+  totalCount: Int! @cost(weight: "10")
+}
+
+"An edge in a connection."
+type LocationsEdge {
+  "A cursor for use in pagination."
+  cursor: String!
+  "The item at the end of the edge."
+  node: Location!
+}
+
+"Information about pagination in a connection."
+type PageInfo {
+  "Indicates whether more edges exist following the set defined by the clients arguments."
+  hasNextPage: Boolean!
+  "Indicates whether more edges exist prior the set defined by the clients arguments."
+  hasPreviousPage: Boolean!
+  "When paginating backwards, the cursor to continue."
+  startCursor: String
+  "When paginating forwards, the cursor to continue."
+  endCursor: String
+}
+
+type SaveLocationPayload {
+  location: Location
+  errors: [SaveLocationError!]
+}
+
+type Skill {
+  listingCount: Int! @cost(weight: "10")
+  id: Int!
+  name: String!
+}
+
+"A connection to a list of items."
+type SkillsConnection {
+  "Information to aid in pagination."
+  pageInfo: PageInfo!
+  "A list of edges."
+  edges: [SkillsEdge!]
+  "A flattened list of the nodes."
+  nodes: [Skill!]
+  "Identifies the total count of items in the connection."
+  totalCount: Int! @cost(weight: "10")
+}
+
+"An edge in a connection."
+type SkillsEdge {
+  "A cursor for use in pagination."
+  cursor: String!
+  "The item at the end of the edge."
+  node: Skill!
+}
+
+type UpdateCompanyPayload {
+  company: Company
+  errors: [UpdateCompanyError!]
+}
+
+type UpdateListingPayload {
+  listing: Listing
+  errors: [UpdateListingError!]
+}
+
+interface Error {
+  message: String!
+}
+
+union CreateListingError = InvalidListingError | InvalidLocationError
+
+union DeleteListingError = ListingNotFoundError
+
+union SaveLocationError = InvalidLocationError
+
+union UpdateCompanyError =
+  | CompanyNotFoundError
+  | InvalidCompanyError
+  | InvalidLocationError
+
+union UpdateListingError =
+  | ListingNotFoundError
+  | InvalidListingError
+  | InvalidLocationError
+
+input BooleanOperationFilterInput {
+  eq: Boolean @cost(weight: "10")
+  neq: Boolean @cost(weight: "10")
+}
+
+input CompanyFilterInput {
+  and: [CompanyFilterInput!]
+  or: [CompanyFilterInput!]
+  id: IntOperationFilterInput
+  name: StringOperationFilterInput
+  locationId: IntOperationFilterInput
+  location: LocationFilterInput
+}
+
+input CompanySortInput {
+  id: SortEnumType @cost(weight: "10")
+  name: SortEnumType @cost(weight: "10")
+  locationId: SortEnumType @cost(weight: "10")
+  location: LocationSortInput @cost(weight: "10")
+}
+
+input CreateListingInput {
+  listing: ListingInput!
+}
+
+input DateTimeOperationFilterInput {
+  eq: DateTime @cost(weight: "10")
+  neq: DateTime @cost(weight: "10")
+  in: [DateTime] @cost(weight: "10")
+  nin: [DateTime] @cost(weight: "10")
+  gt: DateTime @cost(weight: "10")
+  ngt: DateTime @cost(weight: "10")
+  gte: DateTime @cost(weight: "10")
+  ngte: DateTime @cost(weight: "10")
+  lt: DateTime @cost(weight: "10")
+  nlt: DateTime @cost(weight: "10")
+  lte: DateTime @cost(weight: "10")
+  nlte: DateTime @cost(weight: "10")
+}
+
+input DeadlineTypeOperationFilterInput {
+  eq: DeadlineType @cost(weight: "10")
+  neq: DeadlineType @cost(weight: "10")
+  in: [DeadlineType!] @cost(weight: "10")
+  nin: [DeadlineType!] @cost(weight: "10")
+}
+
+input DeleteListingInput {
+  id: Int!
+}
+
+input IntOperationFilterInput {
+  eq: Int @cost(weight: "10")
+  neq: Int @cost(weight: "10")
+  in: [Int] @cost(weight: "10")
+  nin: [Int] @cost(weight: "10")
+  gt: Int @cost(weight: "10")
+  ngt: Int @cost(weight: "10")
+  gte: Int @cost(weight: "10")
+  ngte: Int @cost(weight: "10")
+  lt: Int @cost(weight: "10")
+  nlt: Int @cost(weight: "10")
+  lte: Int @cost(weight: "10")
+  nlte: Int @cost(weight: "10")
+}
+
+input JobRoleFilterInput {
+  and: [JobRoleFilterInput!]
+  or: [JobRoleFilterInput!]
+  id: IntOperationFilterInput
+  name: StringOperationFilterInput
+}
+
+input JobRoleSortInput {
+  id: SortEnumType @cost(weight: "10")
+  name: SortEnumType @cost(weight: "10")
+}
+
+input LanguageOperationFilterInput {
+  eq: Language @cost(weight: "10")
+  neq: Language @cost(weight: "10")
+  in: [Language!] @cost(weight: "10")
+  nin: [Language!] @cost(weight: "10")
+}
+
+input ListFilterInputTypeOfListingLanguageFilterInput {
+  all: ListingLanguageFilterInput @cost(weight: "10")
+  none: ListingLanguageFilterInput @cost(weight: "10")
+  some: ListingLanguageFilterInput @cost(weight: "10")
+  any: Boolean @cost(weight: "10")
+}
+
+input ListFilterInputTypeOfListingLocationFilterInput {
+  all: ListingLocationFilterInput @cost(weight: "10")
+  none: ListingLocationFilterInput @cost(weight: "10")
+  some: ListingLocationFilterInput @cost(weight: "10")
+  any: Boolean @cost(weight: "10")
+}
+
+input ListFilterInputTypeOfListingSkillFilterInput {
+  all: ListingSkillFilterInput @cost(weight: "10")
+  none: ListingSkillFilterInput @cost(weight: "10")
+  some: ListingSkillFilterInput @cost(weight: "10")
+  any: Boolean @cost(weight: "10")
+}
+
+input ListingFilterInput {
+  and: [ListingFilterInput!]
+  or: [ListingFilterInput!]
+  id: IntOperationFilterInput
+  title: StringOperationFilterInput
+  companyId: IntOperationFilterInput
+  company: CompanyFilterInput
+  jobRoleId: IntOperationFilterInput
+  jobRole: JobRoleFilterInput
+  seniority: NullableOfSeniorityOperationFilterInput
+  employmentType: NullableOfEmploymentTypeOperationFilterInput
+  schedule: NullableOfScheduleOperationFilterInput
+  workMode: NullableOfWorkModeOperationFilterInput
+  description: StringOperationFilterInput
+  url: StringOperationFilterInput
+  postedOn: LocalDateOperationFilterInput
+  deadlineType: DeadlineTypeOperationFilterInput
+  deadlineOn: LocalDateOperationFilterInput
+  postingLanguage: NullableOfLanguageOperationFilterInput
+  createdAt: DateTimeOperationFilterInput
+  updatedAt: DateTimeOperationFilterInput
+  skills: ListFilterInputTypeOfListingSkillFilterInput
+  languages: ListFilterInputTypeOfListingLanguageFilterInput
+  locations: ListFilterInputTypeOfListingLocationFilterInput
+}
+
+input ListingInput {
+  title: String!
+  companyName: String!
+  jobRoleName: String!
+  seniority: Seniority
+  employmentType: EmploymentType
+  schedule: Schedule
+  workMode: WorkMode
+  description: String
+  url: String!
+  postedOn: LocalDate
+  deadlineType: DeadlineType! = UNSPECIFIED
+  deadlineOn: LocalDate
+  postingLanguage: Language
+  skills: [ListingSkillInput!]!
+  languages: [ListingLanguageInput!]!
+  locations: [LocationInput!]!
+}
+
+input ListingLanguageFilterInput {
+  and: [ListingLanguageFilterInput!]
+  or: [ListingLanguageFilterInput!]
+  listingId: IntOperationFilterInput
+  listing: ListingFilterInput
+  language: LanguageOperationFilterInput
+  level: NullableOfCefrLevelOperationFilterInput
+  isRequired: BooleanOperationFilterInput
+}
+
+input ListingLanguageInput {
+  language: Language!
+  level: CefrLevel
+  isRequired: Boolean! = true
+}
+
+input ListingLocationFilterInput {
+  and: [ListingLocationFilterInput!]
+  or: [ListingLocationFilterInput!]
+  listingId: IntOperationFilterInput
+  listing: ListingFilterInput
+  locationId: IntOperationFilterInput
+  location: LocationFilterInput
+}
+
+input ListingSkillFilterInput {
+  and: [ListingSkillFilterInput!]
+  or: [ListingSkillFilterInput!]
+  listingId: IntOperationFilterInput
+  listing: ListingFilterInput
+  skillId: IntOperationFilterInput
+  skill: SkillFilterInput
+  level: IntOperationFilterInput
+  minYears: IntOperationFilterInput
+  isRequired: BooleanOperationFilterInput
+}
+
+input ListingSkillInput {
+  name: String!
+  level: Int! = 3
+  minYears: Int
+  isRequired: Boolean! = true
+}
+
+input ListingSortInput {
+  id: SortEnumType @cost(weight: "10")
+  title: SortEnumType @cost(weight: "10")
+  companyId: SortEnumType @cost(weight: "10")
+  company: CompanySortInput @cost(weight: "10")
+  jobRoleId: SortEnumType @cost(weight: "10")
+  jobRole: JobRoleSortInput @cost(weight: "10")
+  seniority: SortEnumType @cost(weight: "10")
+  employmentType: SortEnumType @cost(weight: "10")
+  schedule: SortEnumType @cost(weight: "10")
+  workMode: SortEnumType @cost(weight: "10")
+  description: SortEnumType @cost(weight: "10")
+  url: SortEnumType @cost(weight: "10")
+  postedOn: SortEnumType @cost(weight: "10")
+  deadlineType: SortEnumType @cost(weight: "10")
+  deadlineOn: SortEnumType @cost(weight: "10")
+  postingLanguage: SortEnumType @cost(weight: "10")
+  createdAt: SortEnumType @cost(weight: "10")
+  updatedAt: SortEnumType @cost(weight: "10")
+}
+
+input LocalDateOperationFilterInput {
+  eq: LocalDate @cost(weight: "10")
+  neq: LocalDate @cost(weight: "10")
+  in: [LocalDate] @cost(weight: "10")
+  nin: [LocalDate] @cost(weight: "10")
+  gt: LocalDate @cost(weight: "10")
+  ngt: LocalDate @cost(weight: "10")
+  gte: LocalDate @cost(weight: "10")
+  ngte: LocalDate @cost(weight: "10")
+  lt: LocalDate @cost(weight: "10")
+  nlt: LocalDate @cost(weight: "10")
+  lte: LocalDate @cost(weight: "10")
+  nlte: LocalDate @cost(weight: "10")
+}
+
+input LocationFilterInput {
+  and: [LocationFilterInput!]
+  or: [LocationFilterInput!]
+  id: IntOperationFilterInput
+  city: StringOperationFilterInput
+  countryCode: StringOperationFilterInput
+  isTarget: BooleanOperationFilterInput
+}
+
+input LocationInput {
+  city: String
+  countryCode: String!
+}
+
+input LocationSortInput {
+  id: SortEnumType @cost(weight: "10")
+  city: SortEnumType @cost(weight: "10")
+  countryCode: SortEnumType @cost(weight: "10")
+  isTarget: SortEnumType @cost(weight: "10")
+}
+
+input NullableOfCefrLevelOperationFilterInput {
+  eq: CefrLevel @cost(weight: "10")
+  neq: CefrLevel @cost(weight: "10")
+  in: [CefrLevel] @cost(weight: "10")
+  nin: [CefrLevel] @cost(weight: "10")
+}
+
+input NullableOfEmploymentTypeOperationFilterInput {
+  eq: EmploymentType @cost(weight: "10")
+  neq: EmploymentType @cost(weight: "10")
+  in: [EmploymentType] @cost(weight: "10")
+  nin: [EmploymentType] @cost(weight: "10")
+}
+
+input NullableOfLanguageOperationFilterInput {
+  eq: Language @cost(weight: "10")
+  neq: Language @cost(weight: "10")
+  in: [Language] @cost(weight: "10")
+  nin: [Language] @cost(weight: "10")
+}
+
+input NullableOfScheduleOperationFilterInput {
+  eq: Schedule @cost(weight: "10")
+  neq: Schedule @cost(weight: "10")
+  in: [Schedule] @cost(weight: "10")
+  nin: [Schedule] @cost(weight: "10")
+}
+
+input NullableOfSeniorityOperationFilterInput {
+  eq: Seniority @cost(weight: "10")
+  neq: Seniority @cost(weight: "10")
+  in: [Seniority] @cost(weight: "10")
+  nin: [Seniority] @cost(weight: "10")
+}
+
+input NullableOfWorkModeOperationFilterInput {
+  eq: WorkMode @cost(weight: "10")
+  neq: WorkMode @cost(weight: "10")
+  in: [WorkMode] @cost(weight: "10")
+  nin: [WorkMode] @cost(weight: "10")
+}
+
+input SaveLocationInput {
+  city: String
+  countryCode: String!
+  isTarget: Boolean!
+}
+
+input SkillFilterInput {
+  and: [SkillFilterInput!]
+  or: [SkillFilterInput!]
+  id: IntOperationFilterInput
+  name: StringOperationFilterInput
+}
+
+input SkillSortInput {
+  id: SortEnumType @cost(weight: "10")
+  name: SortEnumType @cost(weight: "10")
+}
+
+input StringOperationFilterInput {
+  and: [StringOperationFilterInput!]
+  or: [StringOperationFilterInput!]
+  eq: String @cost(weight: "10")
+  neq: String @cost(weight: "10")
+  contains: String @cost(weight: "20")
+  ncontains: String @cost(weight: "20")
+  in: [String] @cost(weight: "10")
+  nin: [String] @cost(weight: "10")
+  startsWith: String @cost(weight: "20")
+  nstartsWith: String @cost(weight: "20")
+  endsWith: String @cost(weight: "20")
+  nendsWith: String @cost(weight: "20")
+}
+
+input UpdateCompanyInput {
+  id: Int!
+  name: String!
+  location: LocationInput
+}
+
+input UpdateListingInput {
+  id: Int!
+  listing: ListingInput!
+}
+
+enum CefrLevel {
+  A1
+  A2
+  B1
+  B2
+  C1
+  C2
+}
+
+enum DeadlineType {
+  DATE
+  ASAP
+  ROLLING
+  UNSPECIFIED
+}
+
+enum EmploymentType {
+  PERMANENT
+  TEMPORARY
+  FIXED_TERM
+  CONTRACT
+  INTERNSHIP
+  SEASONAL
+}
+
+enum Language {
+  ENGLISH
+  NORWEGIAN
+}
+
+enum Schedule {
+  FULL_TIME
+  PART_TIME
+}
+
+enum Seniority {
+  INTERN
+  JUNIOR
+  MID
+  SENIOR
+  LEAD
+}
+
+enum SortEnumType {
+  ASC
+  DESC
+}
+
+enum WorkMode {
+  ONSITE
+  HYBRID
+  REMOTE
+}
+
+"The `DateTime` scalar type represents a date and time with time zone offset information."
+scalar DateTime
+  @specifiedBy(url: "https://scalars.graphql.org/chillicream/date-time.html")
+
+"The `LocalDate` scalar type represents a date without time or time zone information."
+scalar LocalDate
+  @specifiedBy(url: "https://scalars.graphql.org/chillicream/local-date.html")
+
+"The purpose of the `cost` directive is to define a `weight` for GraphQL types, fields, and arguments. Static analysis can use these weights when calculating the overall cost of a query or response."
+directive @cost(
+  "The `weight` argument defines what value to add to the overall cost for every appearance, or possible appearance, of a type, field, argument, etc."
+  weight: String!
+) on
+  | SCALAR
+  | OBJECT
+  | FIELD_DEFINITION
+  | ARGUMENT_DEFINITION
+  | ENUM
+  | INPUT_FIELD_DEFINITION
+
+"The purpose of the `@listSize` directive is to either inform the static analysis about the size of returned lists (if that information is statically available), or to point the analysis to where to find that information."
+directive @listSize(
+  "The `assumedSize` argument can be used to statically define the maximum length of a list returned by a field."
+  assumedSize: Int
+  "The `slicingArguments` argument can be used to define which of the field's arguments with numeric type are slicing arguments, so that their value determines the size of the list returned by that field. It may specify a list of multiple slicing arguments."
+  slicingArguments: [String!]
+  "The `slicingArgumentDefaultValue` argument can be used to define a default value for a slicing argument, which is used if the argument is not present in a query."
+  slicingArgumentDefaultValue: Int
+  "The `sizedFields` argument can be used to define that the value of the `assumedSize` argument or of a slicing argument does not affect the size of a list returned by a field itself, but that of a list returned by one of its sub-fields."
+  sizedFields: [String!]
+  "The `requireOneSlicingArgument` argument can be used to inform the static analysis that it should expect that exactly one of the defined slicing arguments is present in a query. If that is not the case (i.e., if none or multiple slicing arguments are present), the static analysis may throw an error."
+  requireOneSlicingArgument: Boolean = true
+) on FIELD_DEFINITION
