@@ -1,7 +1,8 @@
 # Job Hunt Assistant API
 
 Hobby .NET 10 backend (Minimal APIs, EF Core + SQLite, Identity cookie auth) for a Nuxt job-tracker UI.
-LLM job-posting parsing via Gemini (free tier) or Ollama, with a background queue + SSE.
+REST for auth, GraphQL (Hot Chocolate) for domain data. LLM job-posting parsing via Gemini (free tier)
+or Ollama, with a background queue + GraphQL subscriptions over SSE.
 
 ## Read first (instead of exploring the codebase)
 - `docs/STATUS.md` — what exists right now: endpoints, entities, config keys, milestone progress. **Start here.**
@@ -14,13 +15,13 @@ LLM job-posting parsing via Gemini (free tier) or Ollama, with a background queu
 - Migration: `make migration name=<Name>`
 
 ## Conventions
-- Vertical slices: `src/JobHunt.Api/Features/<Feature>/` holds endpoints, request/response records, and entities.
-- Each feature exposes `Map<Feature>Endpoints(this IEndpointRouteBuilder)` using `MapGroup("/api/<feature>")`.
-- Errors are `ProblemDetails`. Validate with built-in minimal-API validation (DataAnnotations).
+- Vertical slices: `src/JobHunt.Api/Features/<Feature>/` holds endpoints or GraphQL types, records, and entities.
+- REST (auth, health only): `Map<Feature>Endpoints(this IEndpointRouteBuilder)` using `MapGroup("/api/<feature>")`. REST errors are `ProblemDetails`; validate with built-in minimal-API validation (DataAnnotations).
+- GraphQL (all domain data): `<Feature>Queries.cs` / `<Feature>Mutations.cs` with `[QueryType]`/`[MutationType]`. Return `IQueryable` + paging/projection/filtering/sorting. Expected failures use mutation-convention typed errors. Never add the same operation to both REST and GraphQL.
 - Inject `TimeProvider`, never `DateTime.UtcNow`. Store UTC `DateTime` (SQLite can't ORDER BY `DateTimeOffset`).
 - Every user-owned entity has `UserId` and is covered by the global query filter.
 - LLM access only through `IChatClient` (Microsoft.Extensions.AI) keyed by provider. Every call logs `LlmUsage`.
-- No Ollama container. A missing Ollama is handled with a 503 plus an SSE `parse.failed` event.
+- No Ollama container. A missing Ollama marks the ParseJob `FAILED` (pushed via the `onParseJobUpdated` subscription).
 - Secrets: user-secrets / env vars only. Never commit keys.
 
 ## Code style: simple over clever

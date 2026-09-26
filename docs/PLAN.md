@@ -16,7 +16,8 @@ that other developers browsing GitHub can find their way around.
 | AI in MVP | **Job-posting parsing only**, from pasted text; includes language detection, language requirements, and an English summary |
 | AI later | CV ↔ job matching, PDF/image parsing, more providers (Claude, OpenAI) |
 | LLM providers | Gemini `gemini-3.1-flash-lite` (free tier) by default; Ollama optional. **Chosen per user**. No Ollama container: if Ollama can't be reached, fail cleanly |
-| SSE | Parse progress + background job queue events |
+| API style | **Hybrid**: REST for auth + health, **GraphQL (Hot Chocolate)** for all domain data. No endpoint exists in both |
+| Realtime | Parse progress as a GraphQL subscription over SSE (`graphql-sse`) |
 | Token saving | Hash-based cache, structured JSON output, input trimming |
 | Usage | **Track only, no quotas** for Owner: daily trends, model, tokens, estimated cost. Guest keeps a small daily cap |
 | Hosting | Docker (docker-compose) on a VPS or home server; SQLite on a volume |
@@ -42,7 +43,6 @@ job-hunt-assistant-api/
 │  │  ├─ Usage/                   # LLM usage stats
 │  │  └─ Settings/                # per-user provider/model preference
 │  ├─ Llm/                        # provider abstraction, Gemini/Ollama, prompt, trimming, cache
-│  ├─ Events/                     # SSE broker (per-user fan-out)
 │  ├─ Data/                       # AppDbContext, migrations, seeding
 │  └─ Common/                     # auth policies, ProblemDetails, extensions
 ├─ tests/JobHunt.Api.Tests/       # xUnit + WebApplicationFactory + in-memory SQLite
@@ -56,15 +56,23 @@ job-hunt-assistant-api/
 └─ README.md                      # setup, architecture sketch, screenshots of Scalar
 ```
 
-Each feature folder has an `XxxEndpoints.cs` with a `MapXxx(this IEndpointRouteBuilder)` extension
-that uses `MapGroup("/api/xxx")`, plus its request/response records. EF entities live next to
-their feature.
+REST features (Auth) have an `XxxEndpoints.cs` with a `MapXxx(this IEndpointRouteBuilder)` extension
+that uses `MapGroup("/api/xxx")`. GraphQL features have `XxxQueries.cs` / `XxxMutations.cs`
+(`[QueryType]` / `[MutationType]` extensions, source-generated registration). EF entities live
+next to their feature.
 
 **Conventions**
-- Built-in OpenAPI (`Microsoft.AspNetCore.OpenApi`) + **Scalar** UI at `/scalar`. The Nuxt app can
-  generate TS types from `/openapi/v1.json` (e.g. `openapi-typescript`).
+- REST: built-in OpenAPI + **Scalar** UI at `/scalar`.
+- GraphQL: Hot Chocolate at `/graphql` (Nitro IDE on GET in dev). The Nuxt app generates TS types
+  with `graphql-codegen` from the schema. Resolvers return `IQueryable` with
+  `[UsePaging]/[UseProjection]/[UseFiltering]/[UseSorting]` so each query becomes one SQL query.
+  DbContext is registered so Hot Chocolate can run resolvers in parallel (pooled/factory).
+- Schema file: `/graphql` requires login, so codegen can't introspect it. Export with
+  `RunWithGraphQLCommandsAsync` (`dotnet run -- schema export`) to a committed `schema.graphql`;
+  CI fails if it's stale. The UI's codegen reads that file.
 - .NET 10 built-in minimal-API validation (`AddValidation()` + DataAnnotations).
-- `ProblemDetails` for every error response.
+- Errors: `ProblemDetails` for REST. GraphQL uses Hot Chocolate mutation conventions (typed
+  `errors` on the mutation payload for expected failures, e.g. not found / validation).
 - `TimeProvider` injected everywhere, not `DateTime.UtcNow`, so time can be controlled in tests.
 - Secrets: `dotnet user-secrets` in dev, environment variables in Docker. The API key never reaches the UI.
 
@@ -75,8 +83,8 @@ their feature.
 - Roles: `Owner`, `Guest`. Both users are seeded at startup from config
   (`Seed:OwnerEmail`, `Seed:OwnerPassword`). The guest has a fixed, public login.
 - Cookie: `HttpOnly`, `Secure`, `SameSite=Lax`. Return 401/403 on API calls instead of redirecting.
-- **Nuxt integration:** proxy `/api/**` through Nuxt (`routeRules: { '/api/**': { proxy: ... } }`)
-  so the browser treats API and UI as same-origin. Cookies and `EventSource` then work with no CORS
+- **Nuxt integration:** proxy `/api/**` and `/graphql` through Nuxt (`routeRules`)
+  so the browser treats API and UI as same-origin. Cookies and SSE subscriptions then work with no CORS
   or `SameSite=None` hacks. Allow CORS with credentials only as a dev fallback.
 - Built-in rate limiter on the login endpoints.
 
@@ -154,7 +162,7 @@ and adding Claude/OpenAI later means registering another client, not writing a n
   (it may carry a `-preview` suffix). It will be config-driven either way.*
 - **Ollama** (`OllamaSharp`, implements `IChatClient`): before use, a cached health check
   (`GET /api/tags`, 2s timeout, result cached ~30s). If unreachable → `ProviderUnavailable`
-  → 503 ProblemDetails, plus an SSE `parse.failed` event with a readable message.
+  → the ParseJob goes `FAILED` with a readable error (pushed via `onParseJobUpdated`).
   No container; `Llm:Ollama:BaseUrl` is optional config.
 - Every call goes through a wrapper that writes an `LlmUsage` row (tokens from the response's
   `UsageDetails`).
@@ -193,53 +201,60 @@ pasted text
 }
 ```
 
-## 6. Background queue + SSE
+## 6. Background queue + subscriptions
 
 ```
-POST /api/job-postings/parse  { text }
-  → create ParseJob(Queued) → write to Channel<Guid> → 202 { parseJobId }
+mutation parseJobPosting(text)
+  → create ParseJob(Queued) → write to Channel<Guid> → returns { parseJob { id status } }
 
 ParseWorker (BackgroundService)
   → reads the channel; a TokenBucket rate limiter paces calls to the free-tier RPM (config)
-  → on 429: respect Retry-After, requeue with backoff (max N tries), emit parse.retrying
-  → publishes events through SseBroker
+  → on 429: respect Retry-After, requeue with backoff (max N tries)
+  → publishes each state change via Hot Chocolate's ITopicEventSender (in-memory provider)
 
-GET /api/events   (text/event-stream, one long-lived stream per browser tab)
-  → TypedResults.ServerSentEvents(...) (native in .NET 10)
-  → SseBroker keeps a Channel per connection, keyed by UserId
-  → heartbeat comment every ~20s so proxies don't close the stream
+subscription onParseJobUpdated → ParseJob { id status error jobPosting { ... } }
+  → transport: SSE (`graphql-sse` protocol) over the same cookie; WebSockets not needed
+  → topic keyed by UserId so users only see their own jobs
 ```
 
-Events: `parse.queued`, `parse.started`, `parse.cache-hit`, `parse.retrying`,
-`parse.succeeded` (includes `jobPostingId`), `parse.failed` (includes a message).
+Statuses: `QUEUED`, `RUNNING`, `RETRYING`, `SUCCEEDED` (with `jobPosting`), `FAILED` (with `error`).
+A cache hit goes straight to `SUCCEEDED`.
 
 - On startup, `Queued`/`Running` ParseJobs are re-enqueued, so the queue survives restarts.
-- If the UI misses an event, it can always fall back to `GET /api/job-postings/parse/{id}`.
-- Single instance only (in-memory broker); fine for SQLite + one container.
+- If the UI misses an event, it can query `parseJob(id)`.
+- Single instance only (in-memory subscriptions); fine for SQLite + one container.
+- A missing Ollama → `FAILED` with an error code (was: REST 503 + `parse.failed`).
 
-## 7. Endpoints (MVP)
+## 7. API surface (MVP)
 
+**REST**
 ```
-Applications   GET/POST /api/applications            (filter: status, search, sort, paging)
-               GET/PUT/DELETE /api/applications/{id}
-               POST /api/applications/{id}/status    (writes history row)
-               GET  /api/applications/{id}/history
-               POST /api/applications/from-posting/{jobPostingId}   (prefill from parse)
-Notes          GET/POST /api/applications/{id}/notes,  PUT/DELETE /api/notes/{id}
-Contacts       GET/POST /api/applications/{id}/contacts, PUT/DELETE /api/contacts/{id}
-CVs            GET/POST /api/cvs, GET/PUT/DELETE /api/cvs/{id}, POST /api/cvs/{id}/default
-Job postings   POST /api/job-postings/parse, GET /api/job-postings/parse/{id},
-               GET /api/job-postings, GET /api/job-postings/{id}
-Dashboard      GET /api/dashboard/stats
-               → counts by status, applications/week (last 12w), response rate,
-                 avg days to first response, upcoming follow-ups
-Usage          GET /api/usage/daily?from&to        → per day × provider × model: calls,
-                                                     cache hits, tokens in/out, est. cost
-               GET /api/usage/summary
-Settings       GET/PUT /api/settings               → preferred provider/model,
-                                                     available providers + health
-Events         GET /api/events                     (SSE)
-Auth           see §3
+Auth     POST /api/auth/login, /guest, /logout · GET /api/auth/me   (see §3)
+Health   GET  /api/health
+```
+
+**GraphQL** (`/graphql`, requires login) — outline, names settle during build
+```
+Query
+  applications(where, order, first/after)   → Connection<Application>  (search, status filter, sort)
+  application(id)                           → Application { notes contacts statusHistory jobPosting }
+  cvs, cv(id)                               → Cv { experiences educations skills languages certifications }
+  jobPostings(...), jobPosting(id), parseJob(id)
+  dashboardStats → counts by status, applications/week (last 12w), response rate,
+                   avg days to first response, upcoming follow-ups
+  usageDaily(from, to), usageSummary        → calls, cache hits, tokens in/out, est. cost
+  settings                                  → preferred provider/model, available providers + health
+
+Mutation
+  create/update/deleteApplication, changeApplicationStatus (writes history row)
+  createApplicationFromPosting(jobPostingId)
+  add/update/deleteNote, add/update/deleteContact
+  create/update/deleteCv, setDefaultCv
+  parseJobPosting(text)
+  updateSettings
+
+Subscription
+  onParseJobUpdated                         (§6)
 ```
 
 **Estimated cost:** the free tier costs $0, so usage stats compute a "would cost" figure from a
