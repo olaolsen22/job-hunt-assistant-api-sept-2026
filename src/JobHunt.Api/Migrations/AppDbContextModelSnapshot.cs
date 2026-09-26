@@ -163,6 +163,9 @@ namespace JobHunt.Api.Migrations
                     b.Property<string>("EmploymentType")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("FavoritedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("JobRoleId")
                         .HasColumnType("INTEGER");
 

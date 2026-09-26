@@ -65,17 +65,25 @@ public static class ListingMutations
     public static async Task<Listing> UpdateListingAsync(
         int id, ListingInput listing, AppDbContext db, TimeProvider time, CancellationToken ct)
     {
-        var entity = await db.Listings
-            .Include(l => l.Company)
-            .Include(l => l.JobRole)
-            .Include(l => l.Skills).ThenInclude(s => s.Skill)
-            .Include(l => l.Languages)
-            .Include(l => l.Locations).ThenInclude(l => l.Location)
-            .FirstOrDefaultAsync(l => l.Id == id, ct)
-            ?? throw new ListingNotFoundException(id);
+        var entity = await FindWithDetailsAsync(id, db, ct);
         var now = time.GetUtcNow().UtcDateTime;
         await ApplyAsync(entity, listing, DateOnly.FromDateTime(now), db, ct);
         entity.UpdatedAt = now;
+        await db.SaveChangesAsync(ct);
+        return entity;
+    }
+
+    // Not an edit of the listing itself, so UpdatedAt stays as is.
+    [Error<ListingNotFoundException>]
+    public static async Task<Listing> SetListingFavoriteAsync(
+        int id, bool isFavorite, AppDbContext db, TimeProvider time, CancellationToken ct)
+    {
+        var entity = await FindWithDetailsAsync(id, db, ct);
+        // ??= keeps the original time when favoriting twice, so the shortlist order doesn't jump.
+        if (isFavorite)
+            entity.FavoritedAt ??= time.GetUtcNow().UtcDateTime;
+        else
+            entity.FavoritedAt = null;
         await db.SaveChangesAsync(ct);
         return entity;
     }
@@ -89,6 +97,17 @@ public static class ListingMutations
             throw new ListingNotFoundException(id);
         return id;
     }
+
+    // Loads everything the payload's listing can expose, so a client selecting company or skills gets real data.
+    private static async Task<Listing> FindWithDetailsAsync(int id, AppDbContext db, CancellationToken ct) =>
+        await db.Listings
+            .Include(l => l.Company)
+            .Include(l => l.JobRole)
+            .Include(l => l.Skills).ThenInclude(s => s.Skill)
+            .Include(l => l.Languages)
+            .Include(l => l.Locations).ThenInclude(l => l.Location)
+            .FirstOrDefaultAsync(l => l.Id == id, ct)
+            ?? throw new ListingNotFoundException(id);
 
     private static async Task ApplyAsync(
         Listing entity, ListingInput input, DateOnly today, AppDbContext db, CancellationToken ct)

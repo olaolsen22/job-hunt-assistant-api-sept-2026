@@ -119,6 +119,8 @@ type Mutation {
     @cost(weight: "10")
   updateListing(input: UpdateListingInput!): UpdateListingPayload!
     @cost(weight: "10")
+  setListingFavorite(input: SetListingFavoriteInput!): SetListingFavoritePayload!
+    @cost(weight: "10")
   deleteListing(input: DeleteListingInput!): DeleteListingPayload!
     @cost(weight: "10")
   saveLocation(input: SaveLocationInput!): SaveLocationPayload!
@@ -224,6 +226,7 @@ type Listing {
   postingLanguage: Language
   createdAt: DateTime!
   updatedAt: DateTime!
+  favoritedAt: DateTime
   skills: [ListingSkill!]!
   languages: [ListingLanguage!]!
   locations: [ListingLocation!]!
@@ -328,6 +331,11 @@ type SaveLocationPayload {
   errors: [SaveLocationError!]
 }
 
+type SetListingFavoritePayload {
+  listing: Listing
+  errors: [SetListingFavoriteError!]
+}
+
 type Skill {
   listingCount: Int! @cost(weight: "10")
   id: Int!
@@ -373,6 +381,8 @@ union CreateListingError = InvalidListingError | InvalidLocationError
 union DeleteListingError = ListingNotFoundError
 
 union SaveLocationError = InvalidLocationError
+
+union SetListingFavoriteError = ListingNotFoundError
 
 union UpdateCompanyError =
   | CompanyNotFoundError
@@ -511,6 +521,7 @@ input ListingFilterInput {
   postingLanguage: NullableOfLanguageOperationFilterInput
   createdAt: DateTimeOperationFilterInput
   updatedAt: DateTimeOperationFilterInput
+  favoritedAt: DateTimeOperationFilterInput
   skills: ListFilterInputTypeOfListingSkillFilterInput
   languages: ListFilterInputTypeOfListingLanguageFilterInput
   locations: ListFilterInputTypeOfListingLocationFilterInput
@@ -598,6 +609,7 @@ input ListingSortInput {
   postingLanguage: SortEnumType @cost(weight: "10")
   createdAt: SortEnumType @cost(weight: "10")
   updatedAt: SortEnumType @cost(weight: "10")
+  favoritedAt: SortEnumType @cost(weight: "10")
 }
 
 input LocalDateOperationFilterInput {
@@ -682,6 +694,11 @@ input SaveLocationInput {
   city: String
   countryCode: String!
   isTarget: Boolean!
+}
+
+input SetListingFavoriteInput {
+  id: Int!
+  isFavorite: Boolean!
 }
 
 input SkillFilterInput {
