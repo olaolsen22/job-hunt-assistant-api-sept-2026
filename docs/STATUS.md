@@ -1,12 +1,12 @@
 # Project Status
 
-Updated: 2026-09-26 · Last logged commit: (none)
+Updated: 2026-09-26 · Last logged commit: 0a9c9e8
 
 ## Milestones
 | # | Milestone | Status |
 |---|---|---|
-| M0 | Scaffold, CI, Scalar, EF Core + SQLite, Docker | ✅ done (uncommitted) |
-| M1 | Identity + cookie auth, Owner/Guest seed | ⬜ |
+| M0 | Scaffold, CI, Scalar, EF Core + SQLite, Docker | ✅ done |
+| M1 | Identity + cookie auth, Owner/Guest seed | ✅ done (uncommitted; user query filter moves to M2) |
 | M2 | Applications, status history, notes, contacts | ⬜ |
 | M3 | Structured CVs | ⬜ |
 | M4 | Dashboard stats | ⬜ |
@@ -16,17 +16,24 @@ Updated: 2026-09-26 · Last logged commit: (none)
 | M8 | Deploy, README | ⬜ |
 
 ## Endpoints
-- `GET /api/health` — built-in health checks incl. DB connectivity
-- `GET /api/samples` — **temporary** scaffold check, 3 seeded rows. Remove in M1 (entity, endpoint, test, + a removal migration).
-- Dev only: `/openapi/v1.json`, `/scalar`
+All endpoints require auth (fallback policy) unless marked anon.
+- `GET /api/health` (anon) — built-in health checks incl. DB connectivity
+- `POST /api/auth/login` (anon, rate-limited) — `{email, password}` → `{requiresTwoFactor, user}`; 401 bad creds, 429 locked out
+- `POST /api/auth/guest` (anon, rate-limited) — one-click guest sign-in, same response
+- `POST /api/auth/logout` (anon) — 204
+- `GET /api/auth/me` — `{id, email, role}`
+- Dev only (anon): `/openapi/v1.json`, `/scalar`
 
 ## Entities
-- `Sample` (temporary) — Id, Name. Seeded via `HasData`.
-- `AppDbContext` in `Data/`; configs via `IEntityTypeConfiguration` + `ApplyConfigurationsFromAssembly`. Becomes IdentityDbContext in M1. Migrations applied at startup.
-- Migrations: `AddSamples`
+- `AppUser : IdentityUser` (string Id) + Identity tables (incl. UserLogins/UserTokens for future SSO/2FA)
+- Roles: `Owner`, `Guest` (`Features/Auth/AppUser.cs`)
+- `AppDbContext : IdentityDbContext<AppUser>` in `Data/`; configs via `IEntityTypeConfiguration` + `ApplyConfigurationsFromAssembly`. Migrations applied at startup, then `AuthSeeder` runs.
+- Migrations: `AddSamples`, `RemoveSamples`, `AddIdentity`
 
 ## Config keys
 - `ConnectionStrings:Default` — `Data Source=jobhunt.db` (dev), `/data/jobhunt.db` (Docker)
+- `Seed:OwnerEmail`, `Seed:OwnerPassword` — required; user-secrets (dev), `.env` → compose (Docker). Password re-applied on startup.
+- `Seed:GuestEmail` — `guest@jobhunt.local`; guest has no password
 
 ## Stack
 - .NET SDK 10.0.112, xunit 2.9.3, Scalar.AspNetCore 2.17.10, OpenApi/Mvc.Testing 10.0.12
@@ -37,6 +44,10 @@ Updated: 2026-09-26 · Last logged commit: (none)
 
 ## Decisions log
 - 2026-09-26 — Plan agreed (see docs/PLAN.md). Logger is a file + `/log-progress` skill, not an agent, to save tokens.
+- 2026-09-26 — Auth: `AddIdentityCookies` + `requiresTwoFactor` in login contract so SSO/2FA stay additive; no email verification until public (PLAN §3, §9).
+- 2026-09-26 — Hybrid API: REST for auth/health, GraphQL (Hot Chocolate 16) for domain data, subscriptions over SSE replace the custom SSE broker (PLAN §6–7). Package added with the first GraphQL feature.
+- 2026-09-26 — Cookie `jobhunt.auth`: HttpOnly, SameSite=Lax, Secure except in Development; lockout 5 tries/5 min; login limiter 10/min per IP.
 
 ## Next up
-- M1: remove Samples; Identity + cookie auth, Owner/Guest seed, user query filter.
+- Applications, status history, notes, contacts as GraphQL (add Hot Chocolate); global `UserId` query filter + cascade delete from `AppUser`.
+- M8: forwarded headers (rate limiter IP behind proxy), DataProtection keys volume.
