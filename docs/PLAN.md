@@ -206,7 +206,7 @@ for the copy-paste path (external AI). The server-side parser reuses it.
 ## 6. Background queue + subscriptions
 
 ```
-mutation parseJobPosting(text)
+mutation parseListing(input: { text, mode: FULL | QUICK })
   → create ParseJob(Queued) → write to Channel<Guid> → returns { parseJob { id status } }
 
 ParseWorker (BackgroundService)
@@ -214,12 +214,16 @@ ParseWorker (BackgroundService)
   → on 429: respect Retry-After, requeue with backoff (max N tries)
   → publishes each state change via Hot Chocolate's ITopicEventSender (in-memory provider)
 
-subscription onParseJobUpdated → ParseJob { id status error jobPosting { ... } }
+subscription onParseJobUpdated → ParseJob { id mode status error result }
   → transport: SSE (`graphql-sse` protocol) over the same cookie; WebSockets not needed
   → topic keyed by UserId so users only see their own jobs
 ```
 
-Statuses: `QUEUED`, `RUNNING`, `RETRYING`, `SUCCEEDED` (with `jobPosting`), `FAILED` (with `error`).
+Statuses: `QUEUED`, `RUNNING`, `RETRYING`, `SUCCEEDED` (with `result`), `FAILED` (with `error`).
+
+- `mode` picks the prompt: FULL = `listingParsePrompt` (one object), QUICK = `listingQuickParsePrompt` (array).
+- `result` is the validated JSON text in exactly the shape the copy-paste path produces, so the UI feeds
+  both paths into the same `JSON.parse` → form/table code. Contract given to the UI on 2026-09-27.
 A cache hit goes straight to `SUCCEEDED`.
 
 - On startup, `Queued`/`Running` ParseJobs are re-enqueued, so the queue survives restarts.
