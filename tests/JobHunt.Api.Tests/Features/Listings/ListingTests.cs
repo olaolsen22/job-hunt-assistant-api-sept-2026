@@ -305,12 +305,13 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         string deadlineType = "UNSPECIFIED",
         string url = "https://www.finn.no/job/123",
         string postedOn = "2026-09-20",
+        string? deadlineOn = null,
         object[]? skills = null,
         object[]? languages = null,
         object[]? locations = null) =>
         new
         {
-            title, companyName, jobRoleName, deadlineType, url, postedOn,
+            title, companyName, jobRoleName, deadlineType, deadlineOn, url, postedOn,
             skills = skills ?? [], languages = languages ?? [], locations = locations ?? [],
         };
 
