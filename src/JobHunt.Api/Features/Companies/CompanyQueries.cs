@@ -1,5 +1,6 @@
 using HotChocolate.Data.Sorting;
 using JobHunt.Api.Data;
+using JobHunt.Api.Features.Applications;
 using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.Companies;
@@ -31,7 +32,7 @@ public static partial class CompanyNode
     {
         descriptor.Ignore(c => c.UserId);
         descriptor.Ignore(c => c.NormalizedName);
-        // listingCount needs the Id even when the client didn't select it.
+        // The counts need the Id even when the client didn't select it.
         descriptor.Field(c => c.Id).IsProjected();
     }
 
@@ -39,6 +40,11 @@ public static partial class CompanyNode
     public static async Task<int> GetListingCountAsync(
         [Parent] Company company, IListingCountByCompanyIdDataLoader listingCounts, CancellationToken ct) =>
         await listingCounts.LoadAsync(company.Id, ct);
+
+    // Listings you applied to (any status past Saved), to see how often you've tried this company.
+    public static async Task<int> GetApplicationCountAsync(
+        [Parent] Company company, IApplicationCountByCompanyIdDataLoader applicationCounts, CancellationToken ct) =>
+        await applicationCounts.LoadAsync(company.Id, ct);
 }
 
 internal static class CompanyDataLoaders
@@ -48,6 +54,14 @@ internal static class CompanyDataLoaders
         IReadOnlyList<int> companyIds, AppDbContext db, CancellationToken ct) =>
         await db.Listings
             .Where(l => companyIds.Contains(l.CompanyId))
+            .GroupBy(l => l.CompanyId)
+            .ToDictionaryAsync(g => g.Key, g => g.Count(), ct);
+
+    [DataLoader]
+    public static async Task<Dictionary<int, int>> GetApplicationCountByCompanyIdAsync(
+        IReadOnlyList<int> companyIds, AppDbContext db, CancellationToken ct) =>
+        await db.Listings
+            .Where(l => companyIds.Contains(l.CompanyId) && l.Status != ApplicationStatus.Saved)
             .GroupBy(l => l.CompanyId)
             .ToDictionaryAsync(g => g.Key, g => g.Count(), ct);
 }

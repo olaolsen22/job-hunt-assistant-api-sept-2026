@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Listings;
@@ -9,7 +10,7 @@ public class InvalidDocumentException(string message) : Exception(message);
 
 public class DocumentNotFoundException(int id) : Exception($"Document {id} was not found.");
 
-public class DocumentSentException(int id) : Exception($"Document {id} has been sent and can't be deleted. Unmark it as sent first.");
+public class DocumentSentException(int id) : Exception($"Document {id} has been sent and can't be deleted. Undo the application first.");
 
 [MutationType]
 public static partial class DocumentMutations
@@ -45,27 +46,13 @@ public static partial class DocumentMutations
             UserId = db.CurrentUserId!,
             ListingId = listingId,
             Kind = kind,
-            FileName = $"{Slug(listing.Company)}_{Slug(listing.JobRole)}_{kind}_{now:yyyy-MM-dd}.pdf",
+            FileName = FileName(listing.Company, listing.JobRole, kind, now),
             OriginalFileName = file.Name,
             SizeBytes = bytes.Length,
+            ContentHash = Convert.ToHexStringLower(SHA256.HashData(bytes)),
             CreatedAt = now,
         };
         db.Add(new DocumentContent { Document = document, Bytes = bytes });
-        await db.SaveChangesAsync(ct);
-        return document;
-    }
-
-    [Error<DocumentNotFoundException>]
-    public static async Task<Document> SetDocumentSentAsync(
-        int id, bool isSent, AppDbContext db, TimeProvider time, CancellationToken ct)
-    {
-        var document = await db.Documents.FirstOrDefaultAsync(d => d.Id == id, ct)
-            ?? throw new DocumentNotFoundException(id);
-        // ??= keeps the original time when marking twice.
-        if (isSent)
-            document.SentAt ??= time.GetUtcNow().UtcDateTime;
-        else
-            document.SentAt = null;
         await db.SaveChangesAsync(ct);
         return document;
     }
@@ -82,6 +69,10 @@ public static partial class DocumentMutations
         await db.Documents.Where(d => d.Id == id).ExecuteDeleteAsync(ct);
         return id;
     }
+
+    // The date is the upload date, then the applied date once sent, so a downloaded file shows when it went out.
+    internal static string FileName(string company, string jobRole, DocumentKind kind, DateTime date) =>
+        $"{Slug(company)}_{Slug(jobRole)}_{kind}_{date:yyyy-MM-dd}.pdf";
 
     // Letters and digits only (æøå included), so the name is safe on any OS: "Acme AS" → "Acme-AS".
     private static string Slug(string name) => NonAlphanumeric().Replace(name, "-").Trim('-');

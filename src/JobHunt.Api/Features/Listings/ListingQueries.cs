@@ -55,5 +55,8 @@ public static partial class ListingNode
     static partial void Configure(IObjectTypeDescriptor<Listing> descriptor)
     {
         descriptor.Ignore(l => l.UserId);
+        // Ordered by the client: the timeline by occurredAt, interviews by scheduledAt.
+        descriptor.Field(l => l.StatusHistory).UseSorting();
+        descriptor.Field(l => l.Interviews).UseSorting();
     }
 }

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using JobHunt.Api.Tests.Features.Listings;
@@ -13,15 +14,9 @@ public class DocumentTests(ApiFactory factory) : IClassFixture<ApiFactory>
     private const string UploadDocument = """
         mutation ($listingId: Int!, $kind: DocumentKind!, $file: Upload!) {
           uploadDocument(input: { listingId: $listingId, kind: $kind, file: $file }) {
-            document { id kind fileName originalFileName sizeBytes sentAt }
+            document { id kind fileName originalFileName sizeBytes contentHash sentAt }
             errors { __typename ... on Error { message } }
           }
-        }
-        """;
-
-    private const string SetDocumentSent = """
-        mutation ($id: Int!, $isSent: Boolean!) {
-          setDocumentSent(input: { id: $id, isSent: $isSent }) { document { sentAt } errors { __typename } }
         }
         """;
 
@@ -51,6 +46,7 @@ public class DocumentTests(ApiFactory factory) : IClassFixture<ApiFactory>
             document.GetProperty("fileName").GetString());
         Assert.Equal("my letter (final).pdf", document.GetProperty("originalFileName").GetString());
         Assert.Equal(Pdf.Length, document.GetProperty("sizeBytes").GetInt64());
+        Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(Pdf)), document.GetProperty("contentHash").GetString());
 
         var response = await client.GetAsync($"/api/documents/{document.GetProperty("id").GetInt32()}");
         response.EnsureSuccessStatusCode();
@@ -84,41 +80,6 @@ public class DocumentTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
         var document = Assert.Single(data.GetProperty("listingById").GetProperty("documents").EnumerateArray());
         Assert.Equal("CV", document.GetProperty("kind").GetString());
-    }
-
-    [Fact]
-    public async Task SentDocument_CantBeDeletedUntilUnmarked()
-    {
-        var client = await factory.GetOwnerClientAsync();
-        var id = await UploadIdAsync(client, await CreateListingAsync(client, "Acme"));
-
-        var sent = await client.GraphQLAsync(SetDocumentSent, new { id, isSent = true });
-        Assert.NotEqual(JsonValueKind.Null,
-            sent.GetProperty("setDocumentSent").GetProperty("document").GetProperty("sentAt").ValueKind);
-
-        var blocked = await client.GraphQLAsync(DeleteDocument, new { id });
-        Assert.Equal("DocumentSentError",
-            blocked.GetProperty("deleteDocument").GetProperty("errors")[0].GetProperty("__typename").GetString());
-
-        await client.GraphQLAsync(SetDocumentSent, new { id, isSent = false });
-        var deleted = await client.GraphQLAsync(DeleteDocument, new { id });
-        Assert.Equal(id, deleted.GetProperty("deleteDocument").GetProperty("id").GetInt32());
-        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/documents/{id}")).StatusCode);
-    }
-
-    [Fact]
-    public async Task DeleteListing_WithSentDocument_IsBlocked()
-    {
-        var client = await factory.GetOwnerClientAsync();
-        var listingId = await CreateListingAsync(client, "Acme");
-        var id = await UploadIdAsync(client, listingId);
-        await client.GraphQLAsync(SetDocumentSent, new { id, isSent = true });
-
-        var data = await client.GraphQLAsync(DeleteListing, new { id = listingId });
-
-        Assert.Equal("ListingInUseError",
-            data.GetProperty("deleteListing").GetProperty("errors")[0].GetProperty("__typename").GetString());
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"/api/documents/{id}")).StatusCode);
     }
 
     [Fact]
@@ -162,8 +123,8 @@ public class DocumentTests(ApiFactory factory) : IClassFixture<ApiFactory>
         (await ListingTests.CreateAsync(client, ListingTests.NewListing(ListingTests.Unique(company))))
             .GetProperty("id").GetInt32();
 
-    internal static async Task<int> UploadIdAsync(HttpClient client, int listingId) =>
-        (await UploadAsync(client, listingId, "CV", Pdf, "cv.pdf"))
+    internal static async Task<int> UploadIdAsync(HttpClient client, int listingId, string kind = "CV") =>
+        (await UploadAsync(client, listingId, kind, Pdf, "cv.pdf"))
             .GetProperty("document").GetProperty("id").GetInt32();
 
     // The GraphQL multipart request spec: the operation as JSON, a map from file part to variable, then the file.

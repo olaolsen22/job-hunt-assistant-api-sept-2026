@@ -129,10 +129,13 @@ Listing                                          ← built
   └─ ListingLocation  (LocationId)   ← several offices; remote-anywhere has none
   Enums are stored as strings.
 
-Tracking (design pending owner adjustments):
-  Listing.Status + StatusChangedAt (current state, for list filter/sort)
-  ├─ ListingStatusChange (Status, OccurredAt (user-settable, UTC), Note?)   ← the "saved at / applied at" log
-  ├─ Note, Contact
+Application tracking                             ← built
+  Listing.Status (Saved/Applied/Interviewing/Offer/Rejected/Withdrawn) + StatusChangedAt (for list filter/sort)
+  ├─ StatusChange (Status, OccurredAt (user-settable, UTC), Note? Markdown)   ← the timeline
+  ├─ Interview    (Title?, ScheduledAt UTC, Notes? Markdown)
+  ├─ Document.SentAt + ContentHash (SHA-256: same CV across applications)
+  │    Saved → Applied (needs a CV) → Interviewing (first interview) → Offer/Rejected/Withdrawn
+  ├─ later: Note, Contact
   Counts (per company/role/skill/location) are computed with DataLoaders, never stored.
 Favorites: Listing.FavoritedAt DateTime? ← built. Later if wanted: FavoriteRank? (drag-to-rank); named lists → ListingList + items table.
 
@@ -247,7 +250,8 @@ Query
   cvs, cv(id)                               → Cv { experiences educations skills languages certifications }
   jobPostings(...), jobPosting(id), parseJob(id)
   dashboardStats → counts by status, applications/week (last 12w), response rate,
-                   avg days to first response, upcoming follow-ups
+                   avg days to first response, upcoming follow-ups,
+                   ghosted = Applied/Interviewing with no status change or interview for N days (derived, never stored)
   usageDaily(from, to), usageSummary        → calls, cache hits, tokens in/out, est. cost
   usageToday                                → token-monitor widget: requests, cache hits, tokens in/out,
                                               est. cost, limits (RPD/RPM from config), remaining

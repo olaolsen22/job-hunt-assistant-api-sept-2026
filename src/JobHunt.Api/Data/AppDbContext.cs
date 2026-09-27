@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using JobHunt.Api.Features.Applications;
 using JobHunt.Api.Features.Auth;
 using JobHunt.Api.Features.Companies;
 using JobHunt.Api.Features.Documents;
@@ -27,6 +28,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
     public DbSet<Location> Locations => Set<Location>();
     public DbSet<Document> Documents => Set<Document>();
     public DbSet<DocumentContent> DocumentContents => Set<DocumentContent>();
+    public DbSet<StatusChange> StatusChanges => Set<StatusChange>();
+    public DbSet<Interview> Interviews => Set<Interview>();
 
     // Null outside a request (startup, seeding), so the user filters below then match nothing.
     public string? CurrentUserId => httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -55,5 +58,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
         modelBuilder.Entity<Location>().HasQueryFilter(l => l.UserId == CurrentUserId);
         modelBuilder.Entity<Document>().HasQueryFilter(d => d.UserId == CurrentUserId);
         modelBuilder.Entity<DocumentContent>().HasQueryFilter(c => c.Document.UserId == CurrentUserId);
+        modelBuilder.Entity<StatusChange>().HasQueryFilter(s => s.UserId == CurrentUserId);
+        modelBuilder.Entity<Interview>().HasQueryFilter(i => i.UserId == CurrentUserId);
     }
 }

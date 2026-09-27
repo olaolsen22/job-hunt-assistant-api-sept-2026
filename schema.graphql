@@ -111,9 +111,21 @@ type Query {
 type Mutation {
   uploadDocument(input: UploadDocumentInput!): UploadDocumentPayload!
     @cost(weight: "10")
-  setDocumentSent(input: SetDocumentSentInput!): SetDocumentSentPayload!
-    @cost(weight: "10")
   deleteDocument(input: DeleteDocumentInput!): DeleteDocumentPayload!
+    @cost(weight: "10")
+  applyToListing(input: ApplyToListingInput!): ApplyToListingPayload!
+    @cost(weight: "10")
+  recordOutcome(input: RecordOutcomeInput!): RecordOutcomePayload!
+    @cost(weight: "10")
+  updateStatusChange(input: UpdateStatusChangeInput!): UpdateStatusChangePayload!
+    @cost(weight: "10")
+  undoStatusChange(input: UndoStatusChangeInput!): UndoStatusChangePayload!
+    @cost(weight: "10")
+  addInterview(input: AddInterviewInput!): AddInterviewPayload!
+    @cost(weight: "10")
+  updateInterview(input: UpdateInterviewInput!): UpdateInterviewPayload!
+    @cost(weight: "10")
+  deleteInterview(input: DeleteInterviewInput!): DeleteInterviewPayload!
     @cost(weight: "10")
   updateCompany(input: UpdateCompanyInput!): UpdateCompanyPayload!
     @cost(weight: "10")
@@ -129,6 +141,16 @@ type Mutation {
     @cost(weight: "10")
   saveLocation(input: SaveLocationInput!): SaveLocationPayload!
     @cost(weight: "10")
+}
+
+type AddInterviewPayload {
+  interview: Interview
+  errors: [AddInterviewError!]
+}
+
+type ApplyToListingPayload {
+  listing: Listing
+  errors: [ApplyToListingError!]
 }
 
 "Information about the offset pagination."
@@ -161,6 +183,7 @@ type CompaniesEdge {
 
 type Company {
   listingCount: Int! @cost(weight: "10")
+  applicationCount: Int! @cost(weight: "10")
   id: Int!
   name: String!
   locationId: Int
@@ -182,6 +205,11 @@ type DeleteDocumentPayload {
   errors: [DeleteDocumentError!]
 }
 
+type DeleteInterviewPayload {
+  id: Int
+  errors: [DeleteInterviewError!]
+}
+
 type DeleteListingPayload {
   id: Int
   errors: [DeleteListingError!]
@@ -195,6 +223,7 @@ type Document {
   fileName: String!
   originalFileName: String!
   sizeBytes: Long!
+  contentHash: String!
   createdAt: DateTime!
   sentAt: DateTime
 }
@@ -212,6 +241,25 @@ type DuplicateListingError implements Error {
   existingListingId: Int!
 }
 
+type Interview {
+  id: Int!
+  listingId: Int!
+  listing: Listing!
+  title: String
+  scheduledAt: DateTime!
+  notes: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type InterviewNotFoundError implements Error {
+  message: String!
+}
+
+type InvalidApplicationError implements Error {
+  message: String!
+}
+
 type InvalidCompanyError implements Error {
   message: String!
 }
@@ -220,11 +268,19 @@ type InvalidDocumentError implements Error {
   message: String!
 }
 
+type InvalidInterviewError implements Error {
+  message: String!
+}
+
 type InvalidListingError implements Error {
   message: String!
 }
 
 type InvalidLocationError implements Error {
+  message: String!
+}
+
+type InvalidStatusTransitionError implements Error {
   message: String!
 }
 
@@ -255,6 +311,8 @@ type JobRolesEdge {
 }
 
 type Listing {
+  statusHistory(order: [StatusChangeSortInput!] @cost(weight: "10")): [StatusChange!]!
+  interviews(order: [InterviewSortInput!] @cost(weight: "10")): [Interview!]!
   id: Int!
   title: String!
   companyId: Int!
@@ -276,6 +334,8 @@ type Listing {
   favoritedAt: DateTime
   archivedAt: DateTime
   analyzedAt: DateTime
+  status: ApplicationStatus!
+  statusChangedAt: DateTime
   skills: [ListingSkill!]!
   languages: [ListingLanguage!]!
   locations: [ListingLocation!]!
@@ -369,14 +429,14 @@ type PageInfo {
   endCursor: String
 }
 
+type RecordOutcomePayload {
+  listing: Listing
+  errors: [RecordOutcomeError!]
+}
+
 type SaveLocationPayload {
   location: Location
   errors: [SaveLocationError!]
-}
-
-type SetDocumentSentPayload {
-  document: Document
-  errors: [SetDocumentSentError!]
 }
 
 type SetListingArchivedPayload {
@@ -415,14 +475,43 @@ type SkillsEdge {
   node: Skill!
 }
 
+type StatusChange {
+  id: Int!
+  listingId: Int!
+  listing: Listing!
+  status: ApplicationStatus!
+  occurredAt: DateTime!
+  note: String
+  createdAt: DateTime!
+}
+
+type StatusChangeNotFoundError implements Error {
+  message: String!
+}
+
+type UndoStatusChangePayload {
+  listing: Listing
+  errors: [UndoStatusChangeError!]
+}
+
 type UpdateCompanyPayload {
   company: Company
   errors: [UpdateCompanyError!]
 }
 
+type UpdateInterviewPayload {
+  interview: Interview
+  errors: [UpdateInterviewError!]
+}
+
 type UpdateListingPayload {
   listing: Listing
   errors: [UpdateListingError!]
+}
+
+type UpdateStatusChangePayload {
+  listing: Listing
+  errors: [UpdateStatusChangeError!]
 }
 
 type UploadDocumentPayload {
@@ -434,6 +523,18 @@ interface Error {
   message: String!
 }
 
+union AddInterviewError =
+  | ListingNotFoundError
+  | InvalidStatusTransitionError
+  | InvalidInterviewError
+
+union ApplyToListingError =
+  | ListingNotFoundError
+  | InvalidStatusTransitionError
+  | InvalidApplicationError
+  | DocumentNotFoundError
+  | InvalidDocumentError
+
 union CreateListingError =
   | InvalidListingError
   | InvalidLocationError
@@ -441,20 +542,31 @@ union CreateListingError =
 
 union DeleteDocumentError = DocumentNotFoundError | DocumentSentError
 
+union DeleteInterviewError = InterviewNotFoundError
+
 union DeleteListingError = ListingNotFoundError | ListingInUseError
 
-union SaveLocationError = InvalidLocationError
+union RecordOutcomeError =
+  | ListingNotFoundError
+  | InvalidStatusTransitionError
+  | InvalidApplicationError
 
-union SetDocumentSentError = DocumentNotFoundError
+union SaveLocationError = InvalidLocationError
 
 union SetListingArchivedError = ListingNotFoundError
 
 union SetListingFavoriteError = ListingNotFoundError
 
+union UndoStatusChangeError =
+  | ListingNotFoundError
+  | InvalidStatusTransitionError
+
 union UpdateCompanyError =
   | CompanyNotFoundError
   | InvalidCompanyError
   | InvalidLocationError
+
+union UpdateInterviewError = InterviewNotFoundError | InvalidInterviewError
 
 union UpdateListingError =
   | ListingNotFoundError
@@ -462,7 +574,33 @@ union UpdateListingError =
   | InvalidLocationError
   | DuplicateListingError
 
+union UpdateStatusChangeError =
+  | StatusChangeNotFoundError
+  | InvalidApplicationError
+
 union UploadDocumentError = ListingNotFoundError | InvalidDocumentError
+
+input AddInterviewInput {
+  listingId: Int!
+  scheduledAt: DateTime!
+  title: String
+  notes: String
+}
+
+input ApplicationStatusOperationFilterInput {
+  eq: ApplicationStatus @cost(weight: "10")
+  neq: ApplicationStatus @cost(weight: "10")
+  in: [ApplicationStatus!] @cost(weight: "10")
+  nin: [ApplicationStatus!] @cost(weight: "10")
+}
+
+input ApplyToListingInput {
+  listingId: Int!
+  cvDocumentId: Int!
+  coverLetterDocumentId: Int
+  appliedAt: DateTime
+  note: String
+}
 
 input BooleanOperationFilterInput {
   eq: Boolean @cost(weight: "10")
@@ -515,6 +653,10 @@ input DeleteDocumentInput {
   id: Int!
 }
 
+input DeleteInterviewInput {
+  id: Int!
+}
+
 input DeleteListingInput {
   id: Int!
 }
@@ -529,6 +671,7 @@ input DocumentFilterInput {
   fileName: StringOperationFilterInput
   originalFileName: StringOperationFilterInput
   sizeBytes: LongOperationFilterInput
+  contentHash: StringOperationFilterInput
   createdAt: DateTimeOperationFilterInput
   sentAt: DateTimeOperationFilterInput
 }
@@ -538,6 +681,30 @@ input DocumentKindOperationFilterInput {
   neq: DocumentKind @cost(weight: "10")
   in: [DocumentKind!] @cost(weight: "10")
   nin: [DocumentKind!] @cost(weight: "10")
+}
+
+input InterviewFilterInput {
+  and: [InterviewFilterInput!]
+  or: [InterviewFilterInput!]
+  id: IntOperationFilterInput
+  listingId: IntOperationFilterInput
+  listing: ListingFilterInput
+  title: StringOperationFilterInput
+  scheduledAt: DateTimeOperationFilterInput
+  notes: StringOperationFilterInput
+  createdAt: DateTimeOperationFilterInput
+  updatedAt: DateTimeOperationFilterInput
+}
+
+input InterviewSortInput {
+  id: SortEnumType @cost(weight: "10")
+  listingId: SortEnumType @cost(weight: "10")
+  listing: ListingSortInput @cost(weight: "10")
+  title: SortEnumType @cost(weight: "10")
+  scheduledAt: SortEnumType @cost(weight: "10")
+  notes: SortEnumType @cost(weight: "10")
+  createdAt: SortEnumType @cost(weight: "10")
+  updatedAt: SortEnumType @cost(weight: "10")
 }
 
 input IntOperationFilterInput {
@@ -581,6 +748,13 @@ input ListFilterInputTypeOfDocumentFilterInput {
   any: Boolean @cost(weight: "10")
 }
 
+input ListFilterInputTypeOfInterviewFilterInput {
+  all: InterviewFilterInput @cost(weight: "10")
+  none: InterviewFilterInput @cost(weight: "10")
+  some: InterviewFilterInput @cost(weight: "10")
+  any: Boolean @cost(weight: "10")
+}
+
 input ListFilterInputTypeOfListingLanguageFilterInput {
   all: ListingLanguageFilterInput @cost(weight: "10")
   none: ListingLanguageFilterInput @cost(weight: "10")
@@ -599,6 +773,13 @@ input ListFilterInputTypeOfListingSkillFilterInput {
   all: ListingSkillFilterInput @cost(weight: "10")
   none: ListingSkillFilterInput @cost(weight: "10")
   some: ListingSkillFilterInput @cost(weight: "10")
+  any: Boolean @cost(weight: "10")
+}
+
+input ListFilterInputTypeOfStatusChangeFilterInput {
+  all: StatusChangeFilterInput @cost(weight: "10")
+  none: StatusChangeFilterInput @cost(weight: "10")
+  some: StatusChangeFilterInput @cost(weight: "10")
   any: Boolean @cost(weight: "10")
 }
 
@@ -626,10 +807,14 @@ input ListingFilterInput {
   favoritedAt: DateTimeOperationFilterInput
   archivedAt: DateTimeOperationFilterInput
   analyzedAt: DateTimeOperationFilterInput
+  status: ApplicationStatusOperationFilterInput
+  statusChangedAt: DateTimeOperationFilterInput
   skills: ListFilterInputTypeOfListingSkillFilterInput
   languages: ListFilterInputTypeOfListingLanguageFilterInput
   locations: ListFilterInputTypeOfListingLocationFilterInput
   documents: ListFilterInputTypeOfDocumentFilterInput
+  statusHistory: ListFilterInputTypeOfStatusChangeFilterInput
+  interviews: ListFilterInputTypeOfInterviewFilterInput
 }
 
 input ListingInput {
@@ -718,6 +903,8 @@ input ListingSortInput {
   favoritedAt: SortEnumType @cost(weight: "10")
   archivedAt: SortEnumType @cost(weight: "10")
   analyzedAt: SortEnumType @cost(weight: "10")
+  status: SortEnumType @cost(weight: "10")
+  statusChangedAt: SortEnumType @cost(weight: "10")
 }
 
 input LocalDateOperationFilterInput {
@@ -813,15 +1000,17 @@ input NullableOfWorkModeOperationFilterInput {
   nin: [WorkMode] @cost(weight: "10")
 }
 
+input RecordOutcomeInput {
+  listingId: Int!
+  outcome: ApplicationOutcome!
+  occurredAt: DateTime
+  note: String
+}
+
 input SaveLocationInput {
   city: String
   countryCode: String!
   isTarget: Boolean!
-}
-
-input SetDocumentSentInput {
-  id: Int!
-  isSent: Boolean!
 }
 
 input SetListingArchivedInput {
@@ -846,6 +1035,28 @@ input SkillSortInput {
   name: SortEnumType @cost(weight: "10")
 }
 
+input StatusChangeFilterInput {
+  and: [StatusChangeFilterInput!]
+  or: [StatusChangeFilterInput!]
+  id: IntOperationFilterInput
+  listingId: IntOperationFilterInput
+  listing: ListingFilterInput
+  status: ApplicationStatusOperationFilterInput
+  occurredAt: DateTimeOperationFilterInput
+  note: StringOperationFilterInput
+  createdAt: DateTimeOperationFilterInput
+}
+
+input StatusChangeSortInput {
+  id: SortEnumType @cost(weight: "10")
+  listingId: SortEnumType @cost(weight: "10")
+  listing: ListingSortInput @cost(weight: "10")
+  status: SortEnumType @cost(weight: "10")
+  occurredAt: SortEnumType @cost(weight: "10")
+  note: SortEnumType @cost(weight: "10")
+  createdAt: SortEnumType @cost(weight: "10")
+}
+
 input StringOperationFilterInput {
   and: [StringOperationFilterInput!]
   or: [StringOperationFilterInput!]
@@ -861,10 +1072,21 @@ input StringOperationFilterInput {
   nendsWith: String @cost(weight: "20")
 }
 
+input UndoStatusChangeInput {
+  listingId: Int!
+}
+
 input UpdateCompanyInput {
   id: Int!
   name: String!
   location: LocationInput
+}
+
+input UpdateInterviewInput {
+  id: Int!
+  scheduledAt: DateTime!
+  title: String
+  notes: String
 }
 
 input UpdateListingInput {
@@ -872,10 +1094,31 @@ input UpdateListingInput {
   listing: ListingInput!
 }
 
+input UpdateStatusChangeInput {
+  id: Int!
+  occurredAt: DateTime!
+  note: String
+}
+
 input UploadDocumentInput {
   listingId: Int!
   kind: DocumentKind!
   file: Upload!
+}
+
+enum ApplicationOutcome {
+  OFFER
+  REJECTED
+  WITHDRAWN
+}
+
+enum ApplicationStatus {
+  SAVED
+  APPLIED
+  INTERVIEWING
+  OFFER
+  REJECTED
+  WITHDRAWN
 }
 
 enum CefrLevel {

@@ -1,4 +1,5 @@
 using JobHunt.Api.Data;
+using JobHunt.Api.Features.Applications;
 using JobHunt.Api.Features.Companies;
 using JobHunt.Api.Features.JobRoles;
 using JobHunt.Api.Features.Locations;
@@ -53,7 +54,7 @@ public class DuplicateListingException(int existingListingId)
 // a second opening, so it's saved and the matches are returned for the user to judge.
 public record CreateListingPayload(Listing Listing, List<Listing> PossibleDuplicates);
 
-public class ListingInUseException(int id) : Exception($"Listing {id} has sent documents and can't be deleted. Archive it instead.");
+public class ListingInUseException(int id) : Exception($"Listing {id} has been applied to and can't be deleted. Archive it instead.");
 
 [MutationType]
 public static class ListingMutations
@@ -132,8 +133,8 @@ public static class ListingMutations
     [UseMutationConvention(PayloadFieldName = "id")]
     public static async Task<int> DeleteListingAsync(int id, AppDbContext db, CancellationToken ct)
     {
-        // Sent documents mean you applied; deleting would lose that record.
-        if (await db.Documents.AnyAsync(d => d.ListingId == id && d.SentAt != null, ct))
+        // Deleting would lose the record of the application.
+        if (await db.Listings.AnyAsync(l => l.Id == id && l.Status != ApplicationStatus.Saved, ct))
             throw new ListingInUseException(id);
         // The user filter applies here too, so another user's listing counts as not found.
         if (await db.Listings.Where(l => l.Id == id).ExecuteDeleteAsync(ct) == 0)
@@ -142,7 +143,7 @@ public static class ListingMutations
     }
 
     // Loads everything the payload's listing can expose, so a client selecting company or skills gets real data.
-    private static async Task<Listing> FindWithDetailsAsync(int id, AppDbContext db, CancellationToken ct) =>
+    internal static async Task<Listing> FindWithDetailsAsync(int id, AppDbContext db, CancellationToken ct) =>
         await WithDetails(db).FirstOrDefaultAsync(l => l.Id == id, ct)
             ?? throw new ListingNotFoundException(id);
 
@@ -153,7 +154,11 @@ public static class ListingMutations
             .Include(l => l.Skills).ThenInclude(s => s.Skill)
             .Include(l => l.Languages)
             .Include(l => l.Locations).ThenInclude(l => l.Location)
-            .Include(l => l.Documents);
+            .Include(l => l.Documents)
+            .Include(l => l.StatusHistory)
+            .Include(l => l.Interviews)
+            // One query per collection: joining six collections in one would multiply their rows together.
+            .AsSplitQuery();
 
     private static async Task ApplyAsync(
         Listing entity, ListingInput input, DateTime now, AppDbContext db, CancellationToken ct)

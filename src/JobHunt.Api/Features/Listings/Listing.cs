@@ -1,3 +1,4 @@
+using JobHunt.Api.Features.Applications;
 using JobHunt.Api.Features.Auth;
 using JobHunt.Api.Features.Companies;
 using JobHunt.Api.Features.Documents;
@@ -38,11 +39,18 @@ public class Listing
     // Null = details still to fill in. Set by the user (or ticked by the parse flow), not derived from which
     // fields happen to be set, so a hand-filled listing counts too. A time so the to-do list can sort by it.
     public DateTime? AnalyzedAt { get; set; }
+    // Current status, kept next to its history so the list can filter and sort on it with plain SQL.
+    // Only the application mutations change it, always together with a StatusChange row.
+    public ApplicationStatus Status { get; set; }
+    // OccurredAt of the latest status change; null while Saved.
+    public DateTime? StatusChangedAt { get; set; }
     public List<ListingSkill> Skills { get; set; } = [];
     public List<ListingLanguage> Languages { get; set; } = [];
     // Several, because ads often list more than one office. Remote-anywhere listings have none.
     public List<ListingLocation> Locations { get; set; } = [];
     public List<Document> Documents { get; set; } = [];
+    public List<StatusChange> StatusHistory { get; set; } = [];
+    public List<Interview> Interviews { get; set; } = [];
 }
 
 public class ListingSkill
@@ -104,6 +112,7 @@ public class ListingConfiguration : IEntityTypeConfiguration<Listing>
         builder.HasOne(l => l.Company).WithMany().OnDelete(DeleteBehavior.NoAction);
         builder.HasOne(l => l.JobRole).WithMany().OnDelete(DeleteBehavior.NoAction);
         builder.HasIndex(l => new { l.UserId, l.CreatedAt });
+        builder.HasIndex(l => new { l.UserId, l.Status });
         builder.HasIndex(l => new { l.UserId, l.Url }).IsUnique();
     }
 }
