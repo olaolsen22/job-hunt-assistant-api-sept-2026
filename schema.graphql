@@ -5,6 +5,7 @@ schema {
 
 type Query {
   listingParsePrompt: ListingParsePrompt! @cost(weight: "10")
+  listingQuickParsePrompt: ListingParsePrompt! @cost(weight: "10")
   companies(
     search: String
     "Returns the first _n_ elements from the list."

@@ -25,4 +25,21 @@ public class ListingParsePromptTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Contains(skill, instructions);
         Assert.DoesNotContain(skill, guestPrompt.GetProperty("instructions").GetString());
     }
+
+    [Fact]
+    public async Task ListingQuickParsePrompt_AsksForArrayWithOwnRoles()
+    {
+        var owner = await factory.GetOwnerClientAsync();
+        var jobRole = ListingTests.Unique("Platform Engineer");
+        await ListingTests.CreateAsync(owner, ListingTests.NewListing(ListingTests.Unique("Acme"), jobRoleName: jobRole));
+
+        var prompt = (await owner.GraphQLAsync("{ listingQuickParsePrompt { version instructions } }"))
+            .GetProperty("listingQuickParsePrompt");
+
+        var instructions = prompt.GetProperty("instructions").GetString()!;
+        Assert.Equal(1, prompt.GetProperty("version").GetInt32());
+        Assert.Contains("ONE JSON array", instructions);
+        Assert.Contains("\"ROLLING\"", instructions);
+        Assert.Contains(jobRole, instructions);
+    }
 }
