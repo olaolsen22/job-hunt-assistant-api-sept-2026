@@ -12,7 +12,7 @@ public record ListingParsePrompt(int Version, string Instructions);
 public static partial class ListingParsePromptQueries
 {
     // Bump whenever the prompt or output shape changes; the server-side parse cache keys on it.
-    public const int Version = 1;
+    public const int Version = 3;
 
     // Keeps the prompt short (and cheap on the API-key path) for users with many roles/skills.
     private const int MaxNames = 100;
@@ -40,7 +40,7 @@ public static partial class ListingParsePromptQueries
               "employmentType": {{Values<EmploymentType>()}} | null,
               "schedule": {{Values<Schedule>()}} | null,
               "workMode": {{Values<WorkMode>()}} | null,
-              "description": string,        // English summary of the role, max 60 words
+              "description": string,        // key points translated to English, format under Rules
               "postedOn": "YYYY-MM-DD" | null,
               "deadlineType": {{Values<DeadlineType>()}},
               "deadlineOn": "YYYY-MM-DD" | null,
@@ -52,17 +52,33 @@ public static partial class ListingParsePromptQueries
             Use null when the ad doesn't say. Don't guess.
 
             # Names
-            Reuse an existing name when it means the same thing; only invent a new one when none fits.
+            Reuse an existing name when it means the same thing, even if the ad words it differently.
+            Otherwise use the most common established name: the official product or certification name
+            ("PostgreSQL", not "Postgres"; "Kubernetes", not "k8s"), or the standard English job title for roles.
             Existing job roles: {{NameList(jobRoles)}}
             Existing skills: {{NameList(skills)}}
 
             # Rules
+            companyName: as the company calls itself, without legal suffixes (AS, ASA, AB, GmbH, Ltd, Inc).
             seniority: only when the title or text says it (Senior, Junior, Lead, "Trainee" = JUNIOR). Not from years alone.
             employmentType: Fast = PERMANENT, Vikariat = TEMPORARY, Engasjement/midlertidig = FIXED_TERM,
               Konsulent/Oppdrag/Frilans = CONTRACT, Trainee-program/Lærling/Internship = INTERNSHIP, Sesong = SEASONAL.
             schedule: Heltid/100 % = FULL_TIME, Deltid/under 100 % = PART_TIME.
             deadline: a date → DATE + deadlineOn (dates without a year: the next such date after today).
               "Snarest"/"ASAP"/"straks" → ASAP. "Løpende"/"rolling" → ROLLING. None given → UNSPECIFIED. deadlineOn only with DATE.
+
+            description: always in English; translate if the ad is in another language.
+              Plain text (no Markdown), max 1000 characters in total.
+              Grouped key points in this order; leave out a section the ad says nothing about:
+                Company:
+                - …
+                Role:
+                - …
+                Requirements:
+                - …
+                Offer:
+                - …
+              Short phrases, not full sentences. Blank line between sections.
 
             skills: concrete technologies, tools, methods, certifications and licences (e.g. "Truckførerbevis", "Førerkort klasse B").
               Skip personality traits ("team player", "selvgående", "strukturert").
