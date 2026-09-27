@@ -44,7 +44,7 @@ All endpoints require auth (fallback policy) unless marked anon.
 ## Entities
 - `AppUser : IdentityUser` (string Id) + Identity tables (incl. UserLogins/UserTokens for future SSO/2FA)
 - Roles: `Owner`, `Guest` (`Features/Auth/AppUser.cs`)
-- `AppDbContext : IdentityDbContext<AppUser>` in `Data/`; configs via `IEntityTypeConfiguration` + `ApplyConfigurationsFromAssembly`. Migrations applied at startup, then `AuthSeeder` runs.
+- `AppDbContext : IdentityDbContext<AppUser>` in `Data/`; configs via `IEntityTypeConfiguration` + `ApplyConfigurationsFromAssembly`. Migrations applied at startup, then `AuthSeeder`, then `LookupSeeder` (starter job roles, skills, Norwegian cities + country-only NO for every user; adds missing rows only).
 - `Listing` (`Features/Listings/Listing.cs`): Title, CompanyId, JobRoleId, Seniority?, EmploymentType?, Schedule?, WorkMode?, Location?, Description?, Url?, PostedOn (required, not future; UI pre-fills today) / DeadlineOn? (DateOnly), DeadlineType, PostingLanguage?, Url (required, http/https only), CreatedAt/UpdatedAt (UTC), FavoritedAt? (null = not favorited), ArchivedAt? (null = active), AnalyzedAt? (null = details still to fill in; user-set via `ListingInput.isAnalyzed`, not derived), Status (`ApplicationStatus`, default Saved; index (UserId, Status)), StatusChangedAt? (latest change's OccurredAt); Url unique per user
   - `ListingLocation` PK (ListingId, LocationId)
   - `ListingSkill` PK (ListingId, SkillId): Level 1–5, MinYears? (as stated in ad), IsRequired · `ListingLanguage` PK (ListingId, Language): Level CEFR?, IsRequired

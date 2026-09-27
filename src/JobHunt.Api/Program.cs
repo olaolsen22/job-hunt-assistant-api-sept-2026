@@ -99,6 +99,7 @@ using (var scope = app.Services.CreateScope())
 {
     scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.Migrate();
     await AuthSeeder.SeedAsync(scope.ServiceProvider);
+    await LookupSeeder.SeedAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>());
 }
 
 if (app.Environment.IsDevelopment())
