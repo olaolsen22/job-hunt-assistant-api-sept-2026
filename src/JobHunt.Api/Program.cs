@@ -2,9 +2,13 @@ using System.Threading.RateLimiting;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Auth;
 using JobHunt.Api.Features.Documents;
+using JobHunt.Api.Features.Parsing;
+using JobHunt.Api.Llm;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Options;
 using Scalar.AspNetCore;
 
 // Names the source-generated registration method: AddJobHuntTypes().
@@ -64,6 +68,19 @@ builder.Services.AddRateLimiter(options =>
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) }));
 });
+
+// ValidateOnStart: a missing API key stops the app at boot instead of failing the first parse.
+builder.Services.AddOptions<GeminiOptions>()
+    .BindConfiguration(GeminiOptions.Section)
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+// Keyed by provider, so Ollama (and later others) can register side by side and a user setting picks one.
+builder.Services.AddKeyedSingleton<IChatClient>(GeminiOptions.Provider, (sp, _) =>
+{
+    var gemini = sp.GetRequiredService<IOptions<GeminiOptions>>().Value;
+    return new Google.GenAI.Client(apiKey: gemini.ApiKey).AsIChatClient(gemini.Model);
+});
+builder.Services.AddScoped<ListingParser>();
 
 builder.AddGraphQL()
     .RegisterDbContextFactory<AppDbContext>()

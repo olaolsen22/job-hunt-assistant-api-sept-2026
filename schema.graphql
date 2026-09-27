@@ -85,6 +85,7 @@ type Query {
       requireOneSlicingArgument: false
     )
     @cost(weight: "10")
+  parseJob(id: UUID!): ParseJob @cost(weight: "10")
   skills(
     search: String
     "Returns the first _n_ elements from the list."
@@ -140,6 +141,8 @@ type Mutation {
   deleteListing(input: DeleteListingInput!): DeleteListingPayload!
     @cost(weight: "10")
   saveLocation(input: SaveLocationInput!): SaveLocationPayload!
+    @cost(weight: "10")
+  parseListing(input: ParseListingInput!): ParseListingPayload!
     @cost(weight: "10")
 }
 
@@ -277,6 +280,10 @@ type InvalidListingError implements Error {
 }
 
 type InvalidLocationError implements Error {
+  message: String!
+}
+
+type InvalidParseRequestError implements Error {
   message: String!
 }
 
@@ -429,6 +436,23 @@ type PageInfo {
   endCursor: String
 }
 
+type ParseJob {
+  id: UUID!
+  mode: ParseMode!
+  status: ParseJobStatus!
+  result: String
+  error: String
+  provider: String!
+  createdAt: DateTime!
+  startedAt: DateTime
+  completedAt: DateTime
+}
+
+type ParseListingPayload {
+  parseJob: ParseJob
+  errors: [ParseListingError!]
+}
+
 type RecordOutcomePayload {
   listing: Listing
   errors: [RecordOutcomeError!]
@@ -545,6 +569,8 @@ union DeleteDocumentError = DocumentNotFoundError | DocumentSentError
 union DeleteInterviewError = InterviewNotFoundError
 
 union DeleteListingError = ListingNotFoundError | ListingInUseError
+
+union ParseListingError = InvalidParseRequestError
 
 union RecordOutcomeError =
   | ListingNotFoundError
@@ -1000,6 +1026,11 @@ input NullableOfWorkModeOperationFilterInput {
   nin: [WorkMode] @cost(weight: "10")
 }
 
+input ParseListingInput {
+  text: String!
+  mode: ParseMode!
+}
+
 input RecordOutcomeInput {
   listingId: Int!
   outcome: ApplicationOutcome!
@@ -1156,6 +1187,19 @@ enum Language {
   NORWEGIAN
 }
 
+enum ParseJobStatus {
+  QUEUED
+  RUNNING
+  RETRYING
+  SUCCEEDED
+  FAILED
+}
+
+enum ParseMode {
+  FULL
+  QUICK
+}
+
 enum Schedule {
   FULL_TIME
   PART_TIME
@@ -1194,6 +1238,10 @@ scalar Long
 
 "The `Upload` scalar type represents a file upload."
 scalar Upload
+
+"The `UUID` scalar type represents a Universally Unique Identifier (UUID) as defined by RFC 9562."
+scalar UUID
+  @specifiedBy(url: "https://scalars.graphql.org/chillicream/uuid.html")
 
 "The purpose of the `cost` directive is to define a `weight` for GraphQL types, fields, and arguments. Static analysis can use these weights when calculating the overall cost of a query or response."
 directive @cost(

@@ -1,8 +1,11 @@
 using System.Net.Http.Json;
 using JobHunt.Api.Features.Auth;
+using JobHunt.Api.Llm;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace JobHunt.Api.Tests;
 
@@ -19,6 +22,8 @@ public class ApiFactory : WebApplicationFactory<Program>
     private HttpClient? _owner;
     private HttpClient? _guest;
 
+    public FakeChatClient Llm { get; } = new();
+
     public ApiFactory()
     {
         _keepAlive = new SqliteConnection(_connectionString);
@@ -30,6 +35,9 @@ public class ApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("ConnectionStrings:Default", _connectionString);
         builder.UseSetting("Seed:OwnerEmail", OwnerEmail);
         builder.UseSetting("Seed:OwnerPassword", OwnerPassword);
+        // CI has no user-secrets; the key is never used because the fake replaces the real client.
+        builder.UseSetting("Llm:Gemini:ApiKey", "test-key");
+        builder.ConfigureServices(services => services.AddKeyedSingleton<IChatClient>(GeminiOptions.Provider, Llm));
     }
 
     // Signed in once per factory and reused: the login rate limit (10/min) would trip if every test logged in.

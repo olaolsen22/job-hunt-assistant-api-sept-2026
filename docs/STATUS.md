@@ -10,7 +10,7 @@ Updated: 2026-09-27 · Last logged commit: 2df7e49
 | M2 | Listings (+ companies, job roles, skills, languages); then tracking: status history, notes, contacts | 🟡 listings, locations, documents, archive, application tracking (status, interviews) done; notes/contacts pending |
 | M3 | Structured CVs | ⬜ |
 | M4 | Dashboard stats | ⬜ |
-| M5 | LLM layer, usage logging, settings | ⬜ |
+| M5 | LLM layer, usage logging, settings | 🟡 Gemini client, usage logging, inline `parseListing` done; settings/Ollama pending |
 | M6 | Parse queue + SSE + cache | ⬜ |
 | M7 | Guest sandbox reset + AI cap | ⬜ |
 | M8 | Deploy, README | ⬜ |
@@ -30,6 +30,7 @@ All endpoints require auth (fallback policy) unless marked anon.
   - Paging: `listings` = offset (`skip`/`take`, default 20, max 100) → `{ items pageInfo { hasNextPage hasPreviousPage } totalCount }` for numbered pages; lookups = cursor (`first`/`after`, default 10) → `{ nodes pageInfo totalCount }`
   - Default order only when no client `order` (`ISortingContext.IsDefined` + `Handled(false)`); listings: closest deadline first (ASAP due `PostedOn + 14d`; upcoming → undated → expired), client sorts get `Id` tie-breaker
   - `listingParsePrompt { version instructions }` — copy-paste prompt for external AIs (UI appends `<posting>…</posting>`); enums from C#, user's role/skill names (max 100 each), today's date. `ListingParsePromptQueries.Version` = 3
+  - `parseListing(input:{text, mode: FULL|QUICK})` → `{parseJob}` (runs inline for now: returns SUCCEEDED/FAILED; later QUEUED + `onParseJobUpdated`). Same prompts as `listingParsePrompt`/`listingQuickParsePrompt`, `<posting>` wrapped, JSON mode, temp 0, input capped 12k chars, max 8192 output tokens. `result` = JSON text (object for FULL, array for QUICK) or FAILED "couldn't be read"; 429 → FAILED "free-tier limit". `parseJob(id: UUID)` (own jobs only). Error: `InvalidParseRequestError` (blank, >100k chars)
   - `Company|JobRole|Skill|Location.listingCount` — computed via DataLoader (one GROUP BY per page); `Company.applicationCount` (status ≠ SAVED)
   - `Listing.statusHistory(order)` / `Listing.interviews(order)` — nested sorting; `listings(where: {status: {eq: APPLIED}})` filters on status
   - Mutation (conventions, typed errors): `createListing(input:{listing})` → `{listing, possibleDuplicates}` (same company + same role or title; still saved), `updateListing(input:{id, listing})` (full replace incl. skills/languages; `isAnalyzed` keeps first AnalyzedAt, false clears), `deleteListing(input:{id})` → `id`, `updateCompany(input:{id, name, location: LocationInput})`, `saveLocation(input:{city?, countryCode, isTarget})` (find-or-create), `setListingFavorite(input:{id, isFavorite})` / `setListingArchived(input:{id, isArchived})` (keep first timestamp; UpdatedAt untouched). `deleteListing` blocked (`ListingInUseError`) once status ≠ SAVED. Url normalized (no utm_*/fbclid/gclid, fragment, trailing /), unique per user → `DuplicateListingError { existingListingId }` (archived included)
@@ -37,7 +38,7 @@ All endpoints require auth (fallback policy) unless marked anon.
   - Applications: `applyToListing(input:{listingId, cvDocumentId, coverLetterDocumentId?, appliedAt?, note?})` (SAVED → APPLIED; marks docs sent, renames with applied date), `recordOutcome(input:{listingId, outcome: OFFER|REJECTED|WITHDRAWN, occurredAt?, note?})`, `updateStatusChange(input:{id, occurredAt, note?})` (fix date/note; re-dates sent docs if APPLIED), `undoStatusChange(input:{listingId})` (drops latest; undoing APPLIED unsends docs; INTERVIEWING blocked while interviews exist) — all return `listing`
   - Transitions: SAVED→APPLIED→INTERVIEWING (first `addInterview`)→OFFER/REJECTED/WITHDRAWN; APPLIED→OFFER/REJECTED/WITHDRAWN; OFFER→WITHDRAWN. Dates not future, nothing before applied date. Notes Markdown, trimmed, blank = null, max 10k
   - Interviews: `addInterview(input:{listingId, scheduledAt, title?, notes?})` (APPLIED/INTERVIEWING only), `updateInterview(input:{id, ...})` (any status), `deleteInterview(input:{id})` → `id`. Title max 200
-  - Errors: `InvalidListingError`, `ListingNotFoundError`, `InvalidCompanyError`, `CompanyNotFoundError`, `InvalidLocationError`, `ListingInUseError`, `DuplicateListingError`, `InvalidDocumentError`, `DocumentNotFoundError`, `DocumentSentError`, `InvalidStatusTransitionError`, `InvalidApplicationError`, `StatusChangeNotFoundError`, `InvalidInterviewError`, `InterviewNotFoundError`
+  - Errors: `InvalidParseRequestError`, `InvalidListingError`, `ListingNotFoundError`, `InvalidCompanyError`, `CompanyNotFoundError`, `InvalidLocationError`, `ListingInUseError`, `DuplicateListingError`, `InvalidDocumentError`, `DocumentNotFoundError`, `DocumentSentError`, `InvalidStatusTransitionError`, `InvalidApplicationError`, `StatusChangeNotFoundError`, `InvalidInterviewError`, `InterviewNotFoundError`
   - `ListingInput` takes `companyName`/`jobRoleName`/skill `name`/`locations: [{city?, countryCode}]` → found case-insensitively or created. Defaults: skill `level: 3`, `isRequired: true`, `deadlineType: UNSPECIFIED`
 
 ## Entities
@@ -50,24 +51,27 @@ All endpoints require auth (fallback policy) unless marked anon.
 - `Document` (`Features/Documents`): UserId, ListingId (cascade), Kind (Cv/CoverLetter), FileName (`{Company}_{JobRole}_{Kind}_{yyyy-MM-dd}.pdf`, non-alphanumerics → `-`), OriginalFileName, SizeBytes, ContentHash (SHA-256 hex; index (UserId, ContentHash)), CreatedAt, SentAt?. Bytes in `DocumentContent` (PK DocumentId, BLOB, cascade) so they never load with listings
 - `StatusChange` (`Features/Applications`): UserId, ListingId (cascade), Status, OccurredAt (user-set, UTC), Note? (Markdown), CreatedAt. Ghosted is derived later, not a status
 - `Interview` (`Features/Applications`): UserId, ListingId (cascade), Title?, ScheduledAt (UTC; input `DateTime` with offset), Notes? (Markdown), CreatedAt/UpdatedAt; index (ListingId, ScheduledAt)
+- `ParseJob` (`Features/Parsing`): Guid Id, UserId, Mode, Status (Queued/Running/Retrying/Succeeded/Failed), RawText (not exposed), Result?, Error?, Provider, CreatedAt, StartedAt?, CompletedAt?
+- `LlmUsage` (`Llm/`): UserId, Provider, Model, Operation (`parse-listing`), InputTokens?/OutputTokens?, LatencyMs, Success, ErrorCode? (`invalid-json`/`rate-limited`/`provider-error`), CreatedAt; index (UserId, CreatedAt). One row per LLM call (`ListingParser`)
 - Lookups per user, unique (UserId, NormalizedName): `Company` (+LocationId? head office, SetNull), `JobRole` (core role, English), `Skill`.
 - `Location` (`Features/Locations`): City? (null = whole country), NormalizedCity ("" if none), CountryCode (ISO 3166, validated via `RegionInfo`), IsTarget; unique (UserId, CountryCode, NormalizedCity). `LocationLookup.FindOrCreateAsync` shared by listings/companies/saveLocation
 - Hot Chocolate has a global `Location` type: files referencing ours use `using Location = JobHunt.Api.Features.Locations.Location;` `Names.Normalize` = Trim + ToUpperInvariant
 - Enums stored as strings (`ConfigureConventions`). Global filter `UserId == CurrentUserId` (from `IHttpContextAccessor`); child rows filtered via Listing
 - FKs: AppUser → all user tables cascade; Listing → Company/JobRole NoAction; children cascade from Listing/Skill
-- Migrations: `AddSamples`, `RemoveSamples`, `AddIdentity`, `AddListings`, `AddLocations` (dropped free-text Location columns; no rows existed), `RequireUrlAddMinYears`, `RequirePostedOn` (backfills null PostedOn from CreatedAt), `AddListingFavorites`, `AddDocuments`, `AddListingArchive`, `AddListingAnalyzed`, `AddListingUrlIndex`, `AddApplicationTracking` (existing listings default `Saved`; no sent docs existed, no backfill)
+- Migrations: `AddSamples`, `RemoveSamples`, `AddIdentity`, `AddListings`, `AddLocations` (dropped free-text Location columns; no rows existed), `RequireUrlAddMinYears`, `RequirePostedOn` (backfills null PostedOn from CreatedAt), `AddListingFavorites`, `AddDocuments`, `AddListingArchive`, `AddListingAnalyzed`, `AddListingUrlIndex`, `AddApplicationTracking` (existing listings default `Saved`; no sent docs existed, no backfill), `AddParseJobsAndLlmUsage`
 
 ## Config keys
 - `ConnectionStrings:Default` — `Data Source=jobhunt.db` (dev), `/data/jobhunt.db` (Docker)
 - `Seed:OwnerEmail`, `Seed:OwnerPassword` — required; dev defaults in `appsettings.Development.json` (override with user-secrets), `.env` → compose (Docker). Password re-applied on startup.
 - `Seed:GuestEmail` — `guest@jobhunt.local`; guest has no password
+- `Llm:Gemini:ApiKey` — required (ValidateOnStart); user-secrets (dev), `GEMINI_API_KEY` in `.env` → compose (Docker). `Llm:Gemini:Model` — `gemini-3.1-flash-lite` in appsettings.json
 
 ## Stack
-- .NET SDK 10.0.112, xunit 2.9.3, Scalar.AspNetCore 2.17.10, OpenApi/Mvc.Testing 10.0.12, HotChocolate 16.6.7 (AspNetCore, Data.EntityFramework, Types.Analyzers, Types.OffsetPagination)
+- .NET SDK 10.0.112, Google.GenAI 1.22.0 (`AsIChatClient`, keyed `IChatClient` "gemini"), xunit 2.9.3, Scalar.AspNetCore 2.17.10, OpenApi/Mvc.Testing 10.0.12, HotChocolate 16.6.7 (AspNetCore, Data.EntityFramework, Types.Analyzers, Types.OffsetPagination)
 - GraphQL types source-generated: `[assembly: Module("JobHuntTypes")]` → `AddJobHuntTypes()`. DbContext via `AddDbContextFactory` + `RegisterDbContextFactory`
 - Versions pinned in `Directory.Packages.props`; shared props in `Directory.Build.props`
 - `dotnet-ef` as local tool (`dotnet-tools.json`)
-- Tests: `ApiFactory` = WebApplicationFactory + named in-memory SQLite per factory; `GetOwnerClientAsync`/`GetGuestClientAsync` (cached, login is rate-limited); `client.GraphQLAsync(query, variables)` fails on top-level errors
+- Tests: `ApiFactory` = WebApplicationFactory + named in-memory SQLite per factory; `factory.Llm` = `FakeChatClient` replacing the Gemini client; `GetOwnerClientAsync`/`GetGuestClientAsync` (cached, login is rate-limited); `client.GraphQLAsync(query, variables)` fails on top-level errors
 - Docker: `docker compose up` → :8080, non-root `app` user, volume `jobhunt-data:/data`
 
 ## Decisions log
@@ -86,9 +90,12 @@ All endpoints require auth (fallback policy) unless marked anon.
 - 2026-09-27 — Duplicates decided server-side: normalized Url unique; same company + role/title returned as possibleDuplicates.
 - 2026-09-27 — Tracking: stored Listing.Status + StatusChange timeline (user-set OccurredAt); interviews are rows, not statuses; undo instead of free status edits.
 - 2026-09-27 — Apply requires a CV; applying is the only way to mark documents sent; file names re-dated to applied date; ContentHash for CV consistency.
+- 2026-09-27 — Gemini via official Google.GenAI SDK (has `AsIChatClient`); `parseListing` runs inline first with the final async contract, so the UI can ship before the queue.
 - 2026-09-27 — Notes are Markdown strings (UI sanitizes on render), not HTML, so the server never sanitizes.
 
 ## Next up
+- Parse queue: `Channel` + `ParseWorker`, RPM limiter, 429 retries, `onParseJobUpdated` over SSE; worker needs user scoping for the prompt's role/skill names. Then the posting cache.
+- Guest AI cap before deploying (guests can call `parseListing` on the owner's free-tier quota now).
 - General listing notes and contacts.
 - Dashboard: counts by status, ghosted (no change/interview for N days), upcoming interviews.
 - `topSkills` (GROUP BY skill: listingCount, requiredCount, averageLevel) with dashboard stats; target-cities widget uses existing `locations`/`listings` filters.

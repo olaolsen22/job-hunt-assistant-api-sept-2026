@@ -4,6 +4,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <PackageVersion Include="Google.GenAI" Version="1.22.0" />
     <PackageVersion Include="HotChocolate.AspNetCore" Version="16.6.7" />
     <PackageVersion Include="HotChocolate.Data.EntityFramework" Version="16.6.7" />
     <PackageVersion Include="HotChocolate.Types.Analyzers" Version="16.6.7" />

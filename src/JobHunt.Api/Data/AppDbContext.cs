@@ -5,9 +5,11 @@ using JobHunt.Api.Features.Companies;
 using JobHunt.Api.Features.Documents;
 using JobHunt.Api.Features.JobRoles;
 using JobHunt.Api.Features.Listings;
+using JobHunt.Api.Features.Parsing;
 // Hot Chocolate also has a global Location type (a position in a query document).
 using Location = JobHunt.Api.Features.Locations.Location;
 using JobHunt.Api.Features.Skills;
+using JobHunt.Api.Llm;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
@@ -30,6 +32,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
     public DbSet<DocumentContent> DocumentContents => Set<DocumentContent>();
     public DbSet<StatusChange> StatusChanges => Set<StatusChange>();
     public DbSet<Interview> Interviews => Set<Interview>();
+    public DbSet<ParseJob> ParseJobs => Set<ParseJob>();
+    public DbSet<LlmUsage> LlmUsages => Set<LlmUsage>();
 
     // Null outside a request (startup, seeding), so the user filters below then match nothing.
     public string? CurrentUserId => httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -60,5 +64,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
         modelBuilder.Entity<DocumentContent>().HasQueryFilter(c => c.Document.UserId == CurrentUserId);
         modelBuilder.Entity<StatusChange>().HasQueryFilter(s => s.UserId == CurrentUserId);
         modelBuilder.Entity<Interview>().HasQueryFilter(i => i.UserId == CurrentUserId);
+        modelBuilder.Entity<ParseJob>().HasQueryFilter(j => j.UserId == CurrentUserId);
+        modelBuilder.Entity<LlmUsage>().HasQueryFilter(u => u.UserId == CurrentUserId);
     }
 }
