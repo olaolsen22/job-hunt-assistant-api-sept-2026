@@ -9,7 +9,7 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     private const string ListingFields = """
         id title seniority employmentType schedule workMode description url
-        postedOn deadlineType deadlineOn postingLanguage createdAt updatedAt
+        postedOn deadlineType deadlineOn postingLanguage createdAt updatedAt analyzedAt
         company { id name location { city countryCode } }
         jobRole { id name }
         skills { level minYears isRequired skill { id name } }
@@ -224,6 +224,25 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task UpdateListing_SetsAnalyzedAtOnceAndClearsIt()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var company = Unique("Acme");
+        var created = await CreateAsync(client, NewListing(company));
+        var id = created.GetProperty("id").GetInt32();
+        Assert.Equal(JsonValueKind.Null, created.GetProperty("analyzedAt").ValueKind);
+
+        var analyzed = await UpdateAsync(client, id, NewListing(company, isAnalyzed: true));
+        var analyzedAt = analyzed.GetProperty("analyzedAt").GetDateTime();
+
+        var again = await UpdateAsync(client, id, NewListing(company, title: "Senior Backend Developer", isAnalyzed: true));
+        Assert.Equal(analyzedAt, again.GetProperty("analyzedAt").GetDateTime());
+
+        var cleared = await UpdateAsync(client, id, NewListing(company));
+        Assert.Equal(JsonValueKind.Null, cleared.GetProperty("analyzedAt").ValueKind);
+    }
+
+    [Fact]
     public async Task DeleteListing_RemovesListing()
     {
         var client = await factory.GetOwnerClientAsync();
@@ -338,10 +357,11 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         string? deadlineOn = null,
         object[]? skills = null,
         object[]? languages = null,
-        object[]? locations = null) =>
+        object[]? locations = null,
+        bool isAnalyzed = false) =>
         new
         {
-            title, companyName, jobRoleName, deadlineType, deadlineOn, url, postedOn,
+            title, companyName, jobRoleName, deadlineType, deadlineOn, url, postedOn, isAnalyzed,
             skills = skills ?? [], languages = languages ?? [], locations = locations ?? [],
         };
 
@@ -349,6 +369,12 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
     {
         var data = await client.GraphQLAsync(CreateListing, new { listing });
         return data.GetProperty("createListing").GetProperty("listing");
+    }
+
+    private static async Task<JsonElement> UpdateAsync(HttpClient client, int id, object listing)
+    {
+        var data = await client.GraphQLAsync(UpdateListing, new { id, listing });
+        return data.GetProperty("updateListing").GetProperty("listing");
     }
 
     private static int Id(JsonElement listing, string relation) =>

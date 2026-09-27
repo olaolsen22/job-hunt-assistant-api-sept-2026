@@ -35,6 +35,9 @@ public class Listing
     public DateTime? FavoritedAt { get; set; }
     // Null = active. Archived listings drop out of the default list but keep their history and documents.
     public DateTime? ArchivedAt { get; set; }
+    // Null = details still to fill in. Set by the user (or ticked by the parse flow), not derived from which
+    // fields happen to be set, so a hand-filled listing counts too. A time so the to-do list can sort by it.
+    public DateTime? AnalyzedAt { get; set; }
     public List<ListingSkill> Skills { get; set; } = [];
     public List<ListingLanguage> Languages { get; set; } = [];
     // Several, because ads often list more than one office. Remote-anywhere listings have none.

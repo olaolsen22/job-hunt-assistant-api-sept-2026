@@ -268,6 +268,7 @@ type Listing {
   updatedAt: DateTime!
   favoritedAt: DateTime
   archivedAt: DateTime
+  analyzedAt: DateTime
   skills: [ListingSkill!]!
   languages: [ListingLanguage!]!
   locations: [ListingLocation!]!
@@ -613,6 +614,7 @@ input ListingFilterInput {
   updatedAt: DateTimeOperationFilterInput
   favoritedAt: DateTimeOperationFilterInput
   archivedAt: DateTimeOperationFilterInput
+  analyzedAt: DateTimeOperationFilterInput
   skills: ListFilterInputTypeOfListingSkillFilterInput
   languages: ListFilterInputTypeOfListingLanguageFilterInput
   locations: ListFilterInputTypeOfListingLocationFilterInput
@@ -636,6 +638,7 @@ input ListingInput {
   skills: [ListingSkillInput!]!
   languages: [ListingLanguageInput!]!
   locations: [LocationInput!]!
+  isAnalyzed: Boolean! = false
 }
 
 input ListingLanguageFilterInput {
@@ -703,6 +706,7 @@ input ListingSortInput {
   updatedAt: SortEnumType @cost(weight: "10")
   favoritedAt: SortEnumType @cost(weight: "10")
   archivedAt: SortEnumType @cost(weight: "10")
+  analyzedAt: SortEnumType @cost(weight: "10")
 }
 
 input LocalDateOperationFilterInput {

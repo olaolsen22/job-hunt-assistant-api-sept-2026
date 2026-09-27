@@ -25,7 +25,8 @@ public record ListingInput(
     Language? PostingLanguage,
     List<ListingSkillInput> Skills,
     List<ListingLanguageInput> Languages,
-    List<LocationInput> Locations);
+    List<LocationInput> Locations,
+    [property: DefaultValue(false)] bool IsAnalyzed);
 
 public record ListingSkillInput(
     string Name,
@@ -54,7 +55,7 @@ public static class ListingMutations
     {
         var now = time.GetUtcNow().UtcDateTime;
         var entity = new Listing { UserId = db.CurrentUserId!, CreatedAt = now, UpdatedAt = now };
-        await ApplyAsync(entity, listing, DateOnly.FromDateTime(now), db, ct);
+        await ApplyAsync(entity, listing, now, db, ct);
         db.Listings.Add(entity);
         await db.SaveChangesAsync(ct);
         return entity;
@@ -69,7 +70,7 @@ public static class ListingMutations
     {
         var entity = await FindWithDetailsAsync(id, db, ct);
         var now = time.GetUtcNow().UtcDateTime;
-        await ApplyAsync(entity, listing, DateOnly.FromDateTime(now), db, ct);
+        await ApplyAsync(entity, listing, now, db, ct);
         entity.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
         return entity;
@@ -131,9 +132,9 @@ public static class ListingMutations
             ?? throw new ListingNotFoundException(id);
 
     private static async Task ApplyAsync(
-        Listing entity, ListingInput input, DateOnly today, AppDbContext db, CancellationToken ct)
+        Listing entity, ListingInput input, DateTime now, AppDbContext db, CancellationToken ct)
     {
-        Validate(input, today);
+        Validate(input, DateOnly.FromDateTime(now));
 
         entity.Title = input.Title.Trim();
         entity.Seniority = input.Seniority;
@@ -146,6 +147,11 @@ public static class ListingMutations
         entity.DeadlineType = input.DeadlineType;
         entity.DeadlineOn = input.DeadlineOn;
         entity.PostingLanguage = input.PostingLanguage;
+        // ??= keeps the first time, so re-saving an analyzed listing doesn't reorder the list.
+        if (input.IsAnalyzed)
+            entity.AnalyzedAt ??= now;
+        else
+            entity.AnalyzedAt = null;
 
         var companyName = Names.Normalize(input.CompanyName);
         entity.Company = await db.Companies.FirstOrDefaultAsync(c => c.NormalizedName == companyName, ct)
