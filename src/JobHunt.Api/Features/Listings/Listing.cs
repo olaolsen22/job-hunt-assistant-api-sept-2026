@@ -33,6 +33,8 @@ public class Listing
     public DateTime UpdatedAt { get; set; }
     // Null = not favorited. A time rather than a bool so the shortlist can sort by when you favorited.
     public DateTime? FavoritedAt { get; set; }
+    // Null = active. Archived listings drop out of the default list but keep their history and documents.
+    public DateTime? ArchivedAt { get; set; }
     public List<ListingSkill> Skills { get; set; } = [];
     public List<ListingLanguage> Languages { get; set; } = [];
     // Several, because ads often list more than one office. Remote-anywhere listings have none.

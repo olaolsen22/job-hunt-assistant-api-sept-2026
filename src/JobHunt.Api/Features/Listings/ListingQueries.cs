@@ -14,7 +14,8 @@ public static class ListingQueries
     [UseProjection]
     [UseFiltering]
     [UseSorting]
-    public static IQueryable<Listing> GetListings(AppDbContext db, ISortingContext sorting, TimeProvider time)
+    public static IQueryable<Listing> GetListings(
+        AppDbContext db, ISortingContext sorting, TimeProvider time, bool archived = false)
     {
         // Hot Chocolate adds a client's `order` as ThenBy, so a fixed OrderBy here would always win.
         // Default order only without one; with one, Id breaks ties so equal values (e.g. no deadline)
@@ -25,7 +26,7 @@ public static class ListingQueries
             sortingApplied && query is IOrderedQueryable<Listing> ordered
                 ? ordered.ThenByDescending(l => l.Id)
                 : ByClosestDeadline(query, today));
-        return db.Listings;
+        return db.Listings.Where(l => (l.ArchivedAt != null) == archived);
     }
 
     // Upcoming deadlines (dated or ASAP) soonest first, then undated, then expired.

@@ -50,6 +50,7 @@ type Query {
   listings(
     skip: Int
     take: Int
+    archived: Boolean! = false
     where: ListingFilterInput @cost(weight: "10")
     order: [ListingSortInput!] @cost(weight: "10")
   ): ListingsCollectionSegment
@@ -120,6 +121,8 @@ type Mutation {
   updateListing(input: UpdateListingInput!): UpdateListingPayload!
     @cost(weight: "10")
   setListingFavorite(input: SetListingFavoriteInput!): SetListingFavoritePayload!
+    @cost(weight: "10")
+  setListingArchived(input: SetListingArchivedInput!): SetListingArchivedPayload!
     @cost(weight: "10")
   deleteListing(input: DeleteListingInput!): DeleteListingPayload!
     @cost(weight: "10")
@@ -264,9 +267,15 @@ type Listing {
   createdAt: DateTime!
   updatedAt: DateTime!
   favoritedAt: DateTime
+  archivedAt: DateTime
   skills: [ListingSkill!]!
   languages: [ListingLanguage!]!
   locations: [ListingLocation!]!
+  documents: [Document!]!
+}
+
+type ListingInUseError implements Error {
+  message: String!
 }
 
 type ListingLanguage {
@@ -357,6 +366,16 @@ type SaveLocationPayload {
   errors: [SaveLocationError!]
 }
 
+type SetDocumentSentPayload {
+  document: Document
+  errors: [SetDocumentSentError!]
+}
+
+type SetListingArchivedPayload {
+  listing: Listing
+  errors: [SetListingArchivedError!]
+}
+
 type SetListingFavoritePayload {
   listing: Listing
   errors: [SetListingFavoriteError!]
@@ -409,9 +428,15 @@ interface Error {
 
 union CreateListingError = InvalidListingError | InvalidLocationError
 
-union DeleteListingError = ListingNotFoundError
+union DeleteDocumentError = DocumentNotFoundError | DocumentSentError
+
+union DeleteListingError = ListingNotFoundError | ListingInUseError
 
 union SaveLocationError = InvalidLocationError
+
+union SetDocumentSentError = DocumentNotFoundError
+
+union SetListingArchivedError = ListingNotFoundError
 
 union SetListingFavoriteError = ListingNotFoundError
 
@@ -587,6 +612,7 @@ input ListingFilterInput {
   createdAt: DateTimeOperationFilterInput
   updatedAt: DateTimeOperationFilterInput
   favoritedAt: DateTimeOperationFilterInput
+  archivedAt: DateTimeOperationFilterInput
   skills: ListFilterInputTypeOfListingSkillFilterInput
   languages: ListFilterInputTypeOfListingLanguageFilterInput
   locations: ListFilterInputTypeOfListingLocationFilterInput
@@ -676,6 +702,7 @@ input ListingSortInput {
   createdAt: SortEnumType @cost(weight: "10")
   updatedAt: SortEnumType @cost(weight: "10")
   favoritedAt: SortEnumType @cost(weight: "10")
+  archivedAt: SortEnumType @cost(weight: "10")
 }
 
 input LocalDateOperationFilterInput {
@@ -775,6 +802,16 @@ input SaveLocationInput {
   city: String
   countryCode: String!
   isTarget: Boolean!
+}
+
+input SetDocumentSentInput {
+  id: Int!
+  isSent: Boolean!
+}
+
+input SetListingArchivedInput {
+  id: Int!
+  isArchived: Boolean!
 }
 
 input SetListingFavoriteInput {

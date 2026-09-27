@@ -42,6 +42,8 @@ public class InvalidListingException(string message) : Exception(message);
 
 public class ListingNotFoundException(int id) : Exception($"Listing {id} was not found.");
 
+public class ListingInUseException(int id) : Exception($"Listing {id} has sent documents and can't be deleted. Archive it instead.");
+
 [MutationType]
 public static class ListingMutations
 {
@@ -88,10 +90,28 @@ public static class ListingMutations
         return entity;
     }
 
+    // Not an edit of the listing itself, so UpdatedAt stays as is.
     [Error<ListingNotFoundException>]
+    public static async Task<Listing> SetListingArchivedAsync(
+        int id, bool isArchived, AppDbContext db, TimeProvider time, CancellationToken ct)
+    {
+        var entity = await FindWithDetailsAsync(id, db, ct);
+        if (isArchived)
+            entity.ArchivedAt ??= time.GetUtcNow().UtcDateTime;
+        else
+            entity.ArchivedAt = null;
+        await db.SaveChangesAsync(ct);
+        return entity;
+    }
+
+    [Error<ListingNotFoundException>]
+    [Error<ListingInUseException>]
     [UseMutationConvention(PayloadFieldName = "id")]
     public static async Task<int> DeleteListingAsync(int id, AppDbContext db, CancellationToken ct)
     {
+        // Sent documents mean you applied; deleting would lose that record.
+        if (await db.Documents.AnyAsync(d => d.ListingId == id && d.SentAt != null, ct))
+            throw new ListingInUseException(id);
         // The user filter applies here too, so another user's listing counts as not found.
         if (await db.Listings.Where(l => l.Id == id).ExecuteDeleteAsync(ct) == 0)
             throw new ListingNotFoundException(id);

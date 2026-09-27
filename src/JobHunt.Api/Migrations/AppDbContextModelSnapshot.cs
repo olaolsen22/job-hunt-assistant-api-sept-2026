@@ -201,6 +201,9 @@ namespace JobHunt.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime?>("ArchivedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("CompanyId")
                         .HasColumnType("INTEGER");
 

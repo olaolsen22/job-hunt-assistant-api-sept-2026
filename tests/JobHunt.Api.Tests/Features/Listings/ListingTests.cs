@@ -241,6 +241,36 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task ArchivedListings_AreHiddenUnlessAskedFor()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var id = (await CreateAsync(client, NewListing(Unique("Acme")))).GetProperty("id").GetInt32();
+        const string SetArchived = """
+            mutation ($id: Int!, $isArchived: Boolean!) {
+              setListingArchived(input: { id: $id, isArchived: $isArchived }) { listing { archivedAt } }
+            }
+            """;
+        const string Lists = """
+            query { active: listings(take: 100) { items { id } } archived: listings(archived: true, take: 100) { items { id } } }
+            """;
+
+        var archived = await client.GraphQLAsync(SetArchived, new { id, isArchived = true });
+        Assert.NotEqual(JsonValueKind.Null,
+            archived.GetProperty("setListingArchived").GetProperty("listing").GetProperty("archivedAt").ValueKind);
+        var lists = await client.GraphQLAsync(Lists);
+        Assert.DoesNotContain(Ids(lists, "active"), i => i == id);
+        Assert.Contains(Ids(lists, "archived"), i => i == id);
+
+        await client.GraphQLAsync(SetArchived, new { id, isArchived = false });
+        lists = await client.GraphQLAsync(Lists);
+        Assert.Contains(Ids(lists, "active"), i => i == id);
+        Assert.DoesNotContain(Ids(lists, "archived"), i => i == id);
+
+        static IEnumerable<int> Ids(JsonElement data, string list) =>
+            data.GetProperty(list).GetProperty("items").EnumerateArray().Select(n => n.GetProperty("id").GetInt32());
+    }
+
+    [Fact]
     public async Task Listings_AreInvisibleToOtherUsers()
     {
         var owner = await factory.GetOwnerClientAsync();
