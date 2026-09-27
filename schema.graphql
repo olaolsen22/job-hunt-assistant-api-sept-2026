@@ -107,6 +107,12 @@ type Query {
 }
 
 type Mutation {
+  uploadDocument(input: UploadDocumentInput!): UploadDocumentPayload!
+    @cost(weight: "10")
+  setDocumentSent(input: SetDocumentSentInput!): SetDocumentSentPayload!
+    @cost(weight: "10")
+  deleteDocument(input: DeleteDocumentInput!): DeleteDocumentPayload!
+    @cost(weight: "10")
   updateCompany(input: UpdateCompanyInput!): UpdateCompanyPayload!
     @cost(weight: "10")
   createListing(input: CreateListingInput!): CreateListingPayload!
@@ -166,12 +172,41 @@ type CreateListingPayload {
   errors: [CreateListingError!]
 }
 
+type DeleteDocumentPayload {
+  id: Int
+  errors: [DeleteDocumentError!]
+}
+
 type DeleteListingPayload {
   id: Int
   errors: [DeleteListingError!]
 }
 
+type Document {
+  id: Int!
+  listingId: Int!
+  listing: Listing!
+  kind: DocumentKind!
+  fileName: String!
+  originalFileName: String!
+  sizeBytes: Long!
+  createdAt: DateTime!
+  sentAt: DateTime
+}
+
+type DocumentNotFoundError implements Error {
+  message: String!
+}
+
+type DocumentSentError implements Error {
+  message: String!
+}
+
 type InvalidCompanyError implements Error {
+  message: String!
+}
+
+type InvalidDocumentError implements Error {
   message: String!
 }
 
@@ -363,6 +398,11 @@ type UpdateListingPayload {
   errors: [UpdateListingError!]
 }
 
+type UploadDocumentPayload {
+  document: Document
+  errors: [UploadDocumentError!]
+}
+
 interface Error {
   message: String!
 }
@@ -384,6 +424,8 @@ union UpdateListingError =
   | ListingNotFoundError
   | InvalidListingError
   | InvalidLocationError
+
+union UploadDocumentError = ListingNotFoundError | InvalidDocumentError
 
 input BooleanOperationFilterInput {
   eq: Boolean @cost(weight: "10")
@@ -432,8 +474,33 @@ input DeadlineTypeOperationFilterInput {
   nin: [DeadlineType!] @cost(weight: "10")
 }
 
+input DeleteDocumentInput {
+  id: Int!
+}
+
 input DeleteListingInput {
   id: Int!
+}
+
+input DocumentFilterInput {
+  and: [DocumentFilterInput!]
+  or: [DocumentFilterInput!]
+  id: IntOperationFilterInput
+  listingId: IntOperationFilterInput
+  listing: ListingFilterInput
+  kind: DocumentKindOperationFilterInput
+  fileName: StringOperationFilterInput
+  originalFileName: StringOperationFilterInput
+  sizeBytes: LongOperationFilterInput
+  createdAt: DateTimeOperationFilterInput
+  sentAt: DateTimeOperationFilterInput
+}
+
+input DocumentKindOperationFilterInput {
+  eq: DocumentKind @cost(weight: "10")
+  neq: DocumentKind @cost(weight: "10")
+  in: [DocumentKind!] @cost(weight: "10")
+  nin: [DocumentKind!] @cost(weight: "10")
 }
 
 input IntOperationFilterInput {
@@ -468,6 +535,13 @@ input LanguageOperationFilterInput {
   neq: Language @cost(weight: "10")
   in: [Language!] @cost(weight: "10")
   nin: [Language!] @cost(weight: "10")
+}
+
+input ListFilterInputTypeOfDocumentFilterInput {
+  all: DocumentFilterInput @cost(weight: "10")
+  none: DocumentFilterInput @cost(weight: "10")
+  some: DocumentFilterInput @cost(weight: "10")
+  any: Boolean @cost(weight: "10")
 }
 
 input ListFilterInputTypeOfListingLanguageFilterInput {
@@ -516,6 +590,7 @@ input ListingFilterInput {
   skills: ListFilterInputTypeOfListingSkillFilterInput
   languages: ListFilterInputTypeOfListingLanguageFilterInput
   locations: ListFilterInputTypeOfListingLocationFilterInput
+  documents: ListFilterInputTypeOfDocumentFilterInput
 }
 
 input ListingInput {
@@ -639,6 +714,21 @@ input LocationSortInput {
   isTarget: SortEnumType @cost(weight: "10")
 }
 
+input LongOperationFilterInput {
+  eq: Long @cost(weight: "10")
+  neq: Long @cost(weight: "10")
+  in: [Long] @cost(weight: "10")
+  nin: [Long] @cost(weight: "10")
+  gt: Long @cost(weight: "10")
+  ngt: Long @cost(weight: "10")
+  gte: Long @cost(weight: "10")
+  ngte: Long @cost(weight: "10")
+  lt: Long @cost(weight: "10")
+  nlt: Long @cost(weight: "10")
+  lte: Long @cost(weight: "10")
+  nlte: Long @cost(weight: "10")
+}
+
 input NullableOfCefrLevelOperationFilterInput {
   eq: CefrLevel @cost(weight: "10")
   neq: CefrLevel @cost(weight: "10")
@@ -730,6 +820,12 @@ input UpdateListingInput {
   listing: ListingInput!
 }
 
+input UploadDocumentInput {
+  listingId: Int!
+  kind: DocumentKind!
+  file: Upload!
+}
+
 enum CefrLevel {
   A1
   A2
@@ -744,6 +840,11 @@ enum DeadlineType {
   ASAP
   ROLLING
   UNSPECIFIED
+}
+
+enum DocumentKind {
+  CV
+  COVER_LETTER
 }
 
 enum EmploymentType {
@@ -791,6 +892,13 @@ scalar DateTime
 "The `LocalDate` scalar type represents a date without time or time zone information."
 scalar LocalDate
   @specifiedBy(url: "https://scalars.graphql.org/chillicream/local-date.html")
+
+"The `Long` scalar type represents a signed 64-bit integer."
+scalar Long
+  @specifiedBy(url: "https://scalars.graphql.org/chillicream/long.html")
+
+"The `Upload` scalar type represents a file upload."
+scalar Upload
 
 "The purpose of the `cost` directive is to define a `weight` for GraphQL types, fields, and arguments. Static analysis can use these weights when calculating the overall cost of a query or response."
 directive @cost(

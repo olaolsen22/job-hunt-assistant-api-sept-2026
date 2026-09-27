@@ -16,7 +16,7 @@ or Ollama, with a background queue + GraphQL subscriptions over SSE.
 
 ## Conventions
 - Vertical slices: `src/JobHunt.Api/Features/<Feature>/` holds endpoints or GraphQL types, records, and entities.
-- REST (auth, health only): `Map<Feature>Endpoints(this IEndpointRouteBuilder)` using `MapGroup("/api/<feature>")`. REST errors are `ProblemDetails`; validate with built-in minimal-API validation (DataAnnotations).
+- REST (auth, health, document download only): `Map<Feature>Endpoints(this IEndpointRouteBuilder)` using `MapGroup("/api/<feature>")`. REST errors are `ProblemDetails`; validate with built-in minimal-API validation (DataAnnotations).
 - GraphQL (all domain data): `<Feature>Queries.cs` / `<Feature>Mutations.cs` with `[QueryType]`/`[MutationType]`. Return `IQueryable` + paging/projection/filtering/sorting. Expected failures use mutation-convention typed errors. Never add the same operation to both REST and GraphQL.
 - Inject `TimeProvider`, never `DateTime.UtcNow`. Store UTC `DateTime` (SQLite can't ORDER BY `DateTimeOffset`).
 - Every user-owned entity has `UserId` and is covered by the global query filter.

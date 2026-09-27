@@ -112,6 +112,63 @@ namespace JobHunt.Api.Migrations
                     b.ToTable("Companies");
                 });
 
+            modelBuilder.Entity("JobHunt.Api.Features.Documents.Document", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ListingId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("OriginalFileName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("SentAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ListingId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Documents");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.Documents.DocumentContent", b =>
+                {
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<byte[]>("Bytes")
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.HasKey("DocumentId");
+
+                    b.ToTable("DocumentContents");
+                });
+
             modelBuilder.Entity("JobHunt.Api.Features.JobRoles.JobRole", b =>
                 {
                     b.Property<int>("Id")
@@ -470,6 +527,34 @@ namespace JobHunt.Api.Migrations
                     b.Navigation("Location");
                 });
 
+            modelBuilder.Entity("JobHunt.Api.Features.Documents.Document", b =>
+                {
+                    b.HasOne("JobHunt.Api.Features.Listings.Listing", "Listing")
+                        .WithMany("Documents")
+                        .HasForeignKey("ListingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("JobHunt.Api.Features.Auth.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Listing");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.Documents.DocumentContent", b =>
+                {
+                    b.HasOne("JobHunt.Api.Features.Documents.Document", "Document")
+                        .WithOne()
+                        .HasForeignKey("JobHunt.Api.Features.Documents.DocumentContent", "DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Document");
+                });
+
             modelBuilder.Entity("JobHunt.Api.Features.JobRoles.JobRole", b =>
                 {
                     b.HasOne("JobHunt.Api.Features.Auth.AppUser", null)
@@ -624,6 +709,8 @@ namespace JobHunt.Api.Migrations
 
             modelBuilder.Entity("JobHunt.Api.Features.Listings.Listing", b =>
                 {
+                    b.Navigation("Documents");
+
                     b.Navigation("Languages");
 
                     b.Navigation("Locations");

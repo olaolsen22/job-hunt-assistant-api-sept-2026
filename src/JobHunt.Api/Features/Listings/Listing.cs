@@ -1,5 +1,6 @@
 using JobHunt.Api.Features.Auth;
 using JobHunt.Api.Features.Companies;
+using JobHunt.Api.Features.Documents;
 using JobHunt.Api.Features.JobRoles;
 // Hot Chocolate also has a global Location type (a position in a query document).
 using Location = JobHunt.Api.Features.Locations.Location;
@@ -36,6 +37,7 @@ public class Listing
     public List<ListingLanguage> Languages { get; set; } = [];
     // Several, because ads often list more than one office. Remote-anywhere listings have none.
     public List<ListingLocation> Locations { get; set; } = [];
+    public List<Document> Documents { get; set; } = [];
 }
 
 public class ListingSkill

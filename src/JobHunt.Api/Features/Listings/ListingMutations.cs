@@ -106,6 +106,7 @@ public static class ListingMutations
             .Include(l => l.Skills).ThenInclude(s => s.Skill)
             .Include(l => l.Languages)
             .Include(l => l.Locations).ThenInclude(l => l.Location)
+            .Include(l => l.Documents)
             .FirstOrDefaultAsync(l => l.Id == id, ct)
             ?? throw new ListingNotFoundException(id);
 

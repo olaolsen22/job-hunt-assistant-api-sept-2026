@@ -1,6 +1,7 @@
 using System.Threading.RateLimiting;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Auth;
+using JobHunt.Api.Features.Documents;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -67,6 +68,7 @@ builder.Services.AddRateLimiter(options =>
 builder.AddGraphQL()
     .RegisterDbContextFactory<AppDbContext>()
     .AddJobHuntTypes()
+    .AddType<UploadType>()
     .AddMutationConventions(applyToAllMutations: true)
     .AddProjections()
     .AddFiltering()
@@ -97,6 +99,7 @@ app.UseAuthorization();
 
 app.MapHealthChecks("/api/health").AllowAnonymous();
 app.MapAuthEndpoints();
+app.MapDocumentEndpoints();
 app.MapGraphQL();
 
 app.Run();
