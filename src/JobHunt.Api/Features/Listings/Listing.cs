@@ -104,6 +104,7 @@ public class ListingConfiguration : IEntityTypeConfiguration<Listing>
         builder.HasOne(l => l.Company).WithMany().OnDelete(DeleteBehavior.NoAction);
         builder.HasOne(l => l.JobRole).WithMany().OnDelete(DeleteBehavior.NoAction);
         builder.HasIndex(l => new { l.UserId, l.CreatedAt });
+        builder.HasIndex(l => new { l.UserId, l.Url }).IsUnique();
     }
 }
 

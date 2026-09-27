@@ -172,6 +172,7 @@ type CompanyNotFoundError implements Error {
 
 type CreateListingPayload {
   listing: Listing
+  possibleDuplicates: [Listing!]
   errors: [CreateListingError!]
 }
 
@@ -203,6 +204,11 @@ type DocumentNotFoundError implements Error {
 
 type DocumentSentError implements Error {
   message: String!
+}
+
+type DuplicateListingError implements Error {
+  message: String!
+  existingListingId: Int!
 }
 
 type InvalidCompanyError implements Error {
@@ -427,7 +433,10 @@ interface Error {
   message: String!
 }
 
-union CreateListingError = InvalidListingError | InvalidLocationError
+union CreateListingError =
+  | InvalidListingError
+  | InvalidLocationError
+  | DuplicateListingError
 
 union DeleteDocumentError = DocumentNotFoundError | DocumentSentError
 
@@ -450,6 +459,7 @@ union UpdateListingError =
   | ListingNotFoundError
   | InvalidListingError
   | InvalidLocationError
+  | DuplicateListingError
 
 union UploadDocumentError = ListingNotFoundError | InvalidDocumentError
 

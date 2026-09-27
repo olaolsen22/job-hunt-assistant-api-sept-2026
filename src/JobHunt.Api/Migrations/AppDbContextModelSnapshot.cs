@@ -270,6 +270,9 @@ namespace JobHunt.Api.Migrations
 
                     b.HasIndex("UserId", "CreatedAt");
 
+                    b.HasIndex("UserId", "Url")
+                        .IsUnique();
+
                     b.ToTable("Listings");
                 });
 

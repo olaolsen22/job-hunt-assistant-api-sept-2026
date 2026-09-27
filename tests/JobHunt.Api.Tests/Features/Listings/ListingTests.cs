@@ -26,6 +26,16 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         }
         """;
 
+    private const string CreateListingWithDuplicates = """
+        mutation ($listing: ListingInput!) {
+          createListing(input: { listing: $listing }) {
+            listing { id }
+            possibleDuplicates { id }
+            errors { __typename ... on DuplicateListingError { existingListingId } }
+          }
+        }
+        """;
+
     private const string UpdateListing = $$"""
         mutation ($id: Int!, $listing: ListingInput!) {
           updateListing(input: { id: $id, listing: $listing }) {
@@ -63,7 +73,7 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
                 schedule = "FULL_TIME",
                 workMode = "HYBRID",
                 description = "Du blir del av et team som…",
-                url = "https://www.finn.no/job/123",
+                url = UniqueUrl(),
                 postedOn = "2026-09-20",
                 deadlineType = "DATE",
                 deadlineOn = "2026-10-15",
@@ -194,6 +204,75 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
         var error = Assert.Single(data.GetProperty("createListing").GetProperty("errors").EnumerateArray());
         Assert.Equal("InvalidListingError", error.GetProperty("__typename").GetString());
+    }
+
+    [Fact]
+    public async Task CreateListing_StoresUrlWithoutTrackingParamsFragmentOrTrailingSlash()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var id = Guid.NewGuid().ToString("N");
+
+        var listing = await CreateAsync(client, NewListing(Unique("Acme"),
+            url: $"https://WWW.Finn.no/job/ad/?finnkode={id}&utm_source=mail&fbclid=x#apply"));
+
+        Assert.Equal($"https://www.finn.no/job/ad?finnkode={id}", listing.GetProperty("url").GetString());
+    }
+
+    [Fact]
+    public async Task CreateListing_WithSameUrlAsArchivedListing_ReturnsDuplicateListingError()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var url = UniqueUrl();
+        var existing = await CreateAsync(client, NewListing(Unique("Acme"), url: url));
+        var existingId = existing.GetProperty("id").GetInt32();
+        await client.GraphQLAsync(
+            "mutation ($id: Int!) { setListingArchived(input: { id: $id, isArchived: true }) { listing { id } } }",
+            new { id = existingId });
+
+        var data = await client.GraphQLAsync(CreateListingWithDuplicates,
+            new { listing = NewListing(Unique("Other"), url: url + "/?utm_campaign=x") });
+
+        var payload = data.GetProperty("createListing");
+        Assert.Equal(JsonValueKind.Null, payload.GetProperty("listing").ValueKind);
+        var error = Assert.Single(payload.GetProperty("errors").EnumerateArray());
+        Assert.Equal("DuplicateListingError", error.GetProperty("__typename").GetString());
+        Assert.Equal(existingId, error.GetProperty("existingListingId").GetInt32());
+    }
+
+    [Fact]
+    public async Task UpdateListing_ToAnotherListingsUrl_ReturnsDuplicateListingError()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var company = Unique("Acme");
+        var first = await CreateAsync(client, NewListing(company));
+        var second = await CreateAsync(client, NewListing(company));
+        var url = first.GetProperty("url").GetString()!;
+
+        // Re-saving a listing with its own URL is not a duplicate.
+        await UpdateAsync(client, first.GetProperty("id").GetInt32(), NewListing(company, url: url));
+        var data = await client.GraphQLAsync(UpdateListing,
+            new { id = second.GetProperty("id").GetInt32(), listing = NewListing(company, url: url) });
+
+        var error = Assert.Single(data.GetProperty("updateListing").GetProperty("errors").EnumerateArray());
+        Assert.Equal("DuplicateListingError", error.GetProperty("__typename").GetString());
+    }
+
+    [Fact]
+    public async Task CreateListing_ReturnsSameCompanyListingsWithSameRoleOrTitleAsPossibleDuplicates()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var company = Unique("Acme");
+        var sameRole = await CreateAsync(client, NewListing(company, title: "Utvikler", jobRoleName: "Frontend Developer"));
+        var sameTitle = await CreateAsync(client, NewListing(company, title: "frontendutvikler", jobRoleName: "Designer"));
+        await CreateAsync(client, NewListing(company, title: "Lagermedarbeider", jobRoleName: "Warehouse Worker"));
+        await CreateAsync(client, NewListing(Unique("Other"), title: "Frontendutvikler", jobRoleName: "Frontend Developer"));
+
+        var data = await client.GraphQLAsync(CreateListingWithDuplicates,
+            new { listing = NewListing(company, title: "Frontendutvikler ", jobRoleName: "Frontend Developer") });
+
+        var ids = data.GetProperty("createListing").GetProperty("possibleDuplicates").EnumerateArray()
+            .Select(l => l.GetProperty("id").GetInt32()).Order();
+        Assert.Equal([sameRole.GetProperty("id").GetInt32(), sameTitle.GetProperty("id").GetInt32()], ids);
     }
 
     [Fact]
@@ -347,12 +426,15 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
     internal static string Unique(string name) => $"{name} {Guid.NewGuid():N}";
 
+    // URLs are unique per user and tests share one DB.
+    internal static string UniqueUrl() => $"https://www.finn.no/job/{Guid.NewGuid():N}";
+
     internal static object NewListing(
         string companyName,
         string title = "Backend Developer",
         string jobRoleName = "Backend Developer",
         string deadlineType = "UNSPECIFIED",
-        string url = "https://www.finn.no/job/123",
+        string? url = null,
         string postedOn = "2026-09-20",
         string? deadlineOn = null,
         object[]? skills = null,
@@ -361,7 +443,7 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         bool isAnalyzed = false) =>
         new
         {
-            title, companyName, jobRoleName, deadlineType, deadlineOn, url, postedOn, isAnalyzed,
+            title, companyName, jobRoleName, deadlineType, deadlineOn, url = url ?? UniqueUrl(), postedOn, isAnalyzed,
             skills = skills ?? [], languages = languages ?? [], locations = locations ?? [],
         };
 
