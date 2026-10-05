@@ -71,6 +71,29 @@ public class ParseTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task ParseListing_Timeout_FailsJob_AndLogsUsage()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        factory.Llm.Respond = () => throw new TaskCanceledException("timed out", new TimeoutException());
+
+        var job = (await client.GraphQLAsync(ParseListing, new { text = "An ad", mode = "FULL" }))
+            .GetProperty("parseListing").GetProperty("parseJob");
+
+        Assert.Equal("FAILED", job.GetProperty("status").GetString());
+        Assert.Contains("took too long", job.GetProperty("error").GetString());
+
+        const string query = "query ($id: UUID!) { parseJob(id: $id) { status } }";
+        var saved = (await client.GraphQLAsync(query, new { id = job.GetProperty("id").GetString() })).GetProperty("parseJob");
+        Assert.Equal("FAILED", saved.GetProperty("status").GetString());
+
+        using var scope = factory.Services.CreateScope();
+        var usage = await scope.ServiceProvider.GetRequiredService<AppDbContext>().LlmUsages
+            .IgnoreQueryFilters().OrderByDescending(u => u.Id).FirstAsync();
+        Assert.False(usage.Success);
+        Assert.Equal("timeout", usage.ErrorCode);
+    }
+
+    [Fact]
     public async Task ParseListing_BlankText_ReturnsInvalidParseRequestError()
     {
         var client = await factory.GetOwnerClientAsync();

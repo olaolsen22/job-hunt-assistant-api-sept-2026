@@ -85,6 +85,15 @@ public class ListingParser(
                 : "The AI provider couldn't be reached. Try again later.";
             usage.ErrorCode = rateLimited ? "rate-limited" : "provider-error";
         }
+        // HttpClient reports its own timeout as TaskCanceledException; with our token still live it can't be the
+        // client hanging up, so it's the provider being too slow.
+        catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "LLM call for parse job {ParseJobId} timed out", job.Id);
+            job.Status = ParseJobStatus.Failed;
+            job.Error = "The AI took too long to answer. Try again.";
+            usage.ErrorCode = "timeout";
+        }
         usage.LatencyMs = (long)time.GetElapsedTime(started).TotalMilliseconds;
         job.CompletedAt = time.GetUtcNow().UtcDateTime;
     }

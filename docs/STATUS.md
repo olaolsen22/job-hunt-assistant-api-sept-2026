@@ -54,7 +54,7 @@ All endpoints require auth (fallback policy) unless marked anon.
 - `StatusChange` (`Features/Applications`): UserId, ListingId (cascade), Status, OccurredAt (user-set, UTC), Note? (Markdown), CreatedAt. Ghosted is derived later, not a status
 - `Interview` (`Features/Applications`): UserId, ListingId (cascade), Title?, ScheduledAt (UTC; input `DateTime` with offset), Notes? (Markdown), CreatedAt/UpdatedAt; index (ListingId, ScheduledAt)
 - `ParseJob` (`Features/Parsing`): Guid Id, UserId, Mode, Status (Queued/Running/Retrying/Succeeded/Failed), RawText (not exposed), Result?, Error?, Provider, CreatedAt, StartedAt?, CompletedAt?
-- `LlmUsage` (`Llm/`): UserId, Provider, Model, Operation (`parse-listing`), InputTokens?/OutputTokens?, LatencyMs, Success, ErrorCode? (`invalid-json`/`rate-limited`/`provider-error`), CreatedAt; index (UserId, CreatedAt). One row per LLM call (`ListingParser`)
+- `LlmUsage` (`Llm/`): UserId, Provider, Model, Operation (`parse-listing`), InputTokens?/OutputTokens?, LatencyMs, Success, ErrorCode? (`invalid-json`/`rate-limited`/`provider-error`/`timeout`), CreatedAt; index (UserId, CreatedAt). One row per LLM call (`ListingParser`)
 - Lookups per user, unique (UserId, NormalizedName): `Company` (+LocationId? head office, SetNull), `JobRole` (core role, English), `Skill`.
 - `Location` (`Features/Locations`): City? (null = whole country), NormalizedCity ("" if none), CountryCode (ISO 3166, validated via `RegionInfo`), IsTarget; unique (UserId, CountryCode, NormalizedCity). `LocationLookup.FindOrCreateAsync` shared by listings/companies/saveLocation
 - Hot Chocolate has a global `Location` type: files referencing ours use `using Location = JobHunt.Api.Features.Locations.Location;` `Names.Normalize` = Trim + ToUpperInvariant
