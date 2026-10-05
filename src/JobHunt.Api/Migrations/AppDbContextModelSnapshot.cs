@@ -309,6 +309,10 @@ namespace JobHunt.Api.Migrations
                     b.Property<int>("JobRoleId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("NormalizedTitle")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<DateOnly>("PostedOn")
                         .HasColumnType("TEXT");
 

@@ -31,7 +31,8 @@ public static class ListingQueries
     [UseFiltering]
     [UseSorting]
     public static IQueryable<Listing> GetListings(
-        AppDbContext db, ISortingContext sorting, TimeProvider time, bool archived = false, int? dueWithinDays = null)
+        AppDbContext db, ISortingContext sorting, TimeProvider time, bool archived = false, int? dueWithinDays = null,
+        string? search = null)
     {
         // Hot Chocolate adds a client's `order` as ThenBy, so a fixed OrderBy here would always win.
         // Default order only without one; with one, Id breaks ties so equal values (e.g. no deadline)
@@ -50,6 +51,14 @@ public static class ListingQueries
                 throw new GraphQLException("dueWithinDays must be 0 or more.");
             var last = today.AddDays(days);
             query = query.Select(WithDue).Where(x => x.Due >= today && x.Due <= last).Select(x => x.Listing);
+        }
+        // Normalized columns, not the built-in `contains` filter: that one is case-sensitive on SQLite.
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = Names.Normalize(search);
+            query = query.Where(l => l.NormalizedTitle.Contains(term)
+                || l.Company.NormalizedName.Contains(term)
+                || l.JobRole.NormalizedName.Contains(term));
         }
         return query;
     }
@@ -76,6 +85,7 @@ public static partial class ListingNode
     static partial void Configure(IObjectTypeDescriptor<Listing> descriptor)
     {
         descriptor.Ignore(l => l.UserId);
+        descriptor.Ignore(l => l.NormalizedTitle);
         // Ordered by the client: the timeline by occurredAt, interviews by scheduledAt.
         descriptor.Field(l => l.StatusHistory).UseSorting();
         descriptor.Field(l => l.Interviews).UseSorting();

@@ -16,6 +16,8 @@ public class Listing
     public int Id { get; set; }
     public string UserId { get; set; } = null!;
     public string Title { get; set; } = null!;
+    // Names.Normalize(Title), for search: SQLite's LIKE/lower()/NOCASE only fold ASCII, so "økonomi" wouldn't find "Økonomi".
+    public string NormalizedTitle { get; set; } = null!;
     public int CompanyId { get; set; }
     public Company Company { get; set; } = null!;
     public int JobRoleId { get; set; }

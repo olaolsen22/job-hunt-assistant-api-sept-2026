@@ -53,6 +53,7 @@ type Query {
     take: Int
     archived: Boolean! = false
     dueWithinDays: Int
+    search: String
     where: ListingFilterInput @cost(weight: "10")
     order: [ListingSortInput!] @cost(weight: "10")
   ): ListingsCollectionSegment

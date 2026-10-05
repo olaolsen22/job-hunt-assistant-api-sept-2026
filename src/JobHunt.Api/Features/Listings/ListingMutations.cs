@@ -180,6 +180,7 @@ public static class ListingMutations
         Validate(input, DateOnly.FromDateTime(now));
 
         entity.Title = input.Title.Trim();
+        entity.NormalizedTitle = Names.Normalize(entity.Title);
         entity.Seniority = input.Seniority;
         entity.EmploymentType = input.EmploymentType;
         entity.Schedule = input.Schedule;
