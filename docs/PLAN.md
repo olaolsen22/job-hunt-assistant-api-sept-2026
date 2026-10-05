@@ -110,9 +110,10 @@ Seeded users are `EmailConfirmed = true`; no email sending until registration op
 
 All user-owned tables have `UserId`. A global EF query filter scopes every query to the current
 user, so one user can never read another's data even if an endpoint forgets to filter.
+`docs/STATUS.md` lists every column; this is the shape and the reasons.
 
 ```
-AppUser (Identity) ── UserSettings (PreferredProvider, PreferredModel)
+AppUser (Identity) ── UserSettings (PreferredProvider, PreferredModel)      ← planned (M5)
 
 Company (Name, NormalizedName, LocationId?)    ┐ per user, found-or-created by name,
 JobRole (Name, NormalizedName)  ← core role, EN │ unique (UserId, NormalizedName)
@@ -120,47 +121,56 @@ Skill   (Name, NormalizedName)  ← shared w/ CVs ┘
 Location (City?, NormalizedCity ("" if none), CountryCode ISO 3166, IsTarget)  unique (UserId, CountryCode, NormalizedCity)
   City null = whole country ("Norway, anywhere" for remote). IsTarget → dashboard "jobs in your target cities".
 
-Listing                                          ← built
-  Id, UserId, Title (as in the ad), CompanyId, JobRoleId, Seniority?, EmploymentType?,
+Listing = one application attempt                ← built
+  Id, UserId, Title (as in the ad), NormalizedTitle, CompanyId, JobRoleId, Seniority?, EmploymentType?,
   Schedule? (FullTime/PartTime), WorkMode?, Description?, Url (required), PostedOn (required, DateOnly),
-  DeadlineType (Date/Asap/Rolling/Unspecified), DeadlineOn?, PostingLanguage?, CreatedAt, UpdatedAt
+  DeadlineType (Date/Asap/Unspecified), DeadlineOn?, PostingLanguage?,
+  FavoritedAt?, ArchivedAt?, AnalyzedAt?, Status, StatusChangedAt?, CreatedAt, UpdatedAt
   ├─ ListingSkill     (SkillId, Level 1–5, MinYears?, IsRequired)   ← no 0: a CV without the skill has no row
   ├─ ListingLanguage  (Language, Level A1–C2?, IsRequired)
-  └─ ListingLocation  (LocationId)   ← several offices; remote-anywhere has none
-  Enums are stored as strings.
+  ├─ ListingLocation  (LocationId)   ← several offices; remote-anywhere has none
+  ├─ StatusChange     (Status, OccurredAt (user-set, UTC), Note? Markdown)   ← the timeline
+  ├─ Interview        (Title?, ScheduledAt UTC, Notes? Markdown)
+  ├─ Document         (Kind Cv/CoverLetter, FileName, ContentHash, SentAt?) + DocumentContent (BLOB)
+  └─ later: Note, Contact (M2)
+  Enums are stored as strings. Due date (DATE → DeadlineOn, ASAP → PostedOn+14, UNSPECIFIED → PostedOn+30)
+  is computed in the query, never stored.
 
-Application tracking                             ← built
-  Listing.Status (Saved/Applied/Interviewing/Offer/Rejected/Withdrawn) + StatusChangedAt (for list filter/sort)
-  ├─ StatusChange (Status, OccurredAt (user-settable, UTC), Note? Markdown)   ← the timeline
-  ├─ Interview    (Title?, ScheduledAt UTC, Notes? Markdown)
-  ├─ Document.SentAt + ContentHash (SHA-256: same CV across applications)
-  │    Saved → Applied (needs a CV) → Interviewing (first interview) → Offer/Rejected/Withdrawn
-  ├─ later: Note, Contact
-  Counts (per company/role/skill/location) are computed with DataLoaders, never stored.
-Favorites: Listing.FavoritedAt DateTime? ← built. Later if wanted: FavoriteRank? (drag-to-rank); named lists → ListingList + items table.
+Status lives on the listing
+  Saved → Applied (needs a CV document; marks documents sent) → Interviewing (first interview)
+        → Offer → Accepted / Rejected / Withdrawn;  Applied/Interviewing → Rejected / Withdrawn
+  Final ("closed") = Rejected, Withdrawn, Accepted. Archive is a separate flag and doesn't close a listing.
+  Changes go through apply/recordOutcome/undo, never a free status edit, so the timeline stays true.
 
-Cv
+Reposted ads
+  A reposted ad is a new listing (new attempt). Url is unique per user among open listings only
+  (partial index); earlier closed attempts are found by Url, no FK.
+
+Documents belong to one listing: the PDF sent with that attempt. Bytes live in a separate table
+so listing queries never load them. Counts (per company/role/skill/location) are computed with
+DataLoaders, never stored.
+
+Cv                                               ← planned (M3), relational
   Id, UserId, Name, IsDefault, FullName, Headline, Summary, Email, Phone, Location, Links[]
-  ├─ Experiences[]    (Company, Title, Start, End?, Description, Highlights[])
-  ├─ Educations[]     (School, Degree, Field, Start, End?)
-  ├─ Skills[]         (Name, Level?, Category?)
-  ├─ Languages[]      (Language, Proficiency)
-  └─ Certifications[] (Name, Issuer, Date?)
-  → Relational tables with FKs. Skills and Languages must be comparable with JobPosting
-    skills/language requirements for the CV ↔ job matching on the roadmap. db-architect designs this
-    in M3 (e.g. a shared Skill lookup table). JSON columns only for leaf data like Highlights[] and Links[].
+  ├─ CvExperience    (Company, Title, Start, End?, Description, Highlights[])
+  ├─ CvEducation     (School, Degree, Field, Start, End?)
+  ├─ CvSkill         (SkillId → shared Skill lookup, Level 1–5)
+  ├─ CvLanguage      (Language, Level A1–C2)
+  └─ CvCertification (Name, Issuer, Date?)
+  Skills and languages use the same lookup and scales as listings so CV ↔ job matching is a join.
+  JSON only for leaf lists that are never filtered (Highlights[], Links[]). db-architect designs this in M3.
 
-JobPosting                         ← cache + parsed result, deduplicated
-  Id, ContentHash (unique with PromptVersion), PromptVersion, NormalizedText,
-  ParsedJson, Title, Company, PostingLanguage, Provider, Model, CreatedAt
+ParseJob                           ← built (runs inline until the queue, M6)
+  Id (Guid), UserId, Mode (Full/Quick), RawText, Status (Queued/Running/Retrying/Succeeded/Failed),
+  Result? (JSON text), Error?, Provider, CreatedAt, StartedAt?, CompletedAt?
 
-ParseJob                           ← queue item, one per user request
-  Id, UserId, JobPostingId?, RawText, Status (Queued/Running/Succeeded/Failed),
-  Error?, Provider, CreatedAt, StartedAt?, CompletedAt?
+JobPosting                         ← planned (M6): parse cache, deduplicated
+  Id, ContentHash (unique with PromptVersion), PromptVersion, ParsedJson, Provider, Model, CreatedAt
+  ParseJob gets JobPostingId? when it lands.
 
-LlmUsage                           ← one row per LLM call attempt (and per cache hit)
-  Id, UserId, Provider, Model, Operation ("parse-posting"), CacheHit,
-  InputTokens, OutputTokens, LatencyMs, Success, ErrorCode?, CreatedAt
+LlmUsage                           ← built: one row per LLM call (cache hits too, once the cache exists)
+  Id, UserId, Provider, Model, Operation ("parse-listing"), InputTokens?, OutputTokens?,
+  LatencyMs, Success, ErrorCode? (invalid-json/rate-limited/provider-error/timeout), CreatedAt
 ```
 
 ## 5. LLM layer
@@ -238,37 +248,44 @@ A cache hit goes straight to `SUCCEEDED`.
 
 **REST**
 ```
-Auth     POST /api/auth/login, /guest, /logout · GET /api/auth/me   (see §3)
-Health   GET  /api/health
+Auth       POST /api/auth/login, /guest, /logout · GET /api/auth/me   (see §3)
+Health     GET  /api/health
+Documents  GET  /api/documents/{id}   (PDF bytes; GraphQL can't serve binary)
 ```
 
-**GraphQL** (`/graphql`, requires login) — outline, names settle during build
+**GraphQL** (`/graphql`, requires login). Built names match `schema.graphql`; `(planned)` = not built yet.
 ```
 Query
-  applications(where, order, first/after)   → Connection<Application>  (search, status filter, sort)
-  application(id)                           → Application { notes contacts statusHistory jobPosting }
-  cvs, cv(id)                               → Cv { experiences educations skills languages certifications }
-  jobPostings(...), jobPosting(id), parseJob(id)
-  dashboardStats → counts by status, applications/week (last 12w), response rate,
-                   avg days to first response, upcoming follow-ups,
+  listings(archived, dueWithinDays, search, where, order, skip/take) → offset page of Listing
+  listingById(id)                           → Listing { skills languages locations documents
+                                                        statusHistory interviews dueOn }
+  companies, jobRoles, skills, locations    → cursor-paged lookups (search, listingCount)
+  listingParsePrompt, listingQuickParsePrompt → prompt for copy-paste into an external AI
+  parseJob(id)
+  cvs, cv(id)                               (planned, M3) → Cv { experiences educations skills languages certifications }
+  dashboardStats                            (planned, M4) → counts by status, applications/week (last 12w),
+                   response rate, avg days to first response, upcoming interviews,
                    ghosted = Applied/Interviewing with no status change or interview for N days (derived, never stored)
-  usageDaily(from, to), usageSummary        → calls, cache hits, tokens in/out, est. cost
-  usageToday                                → token-monitor widget: requests, cache hits, tokens in/out,
+  usageDaily(from, to), usageSummary        (planned, M5) → calls, cache hits, tokens in/out, est. cost
+  usageToday                                (planned, M5) → token-monitor widget: requests, cache hits, tokens in/out,
                                               est. cost, limits (RPD/RPM from config), remaining
                                               (Guest: daily cap; Owner: RPD − requests). Own count;
                                               Gemini has no remaining-quota API
-  settings                                  → preferred provider/model, available providers + health
+  settings                                  (planned, M5) → preferred provider/model, available providers + health
 
 Mutation
-  create/update/deleteApplication, changeApplicationStatus (writes history row)
-  createApplicationFromPosting(jobPostingId)
-  add/update/deleteNote, add/update/deleteContact
-  create/update/deleteCv, setDefaultCv
-  parseJobPosting(text)
-  updateSettings
+  createListing, updateListing, deleteListing, setListingFavorite, setListingArchived
+  updateCompany, saveLocation
+  uploadDocument, deleteDocument
+  applyToListing, recordOutcome, updateStatusChange, undoStatusChange   (the only way status changes)
+  addInterview, updateInterview, deleteInterview
+  parseListing(text, mode)
+  add/update/deleteNote, add/update/deleteContact   (planned, M2)
+  create/update/deleteCv, setDefaultCv               (planned, M3)
+  updateSettings                                     (planned, M5)
 
 Subscription
-  onParseJobUpdated                         (§6)
+  onParseJobUpdated                         (planned, M6; §6)
 ```
 
 **Estimated cost:** the free tier costs $0, so usage stats compute a "would cost" figure from a
@@ -288,16 +305,26 @@ current paid-tier prices, and the numbers update without code changes.
 |---|---|---|
 | M0 | Install .NET 10 SDK in WSL; scaffold solution, props files, CI, Scalar, EF Core + SQLite, Dockerfile + compose | `dotnet test` + `docker build` green in CI |
 | M1 | Identity + cookie auth, seeded Owner/Guest, user query filter | can log in as both via Scalar |
-| M2 | Applications + status history + notes + contacts | CRUD + history tested |
-| M3 | Structured CVs | CV CRUD with JSON columns |
+| M2 | Listings + application tracking (status, timeline, interviews, documents) + notes + contacts | CRUD + history tested; notes/contacts still pending |
+| M3 | Structured CVs (relational tables, see §4) | CV CRUD tested; CV skills/languages use the listing lookups |
 | M4 | Dashboard stats | stats endpoint tested with seeded data |
 | M5 | LLM layer: Gemini client, Ollama health handler, usage logging, settings | one parse call works end-to-end synchronously |
 | M6 | Parse queue + SSE + cache + trimming + retries | UI receives events; repeat paste = cache hit |
 | M7 | Guest sandbox: nightly reset, sample data, AI cap | guest resets, capped at N calls |
 | M8 | Deploy to VPS, DataProtection keys volume, README polish (incl. "Design decisions": why vertical slices, why no repository layer, why cookies over JWT, token-saving strategy) | runs on the VPS |
 
-**After MVP:** CV ↔ job match, PDF/image posting input, Claude/OpenAI providers,
+**After MVP:** CV ↔ job match, CV generation (renders a CV as a PDF `Document` on a listing, so
+`applyToListing` sends it like an upload), PDF/image posting input, Claude/OpenAI providers,
 URL scraping, maybe Postgres.
+
+**Deferred follow-ups** (found in the project review, not built yet):
+- Guest AI cap (M7, must land before M8 deploy): guests can call `parseListing` on the owner's
+  free-tier quota today.
+- User scoping for background work (M6 parse worker, M7 guest reset): the global user filter reads
+  the user from the HTTP request, which a background job doesn't have, so it needs another way to
+  set the current user.
+- Store identical CV files once (M3): the same CV uploaded to several listings is stored once per
+  listing today; `Document.ContentHash` already identifies duplicates, so content can be shared by hash.
 
 **If it ever goes public (open registration):**
 - Auth (small): register endpoint, email confirmation + forgot password (needs an email provider
