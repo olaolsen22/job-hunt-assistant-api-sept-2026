@@ -95,6 +95,7 @@ public static class ApplicationMutations
     // Removes the latest step, for mistakes. Undoing Applied unmarks the sent documents so they can be replaced.
     [Error<ListingNotFoundException>]
     [Error<InvalidStatusTransitionException>]
+    [Error<DuplicateListingException>]
     public static async Task<Listing> UndoStatusChangeAsync(int listingId, AppDbContext db, CancellationToken ct)
     {
         var listing = await ListingMutations.FindWithDetailsAsync(listingId, db, ct);
@@ -102,6 +103,10 @@ public static class ApplicationMutations
             ?? throw new InvalidStatusTransitionException("There is nothing to undo.");
         if (last.Status == ApplicationStatus.Interviewing && listing.Interviews.Count > 0)
             throw new InvalidStatusTransitionException("Delete the interviews first.");
+        // Undoing a final step reopens the listing, and only one attempt per URL may be open.
+        if (ApplicationStatuses.Final.Contains(last.Status)
+            && await ListingMutations.OpenListingIdWithUrlAsync(listing, db, ct) is { } openId)
+            throw new DuplicateListingException(openId);
 
         if (last.Status == ApplicationStatus.Applied)
             foreach (var document in listing.Documents.Where(d => d.SentAt is not null))

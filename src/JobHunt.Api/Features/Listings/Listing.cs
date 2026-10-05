@@ -113,7 +113,10 @@ public class ListingConfiguration : IEntityTypeConfiguration<Listing>
         builder.HasOne(l => l.JobRole).WithMany().OnDelete(DeleteBehavior.NoAction);
         builder.HasIndex(l => new { l.UserId, l.CreatedAt });
         builder.HasIndex(l => new { l.UserId, l.Status });
-        builder.HasIndex(l => new { l.UserId, l.Url }).IsUnique();
+        // Unique among open listings only, so a reposted ad can be logged again once the earlier attempt is over.
+        // Must match ApplicationStatuses.Final.
+        builder.HasIndex(l => new { l.UserId, l.Url }).IsUnique()
+            .HasFilter("\"Status\" NOT IN ('Rejected', 'Withdrawn', 'Accepted')");
     }
 }
 

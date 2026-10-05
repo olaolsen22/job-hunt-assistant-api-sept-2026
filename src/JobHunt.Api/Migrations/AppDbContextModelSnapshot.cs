@@ -357,7 +357,8 @@ namespace JobHunt.Api.Migrations
                     b.HasIndex("UserId", "Status");
 
                     b.HasIndex("UserId", "Url")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("\"Status\" NOT IN ('Rejected', 'Withdrawn', 'Accepted')");
 
                     b.ToTable("Listings");
                 });

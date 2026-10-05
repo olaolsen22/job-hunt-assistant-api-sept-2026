@@ -199,6 +199,7 @@ type CompanyNotFoundError implements Error {
 
 type CreateListingPayload {
   listing: Listing
+  previousAttempts: [Listing!]
   possibleDuplicates: [Listing!]
   errors: [CreateListingError!]
 }
@@ -586,6 +587,7 @@ union SetListingFavoriteError = ListingNotFoundError
 union UndoStatusChangeError =
   | ListingNotFoundError
   | InvalidStatusTransitionError
+  | DuplicateListingError
 
 union UpdateCompanyError =
   | CompanyNotFoundError

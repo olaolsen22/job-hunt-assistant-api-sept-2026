@@ -301,6 +301,45 @@ public class ApplicationTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task Undo_WhileNewerAttemptIsOpen_ReturnsDuplicateListingError()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var url = ListingTests.UniqueUrl();
+        var rejected = await ListingTests.ListingWithStatusAsync(client, url, "REJECTED");
+        var saved = await ListingTests.ListingWithStatusAsync(client, url, "SAVED");
+
+        var payload = (await client.GraphQLAsync("""
+            mutation ($listingId: Int!) {
+              undoStatusChange(input: { listingId: $listingId }) {
+                listing { id }
+                errors { __typename ... on DuplicateListingError { existingListingId } }
+              }
+            }
+            """, new { listingId = rejected })).GetProperty("undoStatusChange");
+
+        Assert.Equal("DuplicateListingError", ErrorType(payload));
+        Assert.Equal(saved, payload.GetProperty("errors")[0].GetProperty("existingListingId").GetInt32());
+        var data = await client.GraphQLAsync("query ($id: Int!) { listingById(id: $id) { status } }", new { id = rejected });
+        Assert.Equal("REJECTED", data.GetProperty("listingById").GetProperty("status").GetString());
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("WITHDRAWN")]
+    public async Task Undo_WithNoOtherOpenAttempt_Reopens(string? newerStatus)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var url = ListingTests.UniqueUrl();
+        var rejected = await ListingTests.ListingWithStatusAsync(client, url, "REJECTED");
+        if (newerStatus is not null)
+            await ListingTests.ListingWithStatusAsync(client, url, newerStatus);
+
+        var listing = Listing((await client.GraphQLAsync(Undo, new { listingId = rejected })).GetProperty("undoStatusChange"));
+
+        Assert.Equal("APPLIED", listing.GetProperty("status").GetString());
+    }
+
+    [Fact]
     public async Task UndoApplied_UnmarksDocuments_SoTheyCanBeDeleted()
     {
         var client = await factory.GetOwnerClientAsync();

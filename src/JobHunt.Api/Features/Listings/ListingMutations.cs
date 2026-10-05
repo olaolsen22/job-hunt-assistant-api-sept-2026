@@ -50,9 +50,10 @@ public class DuplicateListingException(int existingListingId)
     public int ExistingListingId { get; } = existingListingId;
 }
 
-// Same company and role or title but a different URL: often the same job on another board, but can be
-// a second opening, so it's saved and the matches are returned for the user to judge.
-public record CreateListingPayload(Listing Listing, List<Listing> PossibleDuplicates);
+// PreviousAttempts: closed listings with the same URL, i.e. the ad was reposted and this is a new attempt.
+// PossibleDuplicates: same company and role or title but a different URL: often the same job on another board,
+// but can be a second opening, so it's saved and the matches are returned for the user to judge.
+public record CreateListingPayload(Listing Listing, List<Listing> PreviousAttempts, List<Listing> PossibleDuplicates);
 
 public class ListingInUseException(int id) : Exception($"Listing {id} has been applied to and can't be deleted. Archive it instead.");
 
@@ -71,16 +72,22 @@ public static class ListingMutations
         db.Listings.Add(entity);
         await db.SaveChangesAsync(ct);
 
+        // Any other listing with this URL is closed, or the duplicate check would have thrown.
+        var previousAttempts = await WithDetails(db)
+            .Where(l => l.Url == entity.Url && l.Id != entity.Id)
+            .OrderByDescending(l => l.CreatedAt)
+            .ToListAsync(ct);
+
         // Few listings per company, so the title match runs in memory with the same Names.Normalize as lookups.
         var title = Names.Normalize(entity.Title);
         var sameCompany = await WithDetails(db)
-            .Where(l => l.CompanyId == entity.CompanyId && l.Id != entity.Id)
+            .Where(l => l.CompanyId == entity.CompanyId && l.Id != entity.Id && l.Url != entity.Url)
             .OrderByDescending(l => l.CreatedAt)
             .ToListAsync(ct);
         var possibleDuplicates = sameCompany
             .Where(l => l.JobRoleId == entity.JobRoleId || Names.Normalize(l.Title) == title)
             .ToList();
-        return new CreateListingPayload(entity, possibleDuplicates);
+        return new CreateListingPayload(entity, previousAttempts, possibleDuplicates);
     }
 
     // Replaces the whole listing, including its skills and languages.
@@ -147,6 +154,13 @@ public static class ListingMutations
         await WithDetails(db).FirstOrDefaultAsync(l => l.Id == id, ct)
             ?? throw new ListingNotFoundException(id);
 
+    // Shared with undoStatusChange, which must not reopen a listing while another attempt is open.
+    internal static Task<int?> OpenListingIdWithUrlAsync(Listing listing, AppDbContext db, CancellationToken ct) =>
+        db.Listings
+            .Where(l => l.Url == listing.Url && l.Id != listing.Id && !ApplicationStatuses.Final.Contains(l.Status))
+            .Select(l => (int?)l.Id)
+            .FirstOrDefaultAsync(ct);
+
     private static IQueryable<Listing> WithDetails(AppDbContext db) =>
         db.Listings
             .Include(l => l.Company)
@@ -172,13 +186,14 @@ public static class ListingMutations
         entity.WorkMode = input.WorkMode;
         entity.Description = input.Description;
         entity.Url = NormalizeUrl(new Uri(input.Url.Trim()));
-        // Archived listings count too: re-adding an ad you already applied to is still a duplicate.
-        var existingId = await db.Listings
-            .Where(l => l.Url == entity.Url && l.Id != entity.Id)
-            .Select(l => (int?)l.Id)
-            .FirstOrDefaultAsync(ct);
-        if (existingId is not null)
-            throw new DuplicateListingException(existingId.Value);
+        // Only one open listing per URL; closed ones are earlier attempts. Archived listings count too:
+        // re-adding an ad you saved and archived is still a duplicate. A closed listing may share an open one's URL.
+        if (!ApplicationStatuses.Final.Contains(entity.Status))
+        {
+            var existingId = await OpenListingIdWithUrlAsync(entity, db, ct);
+            if (existingId is not null)
+                throw new DuplicateListingException(existingId.Value);
+        }
         entity.PostedOn = input.PostedOn;
         entity.DeadlineType = input.DeadlineType;
         entity.DeadlineOn = input.DeadlineOn;

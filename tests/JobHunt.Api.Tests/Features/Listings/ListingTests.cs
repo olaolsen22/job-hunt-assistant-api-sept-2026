@@ -30,6 +30,7 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         mutation ($listing: ListingInput!) {
           createListing(input: { listing: $listing }) {
             listing { id }
+            previousAttempts { id }
             possibleDuplicates { id }
             errors { __typename ... on DuplicateListingError { existingListingId } }
           }
@@ -239,6 +240,46 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal(existingId, error.GetProperty("existingListingId").GetInt32());
     }
 
+    // Pins ApplicationStatuses.Final (the C# check) for the open statuses.
+    [Theory]
+    [InlineData("SAVED")]
+    [InlineData("APPLIED")]
+    [InlineData("INTERVIEWING")]
+    [InlineData("OFFER")]
+    public async Task CreateListing_WithSameUrlAsOpenListing_ReturnsDuplicateListingError(string status)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var url = UniqueUrl();
+        var existingId = await ListingWithStatusAsync(client, url, status);
+
+        var data = await client.GraphQLAsync(CreateListingWithDuplicates, new { listing = NewListing(Unique("Other"), url: url) });
+
+        var error = Assert.Single(data.GetProperty("createListing").GetProperty("errors").EnumerateArray());
+        Assert.Equal("DuplicateListingError", error.GetProperty("__typename").GetString());
+        Assert.Equal(existingId, error.GetProperty("existingListingId").GetInt32());
+    }
+
+    // Pins the index filter for the final statuses: the database must not block the new attempt.
+    [Theory]
+    [InlineData("REJECTED")]
+    [InlineData("WITHDRAWN")]
+    [InlineData("ACCEPTED")]
+    public async Task CreateListing_WithSameUrlAsClosedListing_CreatesNewAttempt(string status)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var url = UniqueUrl();
+        var closedId = await ListingWithStatusAsync(client, url, status);
+
+        var created = await CreateAsync(client, NewListing(Unique("Acme"), url: url));
+
+        Assert.NotEqual(closedId, created.GetProperty("id").GetInt32());
+        var data = await client.GraphQLAsync("""
+            query ($closed: Int!, $created: Int!) { closed: listingById(id: $closed) { status } created: listingById(id: $created) { status } }
+            """, new { closed = closedId, created = created.GetProperty("id").GetInt32() });
+        Assert.Equal(status, data.GetProperty("closed").GetProperty("status").GetString());
+        Assert.Equal("SAVED", data.GetProperty("created").GetProperty("status").GetString());
+    }
+
     [Fact]
     public async Task UpdateListing_ToAnotherListingsUrl_ReturnsDuplicateListingError()
     {
@@ -255,6 +296,50 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
         var error = Assert.Single(data.GetProperty("updateListing").GetProperty("errors").EnumerateArray());
         Assert.Equal("DuplicateListingError", error.GetProperty("__typename").GetString());
+    }
+
+    [Fact]
+    public async Task CreateListing_AtClosedListingsUrl_ReturnsItAsPreviousAttemptOnly()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var company = Unique("Acme");
+        var url = UniqueUrl();
+        var older = await ListingWithStatusAsync(client, url, "WITHDRAWN", company);
+        var newer = await ListingWithStatusAsync(client, url, "REJECTED", company);
+
+        // Same company and role too, so it would also match as a possible duplicate.
+        var payload = (await client.GraphQLAsync(CreateListingWithDuplicates, new { listing = NewListing(company, url: url) }))
+            .GetProperty("createListing");
+
+        Assert.Equal([newer, older], IdsOf(payload, "previousAttempts"));
+        Assert.Empty(IdsOf(payload, "possibleDuplicates"));
+    }
+
+    [Fact]
+    public async Task CreateListing_FirstAttempt_ReturnsNoPreviousAttempts()
+    {
+        var client = await factory.GetOwnerClientAsync();
+
+        var payload = (await client.GraphQLAsync(CreateListingWithDuplicates, new { listing = NewListing(Unique("Acme")) }))
+            .GetProperty("createListing");
+
+        Assert.Empty(IdsOf(payload, "previousAttempts"));
+    }
+
+    [Fact]
+    public async Task UpdateListing_ClosedListingToOpenListingsUrl_Succeeds()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var company = Unique("Acme");
+        var url = UniqueUrl();
+        await ListingWithStatusAsync(client, url, "SAVED", company);
+        var closedId = await ListingWithStatusAsync(client, UniqueUrl(), "REJECTED", company);
+
+        var data = await client.GraphQLAsync(UpdateListing, new { id = closedId, listing = NewListing(company, url: url) });
+
+        var payload = data.GetProperty("updateListing");
+        Assert.Equal(JsonValueKind.Null, payload.GetProperty("errors").ValueKind);
+        Assert.Equal(url, payload.GetProperty("listing").GetProperty("url").GetString());
     }
 
     [Fact]
@@ -453,11 +538,49 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         return data.GetProperty("createListing").GetProperty("listing");
     }
 
+    // Creates a listing with the URL and walks it to the status through the real mutations.
+    internal static async Task<int> ListingWithStatusAsync(HttpClient client, string url, string status, string? company = null)
+    {
+        var listingId = (await CreateAsync(client, NewListing(company ?? Unique("Acme"), url: url))).GetProperty("id").GetInt32();
+        if (status == "SAVED") return listingId;
+
+        var cvDocumentId = await Documents.DocumentTests.UploadIdAsync(client, listingId);
+        await client.GraphQLAsync("""
+            mutation ($listingId: Int!, $cvDocumentId: Int!) {
+              applyToListing(input: { listingId: $listingId, cvDocumentId: $cvDocumentId }) { listing { id } }
+            }
+            """, new { listingId, cvDocumentId });
+        string[] outcomes = status switch
+        {
+            "APPLIED" or "INTERVIEWING" => [],
+            "OFFER" => ["OFFER"],
+            "ACCEPTED" => ["OFFER", "ACCEPTED"],
+            _ => [status],
+        };
+        if (status == "INTERVIEWING")
+            await client.GraphQLAsync("""
+                mutation ($listingId: Int!) { addInterview(input: { listingId: $listingId, scheduledAt: "2026-10-01T10:00:00Z" }) { interview { id } } }
+                """, new { listingId });
+        foreach (var outcome in outcomes)
+            await client.GraphQLAsync("""
+                mutation ($listingId: Int!, $outcome: ApplicationOutcome!) {
+                  recordOutcome(input: { listingId: $listingId, outcome: $outcome }) { listing { id } }
+                }
+                """, new { listingId, outcome });
+
+        var data = await client.GraphQLAsync("query ($id: Int!) { listingById(id: $id) { status } }", new { id = listingId });
+        Assert.Equal(status, data.GetProperty("listingById").GetProperty("status").GetString());
+        return listingId;
+    }
+
     private static async Task<JsonElement> UpdateAsync(HttpClient client, int id, object listing)
     {
         var data = await client.GraphQLAsync(UpdateListing, new { id, listing });
         return data.GetProperty("updateListing").GetProperty("listing");
     }
+
+    private static int[] IdsOf(JsonElement payload, string list) =>
+        payload.GetProperty(list).EnumerateArray().Select(l => l.GetProperty("id").GetInt32()).ToArray();
 
     private static int Id(JsonElement listing, string relation) =>
         listing.GetProperty(relation).GetProperty("id").GetInt32();
