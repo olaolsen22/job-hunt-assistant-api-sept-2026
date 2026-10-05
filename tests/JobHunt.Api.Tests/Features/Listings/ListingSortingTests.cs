@@ -41,6 +41,6 @@ public class ListingSortingTests(ApiFactory factory) : IClassFixture<ApiFactory>
             .GetProperty("listings").GetProperty("items").EnumerateArray()
             .Select(n => n.GetProperty("title").GetString()!).ToList();
 
-        Assert.Equal(["soon date", "recent asap", "later date", "undated", "stale asap", "expired date"], titles);
+        Assert.Equal(["soon date", "recent asap", "undated", "later date", "stale asap", "expired date"], titles);
     }
 }

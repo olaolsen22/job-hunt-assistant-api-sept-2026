@@ -26,9 +26,10 @@ All endpoints require auth (fallback policy) unless marked anon.
 - Dev only (anon): `/openapi/v1.json`, `/scalar`
 - `POST /graphql` (Hot Chocolate 16; Nitro IDE on GET in browser). All user data scoped by global query filter.
   - SDL committed at `schema.graphql` (repo root) for the UI; `SchemaTests` regenerates it and fails when it's stale
-  - Query: `listings(archived: Boolean = false)` (archived hidden by default) / `companies(search)` / `jobRoles(search)` / `skills(search)` / `locations(search: city)` — projection, `where`, `order`; `listingById(id)`
+  - Query: `listings(archived: Boolean = false, dueWithinDays: Int)` (archived hidden by default; `dueWithinDays: N` = today ≤ due ≤ today+N, expired excluded, negative → top-level error) / `companies(search)` / `jobRoles(search)` / `skills(search)` / `locations(search: city)` — projection, `where`, `order`; `listingById(id)`
   - Paging: `listings` = offset (`skip`/`take`, default 20, max 100) → `{ items pageInfo { hasNextPage hasPreviousPage } totalCount }` for numbered pages; lookups = cursor (`first`/`after`, default 10) → `{ nodes pageInfo totalCount }`
-  - Default order only when no client `order` (`ISortingContext.IsDefined` + `Handled(false)`); listings: closest deadline first (ASAP due `PostedOn + 14d`; upcoming → undated → expired), client sorts get `Id` tie-breaker
+  - Default order only when no client `order` (`ISortingContext.IsDefined` + `Handled(false)`); listings: upcoming by due date asc, then expired by due date asc, then newest CreatedAt; client sorts get `Id` tie-breaker
+  - Effective due date (`ListingQueries.WithDue`, one expression for order/filter/`Listing.dueOn`): DATE → `deadlineOn`, ASAP → `postedOn + 14`, UNSPECIFIED → `postedOn + 30`. Expired = due < today (UTC); affects only order/filter, never status/archive. Date ranges via `where: { postedOn/deadlineOn: { gte, lte } }` (deadline range matches DATE only)
   - `listingParsePrompt { version instructions }` — copy-paste prompt for external AIs (UI appends `<posting>…</posting>`); enums from C#, user's role/skill names (max 100 each), today's date. `ListingParsePromptQueries.Version` = 4, `QuickVersion` = 2
   - `parseListing(input:{text, mode: FULL|QUICK})` → `{parseJob}` (runs inline for now: returns SUCCEEDED/FAILED; later QUEUED + `onParseJobUpdated`). Same prompts as `listingParsePrompt`/`listingQuickParsePrompt`, `<posting>` wrapped, JSON mode, temp 0, input capped 12k chars, max 8192 output tokens. `result` = JSON text (object for FULL, array for QUICK) or FAILED "couldn't be read"; 429 → FAILED "free-tier limit". `parseJob(id: UUID)` (own jobs only). Error: `InvalidParseRequestError` (blank, >100k chars)
   - `Company|JobRole|Skill|Location.listingCount` — computed via DataLoader (one GROUP BY per page); `Company.applicationCount` (status ≠ SAVED)
@@ -94,6 +95,7 @@ All endpoints require auth (fallback policy) unless marked anon.
 - 2026-09-27 — Gemini via official Google.GenAI SDK (has `AsIChatClient`); `parseListing` runs inline first with the final async contract, so the UI can ship before the queue.
 - 2026-09-27 — Notes are Markdown strings (UI sanitizes on render), not HTML, so the server never sanitizes.
 - 2026-10-05 — A listing is one attempt: reposted ad = new listing, Url unique among open (non-final) ones via partial index, earlier attempts linked by Url (no FK). ACCEPTED ends a successful attempt.
+- 2026-10-05 — Effective due date computed in the query (no stored column), server-owned so the UI's "closing soon" and badges match the sort.
 - 2026-10-05 — ROLLING merged into ASAP: same meaning in practice, the distinction only gave the parser a no-op choice.
 
 ## Next up

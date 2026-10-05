@@ -52,6 +52,7 @@ type Query {
     skip: Int
     take: Int
     archived: Boolean! = false
+    dueWithinDays: Int
     where: ListingFilterInput @cost(weight: "10")
     order: [ListingSortInput!] @cost(weight: "10")
   ): ListingsCollectionSegment
@@ -319,8 +320,12 @@ type JobRolesEdge {
 }
 
 type Listing {
+  dueOn: LocalDate!
   statusHistory(order: [StatusChangeSortInput!] @cost(weight: "10")): [StatusChange!]!
   interviews(order: [InterviewSortInput!] @cost(weight: "10")): [Interview!]!
+  deadlineType: DeadlineType!
+  postedOn: LocalDate!
+  deadlineOn: LocalDate
   id: Int!
   title: String!
   companyId: Int!
@@ -333,9 +338,6 @@ type Listing {
   workMode: WorkMode
   description: String
   url: String!
-  postedOn: LocalDate!
-  deadlineType: DeadlineType!
-  deadlineOn: LocalDate
   postingLanguage: Language
   createdAt: DateTime!
   updatedAt: DateTime!

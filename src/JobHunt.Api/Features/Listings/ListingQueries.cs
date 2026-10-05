@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using HotChocolate.Data.Sorting;
 using JobHunt.Api.Data;
 
@@ -6,8 +7,23 @@ namespace JobHunt.Api.Features.Listings;
 [QueryType]
 public static class ListingQueries
 {
-    // ASAP ads have no date but still close; treat them as due this long after posting.
+    // Undated ads still close; treat them as due this long after posting.
     private const int AsapDays = 14;
+    private const int UnspecifiedDays = 30;
+
+    // The effective due date, in one place so the default order, dueWithinDays and dueOn can't disagree.
+    // Member init (not a bare DateOnly lambda) so EF can translate x.Due in the Where/OrderBy that follow.
+    private static readonly Expression<Func<Listing, ListingWithDue>> WithDue = l => new ListingWithDue
+    {
+        Listing = l,
+        Due = l.DeadlineType == DeadlineType.Date ? l.DeadlineOn!.Value
+            : l.DeadlineType == DeadlineType.Asap ? l.PostedOn.AddDays(AsapDays)
+            : l.PostedOn.AddDays(UnspecifiedDays),
+    };
+
+    private static readonly Func<Listing, ListingWithDue> CompiledWithDue = WithDue.Compile();
+
+    internal static DateOnly DueOn(Listing listing) => CompiledWithDue(listing).Due;
 
     // Offset paging (skip/take), not cursors: the UI shows numbered pages and jumps straight to page N.
     [UseOffsetPaging(DefaultPageSize = 20, MaxPageSize = 100, IncludeTotalCount = true)]
@@ -15,7 +31,7 @@ public static class ListingQueries
     [UseFiltering]
     [UseSorting]
     public static IQueryable<Listing> GetListings(
-        AppDbContext db, ISortingContext sorting, TimeProvider time, bool archived = false)
+        AppDbContext db, ISortingContext sorting, TimeProvider time, bool archived = false, int? dueWithinDays = null)
     {
         // Hot Chocolate adds a client's `order` as ThenBy, so a fixed OrderBy here would always win.
         // Default order only without one; with one, Id breaks ties so equal values (e.g. no deadline)
@@ -26,18 +42,23 @@ public static class ListingQueries
             sortingApplied && query is IOrderedQueryable<Listing> ordered
                 ? ordered.ThenByDescending(l => l.Id)
                 : ByClosestDeadline(query, today));
-        return db.Listings.Where(l => (l.ArchivedAt != null) == archived);
+
+        var query = db.Listings.Where(l => (l.ArchivedAt != null) == archived);
+        if (dueWithinDays is { } days)
+        {
+            if (days < 0)
+                throw new GraphQLException("dueWithinDays must be 0 or more.");
+            var last = today.AddDays(days);
+            query = query.Select(WithDue).Where(x => x.Due >= today && x.Due <= last).Select(x => x.Listing);
+        }
+        return query;
     }
 
-    // Upcoming deadlines (dated or ASAP) soonest first, then undated, then expired.
+    // Upcoming soonest first, then expired (also soonest first).
     private static IQueryable<Listing> ByClosestDeadline(IQueryable<Listing> query, DateOnly today) =>
         query
-            .Select(l => new
-            {
-                Listing = l,
-                Due = l.DeadlineType == DeadlineType.Asap ? l.PostedOn.AddDays(AsapDays) : l.DeadlineOn,
-            })
-            .OrderBy(x => x.Due == null ? 1 : x.Due >= today ? 0 : 2)
+            .Select(WithDue)
+            .OrderBy(x => x.Due < today)
             .ThenBy(x => x.Due)
             .ThenByDescending(x => x.Listing.CreatedAt)
             .ThenByDescending(x => x.Listing.Id)
@@ -58,5 +79,18 @@ public static partial class ListingNode
         // Ordered by the client: the timeline by occurredAt, interviews by scheduledAt.
         descriptor.Field(l => l.StatusHistory).UseSorting();
         descriptor.Field(l => l.Interviews).UseSorting();
+        // dueOn needs these even when the client didn't select them.
+        descriptor.Field(l => l.DeadlineType).IsProjected();
+        descriptor.Field(l => l.PostedOn).IsProjected();
+        descriptor.Field(l => l.DeadlineOn).IsProjected();
     }
+
+    // Same rule the server sorts and filters on, so the UI's badges can't disagree with the list.
+    public static DateOnly GetDueOn([Parent] Listing listing) => ListingQueries.DueOn(listing);
+}
+
+internal sealed class ListingWithDue
+{
+    public Listing Listing { get; init; } = null!;
+    public DateOnly Due { get; init; }
 }
