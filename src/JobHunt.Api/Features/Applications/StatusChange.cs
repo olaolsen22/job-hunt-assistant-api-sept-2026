@@ -21,9 +21,17 @@ public class StatusChange
 }
 
 // Ghosted is not a status: it's derived (no change and no interview for N days) so it can't go stale.
-public enum ApplicationStatus { Saved, Applied, Interviewing, Offer, Rejected, Withdrawn }
+public enum ApplicationStatus { Saved, Applied, Interviewing, Offer, Accepted, Rejected, Withdrawn }
 
-public enum ApplicationOutcome { Offer, Rejected, Withdrawn }
+public enum ApplicationOutcome { Offer, Accepted, Rejected, Withdrawn }
+
+public static class ApplicationStatuses
+{
+    // The attempt is over: the listing is closed, and the same URL can be logged again as a new attempt.
+    // The partial unique index on Listing.Url repeats this list in SQL; tests keep the two in step.
+    public static readonly ApplicationStatus[] Final =
+        [ApplicationStatus.Rejected, ApplicationStatus.Withdrawn, ApplicationStatus.Accepted];
+}
 
 public class StatusChangeConfiguration : IEntityTypeConfiguration<StatusChange>
 {

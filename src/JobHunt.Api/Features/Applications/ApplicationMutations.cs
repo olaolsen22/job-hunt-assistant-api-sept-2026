@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Documents;
 using JobHunt.Api.Features.Listings;
@@ -23,7 +24,8 @@ public static class ApplicationMutations
         [ApplicationStatus.Applied] =
             [ApplicationStatus.Interviewing, ApplicationStatus.Offer, ApplicationStatus.Rejected, ApplicationStatus.Withdrawn],
         [ApplicationStatus.Interviewing] = [ApplicationStatus.Offer, ApplicationStatus.Rejected, ApplicationStatus.Withdrawn],
-        [ApplicationStatus.Offer] = [ApplicationStatus.Withdrawn],
+        // Rejected after an offer: the company withdrew it. Withdrawn: the user declined it.
+        [ApplicationStatus.Offer] = [ApplicationStatus.Accepted, ApplicationStatus.Rejected, ApplicationStatus.Withdrawn],
     };
 
     // The CV is required: it's the record of what was sent. Upload first with uploadDocument.
@@ -58,8 +60,11 @@ public static class ApplicationMutations
         var status = outcome switch
         {
             ApplicationOutcome.Offer => ApplicationStatus.Offer,
+            ApplicationOutcome.Accepted => ApplicationStatus.Accepted,
             ApplicationOutcome.Rejected => ApplicationStatus.Rejected,
-            _ => ApplicationStatus.Withdrawn,
+            ApplicationOutcome.Withdrawn => ApplicationStatus.Withdrawn,
+            // Required for enums (any int is a valid value). Throwing so a new outcome can't silently map to one of these.
+            _ => throw new UnreachableException(),
         };
         ChangeStatus(listing, status, occurredAt?.UtcDateTime ?? now, note, now);
         await db.SaveChangesAsync(ct);

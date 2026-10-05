@@ -72,6 +72,28 @@ public class InterviewTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal("InvalidStatusTransitionError", ApplicationTests.ErrorType(payload));
     }
 
+    [Theory]
+    [InlineData("ACCEPTED")]
+    [InlineData("REJECTED")]
+    [InlineData("WITHDRAWN")]
+    public async Task AddInterview_AfterFinalStatus_ReturnsInvalidStatusTransitionError(string outcome)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var listingId = await ApplicationTests.AppliedListingAsync(client);
+        const string RecordOutcome = """
+            mutation ($listingId: Int!, $outcome: ApplicationOutcome!) {
+              recordOutcome(input: { listingId: $listingId, outcome: $outcome }) { listing { id } }
+            }
+            """;
+        await client.GraphQLAsync(RecordOutcome, new { listingId, outcome = "OFFER" });
+        await client.GraphQLAsync(RecordOutcome, new { listingId, outcome });
+
+        var payload = (await client.GraphQLAsync(AddInterview, new { listingId, scheduledAt = "2026-10-01T10:00:00Z" }))
+            .GetProperty("addInterview");
+
+        Assert.Equal("InvalidStatusTransitionError", ApplicationTests.ErrorType(payload));
+    }
+
     [Fact]
     public async Task AddInterview_WithTooLongNotes_ReturnsInvalidInterviewError()
     {

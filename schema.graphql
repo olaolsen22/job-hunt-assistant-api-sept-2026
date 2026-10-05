@@ -1139,6 +1139,7 @@ input UploadDocumentInput {
 
 enum ApplicationOutcome {
   OFFER
+  ACCEPTED
   REJECTED
   WITHDRAWN
 }
@@ -1148,6 +1149,7 @@ enum ApplicationStatus {
   APPLIED
   INTERVIEWING
   OFFER
+  ACCEPTED
   REJECTED
   WITHDRAWN
 }

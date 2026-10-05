@@ -177,6 +177,67 @@ public class ApplicationTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task RecordOutcome_AcceptOffer()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var listingId = await OfferListingAsync(client);
+
+        var payload = (await client.GraphQLAsync(RecordOutcome, new { listingId, outcome = "ACCEPTED" }))
+            .GetProperty("recordOutcome");
+
+        var listing = Listing(payload);
+        Assert.Equal("ACCEPTED", listing.GetProperty("status").GetString());
+        Assert.Equal(["APPLIED", "OFFER", "ACCEPTED"], Statuses(listing));
+    }
+
+    [Fact]
+    public async Task RecordOutcome_CompanyWithdrawsOffer()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var listingId = await OfferListingAsync(client);
+
+        var payload = (await client.GraphQLAsync(RecordOutcome, new { listingId, outcome = "REJECTED" }))
+            .GetProperty("recordOutcome");
+
+        Assert.Equal("REJECTED", Listing(payload).GetProperty("status").GetString());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RecordOutcome_AcceptWithoutOffer_ReturnsInvalidStatusTransitionError(bool interviewing)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var listingId = await AppliedListingAsync(client);
+        if (interviewing)
+            await client.GraphQLAsync("""
+                mutation ($listingId: Int!) { addInterview(input: { listingId: $listingId, scheduledAt: "2026-10-01T10:00:00Z" }) { interview { id } } }
+                """, new { listingId });
+
+        var payload = (await client.GraphQLAsync(RecordOutcome, new { listingId, outcome = "ACCEPTED" }))
+            .GetProperty("recordOutcome");
+
+        Assert.Equal("InvalidStatusTransitionError", ErrorType(payload));
+    }
+
+    [Theory]
+    [InlineData("OFFER")]
+    [InlineData("ACCEPTED")]
+    [InlineData("REJECTED")]
+    [InlineData("WITHDRAWN")]
+    public async Task RecordOutcome_AfterAccepted_ReturnsInvalidStatusTransitionError(string outcome)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var listingId = await OfferListingAsync(client);
+        await client.GraphQLAsync(RecordOutcome, new { listingId, outcome = "ACCEPTED" });
+
+        var payload = (await client.GraphQLAsync(RecordOutcome, new { listingId, outcome }))
+            .GetProperty("recordOutcome");
+
+        Assert.Equal("InvalidStatusTransitionError", ErrorType(payload));
+    }
+
+    [Fact]
     public async Task UpdateStatusChange_FixesDateAndNote_AndDocumentNames()
     {
         var client = await factory.GetOwnerClientAsync();
@@ -224,6 +285,19 @@ public class ApplicationTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
         Assert.Equal("APPLIED", listing.GetProperty("status").GetString());
         Assert.Equal(["APPLIED"], Statuses(listing));
+    }
+
+    [Fact]
+    public async Task Undo_Accepted_ReturnsToOffer()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var listingId = await OfferListingAsync(client);
+        await client.GraphQLAsync(RecordOutcome, new { listingId, outcome = "ACCEPTED" });
+
+        var listing = Listing((await client.GraphQLAsync(Undo, new { listingId })).GetProperty("undoStatusChange"));
+
+        Assert.Equal("OFFER", listing.GetProperty("status").GetString());
+        Assert.Equal(["APPLIED", "OFFER"], Statuses(listing));
     }
 
     [Fact]
@@ -314,6 +388,13 @@ public class ApplicationTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var (listingId, cvId) = await ListingWithCvAsync(client, company);
         var payload = (await client.GraphQLAsync(Apply, new { listingId, cvDocumentId = cvId })).GetProperty("applyToListing");
         Assert.Equal(JsonValueKind.Null, payload.GetProperty("errors").ValueKind);
+        return listingId;
+    }
+
+    private static async Task<int> OfferListingAsync(HttpClient client)
+    {
+        var listingId = await AppliedListingAsync(client);
+        await client.GraphQLAsync(RecordOutcome, new { listingId, outcome = "OFFER" });
         return listingId;
     }
 
