@@ -94,8 +94,9 @@ public enum Schedule { FullTime, PartTime }
 
 public enum WorkMode { Onsite, Hybrid, Remote }
 
-// Many ads have no date and say "Snarest"/"ASAP" or "Løpende" (rolling) instead.
-public enum DeadlineType { Date, Asap, Rolling, Unspecified }
+// Many ads have no date and say "Snarest"/"ASAP" or "Løpende" (rolling) instead. Both count as ASAP:
+// in practice they mean the same, so a separate value only gave the parser a choice with no effect.
+public enum DeadlineType { Date, Asap, Unspecified }
 
 public enum Language { English, Norwegian }
 

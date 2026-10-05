@@ -12,10 +12,10 @@ public record ListingParsePrompt(int Version, string Instructions);
 public static partial class ListingParsePromptQueries
 {
     // Bump whenever the prompt or output shape changes; the server-side parse cache keys on it.
-    public const int Version = 3;
+    public const int Version = 4;
 
     // Separate from Version: the quick prompt changes on its own schedule.
-    public const int QuickVersion = 1;
+    public const int QuickVersion = 2;
 
     // Keeps the prompt short (and cheap on the API-key path) for users with many roles/skills.
     private const int MaxNames = 100;
@@ -68,7 +68,7 @@ public static partial class ListingParsePromptQueries
               Konsulent/Oppdrag/Frilans = CONTRACT, Trainee-program/Lærling/Internship = INTERNSHIP, Sesong = SEASONAL.
             schedule: Heltid/100 % = FULL_TIME, Deltid/under 100 % = PART_TIME.
             deadline: a date → DATE + deadlineOn (dates without a year: the next such date after today).
-              "Snarest"/"ASAP"/"straks" → ASAP. "Løpende"/"rolling" → ROLLING. None given → UNSPECIFIED. deadlineOn only with DATE.
+              "Snarest"/"ASAP"/"straks"/"Løpende"/"fortløpende"/"rolling" → ASAP. None given → UNSPECIFIED. deadlineOn only with DATE.
 
             description: always in English; translate if the ad is in another language.
               Plain text (no Markdown), max 1000 characters in total.
@@ -142,7 +142,7 @@ public static partial class ListingParsePromptQueries
               Existing job roles: {{NameList(jobRoles)}}
             companyName: as the company calls itself, without legal suffixes (AS, ASA, AB, GmbH, Ltd, Inc).
             deadline: a date → DATE + deadlineOn (dates without a year: the next such date after today).
-              "Snarest"/"ASAP"/"straks" → ASAP. "Løpende"/"rolling" → ROLLING. None given → UNSPECIFIED. deadlineOn only with DATE.
+              "Snarest"/"ASAP"/"straks"/"Løpende"/"fortløpende"/"rolling" → ASAP. None given → UNSPECIFIED. deadlineOn only with DATE.
             locations: every city the job can be based in. Remote limited to a country → { "city": null, "countryCode": "NO" }.
               Remote anywhere → []. Use the city name as written locally ("Tromsø", not "Tromso").
             """;

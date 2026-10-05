@@ -1,6 +1,6 @@
 # Project Status
 
-Updated: 2026-10-05 · Last logged commit: d47c83b
+Updated: 2026-10-05 · Last logged commit: 13acaab
 
 ## Milestones
 | # | Milestone | Status |
@@ -29,7 +29,7 @@ All endpoints require auth (fallback policy) unless marked anon.
   - Query: `listings(archived: Boolean = false)` (archived hidden by default) / `companies(search)` / `jobRoles(search)` / `skills(search)` / `locations(search: city)` — projection, `where`, `order`; `listingById(id)`
   - Paging: `listings` = offset (`skip`/`take`, default 20, max 100) → `{ items pageInfo { hasNextPage hasPreviousPage } totalCount }` for numbered pages; lookups = cursor (`first`/`after`, default 10) → `{ nodes pageInfo totalCount }`
   - Default order only when no client `order` (`ISortingContext.IsDefined` + `Handled(false)`); listings: closest deadline first (ASAP due `PostedOn + 14d`; upcoming → undated → expired), client sorts get `Id` tie-breaker
-  - `listingParsePrompt { version instructions }` — copy-paste prompt for external AIs (UI appends `<posting>…</posting>`); enums from C#, user's role/skill names (max 100 each), today's date. `ListingParsePromptQueries.Version` = 3
+  - `listingParsePrompt { version instructions }` — copy-paste prompt for external AIs (UI appends `<posting>…</posting>`); enums from C#, user's role/skill names (max 100 each), today's date. `ListingParsePromptQueries.Version` = 4, `QuickVersion` = 2
   - `parseListing(input:{text, mode: FULL|QUICK})` → `{parseJob}` (runs inline for now: returns SUCCEEDED/FAILED; later QUEUED + `onParseJobUpdated`). Same prompts as `listingParsePrompt`/`listingQuickParsePrompt`, `<posting>` wrapped, JSON mode, temp 0, input capped 12k chars, max 8192 output tokens. `result` = JSON text (object for FULL, array for QUICK) or FAILED "couldn't be read"; 429 → FAILED "free-tier limit". `parseJob(id: UUID)` (own jobs only). Error: `InvalidParseRequestError` (blank, >100k chars)
   - `Company|JobRole|Skill|Location.listingCount` — computed via DataLoader (one GROUP BY per page); `Company.applicationCount` (status ≠ SAVED)
   - `Listing.statusHistory(order)` / `Listing.interviews(order)` — nested sorting; `listings(where: {status: {eq: APPLIED}})` filters on status
@@ -40,6 +40,7 @@ All endpoints require auth (fallback policy) unless marked anon.
   - Interviews: `addInterview(input:{listingId, scheduledAt, title?, notes?})` (APPLIED/INTERVIEWING only), `updateInterview(input:{id, ...})` (any status), `deleteInterview(input:{id})` → `id`. Title max 200
   - Errors: `InvalidParseRequestError`, `InvalidListingError`, `ListingNotFoundError`, `InvalidCompanyError`, `CompanyNotFoundError`, `InvalidLocationError`, `ListingInUseError`, `DuplicateListingError`, `InvalidDocumentError`, `DocumentNotFoundError`, `DocumentSentError`, `InvalidStatusTransitionError`, `InvalidApplicationError`, `StatusChangeNotFoundError`, `InvalidInterviewError`, `InterviewNotFoundError`
   - `ListingInput` takes `companyName`/`jobRoleName`/skill `name`/`locations: [{city?, countryCode}]` → found case-insensitively or created. Defaults: skill `level: 3`, `isRequired: true`, `deadlineType: UNSPECIFIED`
+  - `DeadlineType` = `DATE | ASAP | UNSPECIFIED` (ROLLING removed — BREAKING for the UI). Prompts map "Snarest"/"ASAP"/"straks"/"Løpende"/"fortløpende"/"rolling" → ASAP. ParseJob results stored before the change may still say `"ROLLING"`: UI maps it to ASAP or re-parses
 
 ## Entities
 - `AppUser : IdentityUser` (string Id) + Identity tables (incl. UserLogins/UserTokens for future SSO/2FA)
@@ -58,7 +59,7 @@ All endpoints require auth (fallback policy) unless marked anon.
 - Hot Chocolate has a global `Location` type: files referencing ours use `using Location = JobHunt.Api.Features.Locations.Location;` `Names.Normalize` = Trim + ToUpperInvariant
 - Enums stored as strings (`ConfigureConventions`). Global filter `UserId == CurrentUserId` (from `IHttpContextAccessor`); child rows filtered via Listing
 - FKs: AppUser → all user tables cascade; Listing → Company/JobRole NoAction; children cascade from Listing/Skill
-- Migrations: `AddSamples`, `RemoveSamples`, `AddIdentity`, `AddListings`, `AddLocations` (dropped free-text Location columns; no rows existed), `RequireUrlAddMinYears`, `RequirePostedOn` (backfills null PostedOn from CreatedAt), `AddListingFavorites`, `AddDocuments`, `AddListingArchive`, `AddListingAnalyzed`, `AddListingUrlIndex`, `AddApplicationTracking` (existing listings default `Saved`; no sent docs existed, no backfill), `AddParseJobsAndLlmUsage`, `AllowReapplyToListings` (Url index → partial; no data change)
+- Migrations: `AddSamples`, `RemoveSamples`, `AddIdentity`, `AddListings`, `AddLocations` (dropped free-text Location columns; no rows existed), `RequireUrlAddMinYears`, `RequirePostedOn` (backfills null PostedOn from CreatedAt), `AddListingFavorites`, `AddDocuments`, `AddListingArchive`, `AddListingAnalyzed`, `AddListingUrlIndex`, `AddApplicationTracking` (existing listings default `Saved`; no sent docs existed, no backfill), `AddParseJobsAndLlmUsage`, `AllowReapplyToListings` (Url index → partial; no data change), `MergeRollingDeadlines` (Rolling → Asap; Down is a no-op)
 
 ## Config keys
 - `ConnectionStrings:Default` — `Data Source=jobhunt.db` (dev), `/data/jobhunt.db` (Docker)
@@ -93,6 +94,7 @@ All endpoints require auth (fallback policy) unless marked anon.
 - 2026-09-27 — Gemini via official Google.GenAI SDK (has `AsIChatClient`); `parseListing` runs inline first with the final async contract, so the UI can ship before the queue.
 - 2026-09-27 — Notes are Markdown strings (UI sanitizes on render), not HTML, so the server never sanitizes.
 - 2026-10-05 — A listing is one attempt: reposted ad = new listing, Url unique among open (non-final) ones via partial index, earlier attempts linked by Url (no FK). ACCEPTED ends a successful attempt.
+- 2026-10-05 — ROLLING merged into ASAP: same meaning in practice, the distinction only gave the parser a no-op choice.
 
 ## Next up
 - Parse queue: `Channel` + `ParseWorker`, RPM limiter, 429 retries, `onParseJobUpdated` over SSE; worker needs user scoping for the prompt's role/skill names. Then the posting cache.

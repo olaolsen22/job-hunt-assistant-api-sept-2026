@@ -1168,7 +1168,6 @@ enum CefrLevel {
 enum DeadlineType {
   DATE
   ASAP
-  ROLLING
   UNSPECIFIED
 }
 

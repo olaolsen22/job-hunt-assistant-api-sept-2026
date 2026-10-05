@@ -17,10 +17,12 @@ public class ListingParsePromptTests(ApiFactory factory) : IClassFixture<ApiFact
         var guestPrompt = (await guest.GraphQLAsync(query)).GetProperty("listingParsePrompt");
 
         var instructions = ownerPrompt.GetProperty("instructions").GetString()!;
-        Assert.Equal(3, ownerPrompt.GetProperty("version").GetInt32());
+        Assert.Equal(4, ownerPrompt.GetProperty("version").GetInt32());
         Assert.Contains("\"FIXED_TERM\"", instructions);
         Assert.Contains("\"FULL_TIME\"", instructions);
         Assert.Contains("\"C2\"", instructions);
+        Assert.Contains("\"Løpende\"/\"fortløpende\"/\"rolling\" → ASAP", instructions);
+        Assert.DoesNotContain("ROLLING", instructions);
         Assert.Contains(jobRole, instructions);
         Assert.Contains(skill, instructions);
         Assert.DoesNotContain(skill, guestPrompt.GetProperty("instructions").GetString());
@@ -37,9 +39,10 @@ public class ListingParsePromptTests(ApiFactory factory) : IClassFixture<ApiFact
             .GetProperty("listingQuickParsePrompt");
 
         var instructions = prompt.GetProperty("instructions").GetString()!;
-        Assert.Equal(1, prompt.GetProperty("version").GetInt32());
+        Assert.Equal(2, prompt.GetProperty("version").GetInt32());
         Assert.Contains("ONE JSON array", instructions);
-        Assert.Contains("\"ROLLING\"", instructions);
+        Assert.Contains("\"Løpende\"/\"fortløpende\"/\"rolling\" → ASAP", instructions);
+        Assert.DoesNotContain("ROLLING", instructions);
         Assert.Contains(jobRole, instructions);
     }
 }
