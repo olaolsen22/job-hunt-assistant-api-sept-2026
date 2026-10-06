@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Google.GenAI;
 using JobHunt.Api.Data;
+using JobHunt.Api.Features.Companies;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Llm;
 using Microsoft.Extensions.AI;
@@ -16,6 +17,7 @@ public class ListingParser(
     ILogger<ListingParser> logger)
 {
     public const string Operation = "parse-listing";
+    public const string CompaniesOperation = "parse-companies";
 
     // ≈3k tokens. Anything past this in a pasted ad is almost always footer and cookie text.
     private const int MaxInputChars = 12_000;
@@ -27,13 +29,16 @@ public class ListingParser(
     public async Task RunAsync(ParseJob job, AppDbContext db, CancellationToken ct)
     {
         // The same prompts the copy-paste path serves, so both paths return the same JSON.
-        var prompt = job.Mode == ParseMode.Full
-            ? await ListingParsePromptQueries.GetListingParsePromptAsync(db, time, ct)
-            : await ListingParsePromptQueries.GetListingQuickParsePromptAsync(db, time, ct);
+        var instructions = job.Mode switch
+        {
+            ParseMode.Full => (await ListingParsePromptQueries.GetListingParsePromptAsync(db, time, ct)).Instructions,
+            ParseMode.Quick => (await ListingParsePromptQueries.GetListingQuickParsePromptAsync(db, time, ct)).Instructions,
+            _ => (await CompanyParsePromptQueries.GetCompanyParsePromptAsync(db, ct)).Instructions,
+        };
         var posting = job.RawText.Length > MaxInputChars ? job.RawText[..MaxInputChars] : job.RawText;
         List<ChatMessage> messages =
         [
-            new(ChatRole.System, prompt.Instructions),
+            new(ChatRole.System, instructions),
             new(ChatRole.User, $"<posting>\n{posting}\n</posting>"),
         ];
         var options = new ChatOptions
@@ -49,7 +54,7 @@ public class ListingParser(
             UserId = job.UserId,
             Provider = job.Provider,
             Model = gemini.Value.Model,
-            Operation = Operation,
+            Operation = job.Mode == ParseMode.Companies ? CompaniesOperation : Operation,
             CreatedAt = time.GetUtcNow().UtcDateTime,
         };
         db.LlmUsages.Add(usage);

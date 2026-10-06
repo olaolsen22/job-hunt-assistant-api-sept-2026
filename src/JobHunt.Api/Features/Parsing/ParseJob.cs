@@ -4,8 +4,9 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace JobHunt.Api.Features.Parsing;
 
-// Full = one ad into the listing form; Quick = several ads into the quick-add table.
-public enum ParseMode { Full, Quick }
+// Full = one ad into the listing form; Quick = several ads into the quick-add table;
+// Companies = a list of names or text about companies into company rows.
+public enum ParseMode { Full, Quick, Companies }
 
 // Queued and Retrying come with the background queue; until then jobs finish inside the mutation.
 public enum ParseJobStatus { Queued, Running, Retrying, Succeeded, Failed }
