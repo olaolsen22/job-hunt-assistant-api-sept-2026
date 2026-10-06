@@ -91,7 +91,13 @@ builder.AddGraphQL()
     .AddProjections()
     .AddFiltering()
     .AddSorting()
-    .ModifyPagingOptions(options => options.IncludeTotalCount = true);
+    .ModifyPagingOptions(options => options.IncludeTotalCount = true)
+    // Quick add sends one aliased createListing per row in a single document (~20 field cost each).
+    .ModifyCostOptions(options =>
+    {
+        options.MaxFieldCost = 5000;
+        options.MaxTypeCost = 5000;
+    });
 
 var app = builder.Build();
 
