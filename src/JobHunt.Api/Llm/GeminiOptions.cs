@@ -15,4 +15,8 @@ public class GeminiOptions
 
     [Required]
     public string Model { get; set; } = "";
+
+    // Copied by hand from AI Studio's rate-limit page: Gemini has no API for its limits. Per model, so it
+    // changes with Model. Unset means the usage widget shows no limit.
+    public int? RequestsPerDay { get; set; }
 }

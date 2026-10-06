@@ -80,6 +80,7 @@ builder.Services.AddKeyedSingleton<IChatClient>(GeminiOptions.Provider, (sp, _) 
     var gemini = sp.GetRequiredService<IOptions<GeminiOptions>>().Value;
     return new Google.GenAI.Client(apiKey: gemini.ApiKey).AsIChatClient(gemini.Model);
 });
+builder.Services.AddOptions<LlmPricingOptions>().BindConfiguration(LlmPricingOptions.Section);
 builder.Services.AddScoped<ListingParser>();
 
 builder.AddGraphQL()

@@ -37,6 +37,9 @@ public class ApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Seed:OwnerPassword", OwnerPassword);
         // CI has no user-secrets; the key is never used because the fake replaces the real client.
         builder.UseSetting("Llm:Gemini:ApiKey", "test-key");
+        // A model with prices, so usageDaily's estimated cost has something to compute; the configured model has none.
+        builder.UseSetting("Llm:Pricing:priced-model:InputPerMTok", "0.10");
+        builder.UseSetting("Llm:Pricing:priced-model:OutputPerMTok", "0.40");
         builder.ConfigureServices(services => services.AddKeyedSingleton<IChatClient>(GeminiOptions.Provider, Llm));
     }
 
