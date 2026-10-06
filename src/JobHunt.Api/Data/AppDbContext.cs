@@ -3,6 +3,8 @@ using JobHunt.Api.Features.Applications;
 using JobHunt.Api.Features.Auth;
 using JobHunt.Api.Features.Companies;
 using JobHunt.Api.Features.Documents;
+using JobHunt.Api.Features.Dashboard;
+using JobHunt.Api.Features.Industries;
 using JobHunt.Api.Features.JobRoles;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Parsing;
@@ -25,6 +27,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
     public DbSet<ListingLanguage> ListingLanguages => Set<ListingLanguage>();
     public DbSet<ListingLocation> ListingLocations => Set<ListingLocation>();
     public DbSet<Company> Companies => Set<Company>();
+    public DbSet<CompanyLocation> CompanyLocations => Set<CompanyLocation>();
+    public DbSet<Industry> Industries => Set<Industry>();
+    public DbSet<DashboardWidget> DashboardWidgets => Set<DashboardWidget>();
     public DbSet<JobRole> JobRoles => Set<JobRole>();
     public DbSet<Skill> Skills => Set<Skill>();
     public DbSet<Location> Locations => Set<Location>();
@@ -57,6 +62,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
         modelBuilder.Entity<ListingLanguage>().HasQueryFilter(l => l.Listing.UserId == CurrentUserId);
         modelBuilder.Entity<ListingLocation>().HasQueryFilter(l => l.Listing.UserId == CurrentUserId);
         modelBuilder.Entity<Company>().HasQueryFilter(c => c.UserId == CurrentUserId);
+        modelBuilder.Entity<CompanyLocation>().HasQueryFilter(l => l.Company.UserId == CurrentUserId);
+        modelBuilder.Entity<Industry>().HasQueryFilter(i => i.UserId == CurrentUserId);
+        modelBuilder.Entity<DashboardWidget>().HasQueryFilter(w => w.UserId == CurrentUserId);
         modelBuilder.Entity<JobRole>().HasQueryFilter(r => r.UserId == CurrentUserId);
         modelBuilder.Entity<Skill>().HasQueryFilter(s => s.UserId == CurrentUserId);
         modelBuilder.Entity<Location>().HasQueryFilter(l => l.UserId == CurrentUserId);

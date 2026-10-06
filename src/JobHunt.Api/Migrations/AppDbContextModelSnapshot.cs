@@ -159,7 +159,10 @@ namespace JobHunt.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<int?>("LocationId")
+                    b.Property<DateTime?>("FavoritedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("IndustryId")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("Name")
@@ -176,12 +179,55 @@ namespace JobHunt.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("LocationId");
+                    b.HasIndex("IndustryId");
 
                     b.HasIndex("UserId", "NormalizedName")
                         .IsUnique();
 
                     b.ToTable("Companies");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.Companies.CompanyLocation", b =>
+                {
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("LocationId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("CompanyId", "LocationId");
+
+                    b.HasIndex("LocationId");
+
+                    b.ToTable("CompanyLocations");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.Dashboard.DashboardWidget", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsShown")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Widget")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Widget")
+                        .IsUnique();
+
+                    b.ToTable("DashboardWidgets");
                 });
 
             modelBuilder.Entity("JobHunt.Api.Features.Documents.Document", b =>
@@ -244,6 +290,32 @@ namespace JobHunt.Api.Migrations
                     b.HasKey("DocumentId");
 
                     b.ToTable("DocumentContents");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.Industries.Industry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "NormalizedName")
+                        .IsUnique();
+
+                    b.ToTable("Industries");
                 });
 
             modelBuilder.Entity("JobHunt.Api.Features.JobRoles.JobRole", b =>
@@ -742,9 +814,9 @@ namespace JobHunt.Api.Migrations
 
             modelBuilder.Entity("JobHunt.Api.Features.Companies.Company", b =>
                 {
-                    b.HasOne("JobHunt.Api.Features.Locations.Location", "Location")
+                    b.HasOne("JobHunt.Api.Features.Industries.Industry", "Industry")
                         .WithMany()
-                        .HasForeignKey("LocationId")
+                        .HasForeignKey("IndustryId")
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("JobHunt.Api.Features.Auth.AppUser", null)
@@ -753,7 +825,35 @@ namespace JobHunt.Api.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.Navigation("Industry");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.Companies.CompanyLocation", b =>
+                {
+                    b.HasOne("JobHunt.Api.Features.Companies.Company", "Company")
+                        .WithMany("Locations")
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("JobHunt.Api.Features.Locations.Location", "Location")
+                        .WithMany()
+                        .HasForeignKey("LocationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Company");
+
                     b.Navigation("Location");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.Dashboard.DashboardWidget", b =>
+                {
+                    b.HasOne("JobHunt.Api.Features.Auth.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("JobHunt.Api.Features.Documents.Document", b =>
@@ -782,6 +882,15 @@ namespace JobHunt.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Document");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.Industries.Industry", b =>
+                {
+                    b.HasOne("JobHunt.Api.Features.Auth.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("JobHunt.Api.Features.JobRoles.JobRole", b =>
@@ -952,6 +1061,11 @@ namespace JobHunt.Api.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.Companies.Company", b =>
+                {
+                    b.Navigation("Locations");
                 });
 
             modelBuilder.Entity("JobHunt.Api.Features.Listings.Listing", b =>
