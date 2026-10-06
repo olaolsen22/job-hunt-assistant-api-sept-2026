@@ -6,6 +6,7 @@ schema {
 type Query {
   listingParsePrompt: ListingParsePrompt! @cost(weight: "10")
   listingQuickParsePrompt: ListingParsePrompt! @cost(weight: "10")
+  companyParsePrompt: CompanyParsePrompt! @cost(weight: "10")
   companies(
     search: String
     "Returns the first _n_ elements from the list."
@@ -19,6 +20,28 @@ type Query {
     where: CompanyFilterInput @cost(weight: "10")
     order: [CompanySortInput!] @cost(weight: "10")
   ): CompaniesConnection
+    @listSize(
+      assumedSize: 50
+      slicingArguments: ["first", "last"]
+      slicingArgumentDefaultValue: 10
+      sizedFields: ["edges", "nodes"]
+      requireOneSlicingArgument: false
+    )
+    @cost(weight: "10")
+  dashboardLayout: [DashboardWidgetState!]! @cost(weight: "10")
+  industries(
+    search: String
+    "Returns the first _n_ elements from the list."
+    first: Int
+    "Returns the elements in the list that come after the specified cursor."
+    after: String
+    "Returns the last _n_ elements from the list."
+    last: Int
+    "Returns the elements in the list that come before the specified cursor."
+    before: String
+    where: IndustryFilterInput @cost(weight: "10")
+    order: [IndustrySortInput!] @cost(weight: "10")
+  ): IndustriesConnection
     @listSize(
       assumedSize: 50
       slicingArguments: ["first", "last"]
@@ -109,6 +132,8 @@ type Query {
       requireOneSlicingArgument: false
     )
     @cost(weight: "10")
+  llmUsageToday: UsageToday! @cost(weight: "10")
+  usageDaily(days: Int! = 30): [DailyUsage!]! @cost(weight: "10")
 }
 
 type Mutation {
@@ -130,7 +155,13 @@ type Mutation {
     @cost(weight: "10")
   deleteInterview(input: DeleteInterviewInput!): DeleteInterviewPayload!
     @cost(weight: "10")
+  createCompanies(input: CreateCompaniesInput!): CreateCompaniesPayload!
+    @cost(weight: "10")
+  setCompanyFavorite(input: SetCompanyFavoriteInput!): SetCompanyFavoritePayload!
+    @cost(weight: "10")
   updateCompany(input: UpdateCompanyInput!): UpdateCompanyPayload!
+    @cost(weight: "10")
+  saveDashboardLayout(input: SaveDashboardLayoutInput!): SaveDashboardLayoutPayload!
     @cost(weight: "10")
   createListing(input: CreateListingInput!): CreateListingPayload!
     @cost(weight: "10")
@@ -191,12 +222,36 @@ type Company {
   applicationCount: Int! @cost(weight: "10")
   id: Int!
   name: String!
-  locationId: Int
-  location: Location
+  industryId: Int
+  industry: Industry
+  favoritedAt: DateTime
+  locations: [CompanyLocation!]!
+}
+
+type CompanyLocation {
+  companyId: Int!
+  company: Company!
+  locationId: Int!
+  location: Location!
 }
 
 type CompanyNotFoundError implements Error {
   message: String!
+}
+
+type CompanyParsePrompt {
+  version: Int!
+  instructions: String!
+}
+
+type CompanyResult {
+  company: Company!
+  created: Boolean!
+}
+
+type CreateCompaniesPayload {
+  results: [CompanyResult!]
+  errors: [CreateCompaniesError!]
 }
 
 type CreateListingPayload {
@@ -204,6 +259,20 @@ type CreateListingPayload {
   previousAttempts: [Listing!]
   possibleDuplicates: [Listing!]
   errors: [CreateListingError!]
+}
+
+type DailyUsage {
+  day: LocalDate!
+  model: String!
+  requests: Int!
+  inputTokens: Long!
+  outputTokens: Long!
+  estimatedCost: Decimal
+}
+
+type DashboardWidgetState {
+  widget: DashboardWidgetKind!
+  isShown: Boolean!
 }
 
 type DeleteDocumentPayload {
@@ -247,6 +316,31 @@ type DuplicateListingError implements Error {
   existingListingId: Int!
 }
 
+"A connection to a list of items."
+type IndustriesConnection {
+  "Information to aid in pagination."
+  pageInfo: PageInfo!
+  "A list of edges."
+  edges: [IndustriesEdge!]
+  "A flattened list of the nodes."
+  nodes: [Industry!]
+  "Identifies the total count of items in the connection."
+  totalCount: Int! @cost(weight: "10")
+}
+
+"An edge in a connection."
+type IndustriesEdge {
+  "A cursor for use in pagination."
+  cursor: String!
+  "The item at the end of the edge."
+  node: Industry!
+}
+
+type Industry {
+  id: Int!
+  name: String!
+}
+
 type Interview {
   id: Int!
   listingId: Int!
@@ -267,6 +361,10 @@ type InvalidApplicationError implements Error {
 }
 
 type InvalidCompanyError implements Error {
+  message: String!
+}
+
+type InvalidDashboardLayoutError implements Error {
   message: String!
 }
 
@@ -462,9 +560,19 @@ type RecordOutcomePayload {
   errors: [RecordOutcomeError!]
 }
 
+type SaveDashboardLayoutPayload {
+  layout: [DashboardWidgetState!]
+  errors: [SaveDashboardLayoutError!]
+}
+
 type SaveLocationPayload {
   location: Location
   errors: [SaveLocationError!]
+}
+
+type SetCompanyFavoritePayload {
+  company: Company
+  errors: [SetCompanyFavoriteError!]
 }
 
 type SetListingArchivedPayload {
@@ -547,6 +655,15 @@ type UploadDocumentPayload {
   errors: [UploadDocumentError!]
 }
 
+type UsageToday {
+  requests: Int!
+  inputTokens: Long!
+  outputTokens: Long!
+  requestsLimit: Int
+  remainingRequests: Int
+  resetsAt: DateTime!
+}
+
 interface Error {
   message: String!
 }
@@ -562,6 +679,8 @@ union ApplyToListingError =
   | InvalidApplicationError
   | DocumentNotFoundError
   | InvalidDocumentError
+
+union CreateCompaniesError = InvalidCompanyError | InvalidLocationError
 
 union CreateListingError =
   | InvalidListingError
@@ -581,7 +700,11 @@ union RecordOutcomeError =
   | InvalidStatusTransitionError
   | InvalidApplicationError
 
+union SaveDashboardLayoutError = InvalidDashboardLayoutError
+
 union SaveLocationError = InvalidLocationError
+
+union SetCompanyFavoriteError = CompanyNotFoundError
 
 union SetListingArchivedError = ListingNotFoundError
 
@@ -643,6 +766,23 @@ input CompanyFilterInput {
   or: [CompanyFilterInput!]
   id: IntOperationFilterInput
   name: StringOperationFilterInput
+  industryId: IntOperationFilterInput
+  industry: IndustryFilterInput
+  favoritedAt: DateTimeOperationFilterInput
+  locations: ListFilterInputTypeOfCompanyLocationFilterInput
+}
+
+input CompanyInput {
+  name: String!
+  industryName: String
+  locations: [LocationInput!]!
+}
+
+input CompanyLocationFilterInput {
+  and: [CompanyLocationFilterInput!]
+  or: [CompanyLocationFilterInput!]
+  companyId: IntOperationFilterInput
+  company: CompanyFilterInput
   locationId: IntOperationFilterInput
   location: LocationFilterInput
 }
@@ -650,12 +790,22 @@ input CompanyFilterInput {
 input CompanySortInput {
   id: SortEnumType @cost(weight: "10")
   name: SortEnumType @cost(weight: "10")
-  locationId: SortEnumType @cost(weight: "10")
-  location: LocationSortInput @cost(weight: "10")
+  industryId: SortEnumType @cost(weight: "10")
+  industry: IndustrySortInput @cost(weight: "10")
+  favoritedAt: SortEnumType @cost(weight: "10")
+}
+
+input CreateCompaniesInput {
+  companies: [CompanyInput!]!
 }
 
 input CreateListingInput {
   listing: ListingInput!
+}
+
+input DashboardWidgetStateInput {
+  widget: DashboardWidgetKind!
+  isShown: Boolean!
 }
 
 input DateTimeOperationFilterInput {
@@ -714,6 +864,18 @@ input DocumentKindOperationFilterInput {
   nin: [DocumentKind!] @cost(weight: "10")
 }
 
+input IndustryFilterInput {
+  and: [IndustryFilterInput!]
+  or: [IndustryFilterInput!]
+  id: IntOperationFilterInput
+  name: StringOperationFilterInput
+}
+
+input IndustrySortInput {
+  id: SortEnumType @cost(weight: "10")
+  name: SortEnumType @cost(weight: "10")
+}
+
 input InterviewFilterInput {
   and: [InterviewFilterInput!]
   or: [InterviewFilterInput!]
@@ -770,6 +932,13 @@ input LanguageOperationFilterInput {
   neq: Language @cost(weight: "10")
   in: [Language!] @cost(weight: "10")
   nin: [Language!] @cost(weight: "10")
+}
+
+input ListFilterInputTypeOfCompanyLocationFilterInput {
+  all: CompanyLocationFilterInput @cost(weight: "10")
+  none: CompanyLocationFilterInput @cost(weight: "10")
+  some: CompanyLocationFilterInput @cost(weight: "10")
+  any: Boolean @cost(weight: "10")
 }
 
 input ListFilterInputTypeOfDocumentFilterInput {
@@ -1043,10 +1212,19 @@ input RecordOutcomeInput {
   note: String
 }
 
+input SaveDashboardLayoutInput {
+  widgets: [DashboardWidgetStateInput!]!
+}
+
 input SaveLocationInput {
   city: String
   countryCode: String!
   isTarget: Boolean!
+}
+
+input SetCompanyFavoriteInput {
+  id: Int!
+  isFavorite: Boolean!
 }
 
 input SetListingArchivedInput {
@@ -1115,7 +1293,8 @@ input UndoStatusChangeInput {
 input UpdateCompanyInput {
   id: Int!
   name: String!
-  location: LocationInput
+  industryName: String
+  locations: [LocationInput!]!
 }
 
 input UpdateInterviewInput {
@@ -1168,6 +1347,19 @@ enum CefrLevel {
   C2
 }
 
+enum DashboardWidgetKind {
+  CLOSING_SOON
+  UPCOMING_INTERVIEWS
+  OFFERS_TO_ANSWER
+  STALE_LISTINGS
+  PIPELINE
+  APPLIED_THIS_WEEK
+  TO_ANALYZE
+  FAVORITED_LISTINGS
+  FAVORITED_COMPANIES
+  LLM_USAGE
+}
+
 enum DeadlineType {
   DATE
   ASAP
@@ -1204,6 +1396,7 @@ enum ParseJobStatus {
 enum ParseMode {
   FULL
   QUICK
+  COMPANIES
 }
 
 enum Schedule {
@@ -1233,6 +1426,10 @@ enum WorkMode {
 "The `DateTime` scalar type represents a date and time with time zone offset information."
 scalar DateTime
   @specifiedBy(url: "https://scalars.graphql.org/chillicream/date-time.html")
+
+"The `Decimal` scalar type represents a decimal floating-point number with high precision."
+scalar Decimal
+  @specifiedBy(url: "https://scalars.graphql.org/chillicream/decimal.html")
 
 "The `LocalDate` scalar type represents a date without time or time zone information."
 scalar LocalDate
