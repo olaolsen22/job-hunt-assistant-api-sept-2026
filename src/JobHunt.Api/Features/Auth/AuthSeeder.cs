@@ -21,15 +21,28 @@ public static class AuthSeeder
         var owner = await EnsureUserAsync(userManager, config["Seed:OwnerEmail"]
             ?? throw new InvalidOperationException("Set Seed:OwnerEmail (user-secrets or env var)."), Roles.Owner);
 
-        // Config is the owner's password source until there's an email-based reset flow.
-        if (!await userManager.CheckPasswordAsync(owner, ownerPassword))
+        await SetPasswordAsync(userManager, owner, ownerPassword);
+
+        // Extra accounts (e.g. a real one next to a test owner); registration stays closed.
+        foreach (var seed in config.GetSection("Seed:Users").GetChildren())
         {
-            ThrowIfFailed(await userManager.RemovePasswordAsync(owner));
-            ThrowIfFailed(await userManager.AddPasswordAsync(owner, ownerPassword));
+            var email = seed["Email"];
+            var password = seed["Password"];
+            if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+                throw new InvalidOperationException($"Set both Seed:Users:{seed.Key}:Email and Password.");
+            await SetPasswordAsync(userManager, await EnsureUserAsync(userManager, email, Roles.Owner), password);
         }
 
         // No password: the guest can only sign in through the one-click guest endpoint.
         await EnsureUserAsync(userManager, config["Seed:GuestEmail"]!, Roles.Guest);
+    }
+
+    // Config is the password source until there's an email-based reset flow.
+    private static async Task SetPasswordAsync(UserManager<AppUser> userManager, AppUser user, string password)
+    {
+        if (await userManager.CheckPasswordAsync(user, password)) return;
+        ThrowIfFailed(await userManager.RemovePasswordAsync(user));
+        ThrowIfFailed(await userManager.AddPasswordAsync(user, password));
     }
 
     private static async Task<AppUser> EnsureUserAsync(UserManager<AppUser> userManager, string email, string role)

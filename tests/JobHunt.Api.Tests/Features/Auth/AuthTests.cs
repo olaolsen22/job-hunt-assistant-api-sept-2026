@@ -1,6 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using JobHunt.Api.Features.Auth;
+using JobHunt.Api.Tests.Features.Listings;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace JobHunt.Api.Tests.Features.Auth;
 
@@ -93,5 +96,69 @@ public class LockoutTests(ApiFactory factory) : IClassFixture<ApiFactory>
             new LoginRequest(ApiFactory.OwnerEmail, ApiFactory.OwnerPassword));
 
         Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
+    }
+}
+
+// Own factory: the restart test re-seeds with a changed password.
+public class SeededUserTests(ApiFactory factory) : IClassFixture<ApiFactory>
+{
+    private const string Email = "real@test.local";
+    private const string Password = "Real-Passw0rd!";
+
+    private WebApplicationFactory<Program> WithUser(string password) => factory.WithWebHostBuilder(b =>
+    {
+        b.UseSetting("Seed:Users:0:Email", Email);
+        b.UseSetting("Seed:Users:0:Password", password);
+    });
+
+    private static async Task<HttpResponseMessage> LoginAsync(HttpClient client, string email, string password) =>
+        await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, password));
+
+    [Fact]
+    public async Task ExtraUser_SignsInAsOwner_AndOwnerStillWorks()
+    {
+        var app = WithUser(Password);
+        var client = app.CreateClient();
+
+        (await LoginAsync(client, Email, Password)).EnsureSuccessStatusCode();
+        var me = await client.GetFromJsonAsync<UserResponse>("/api/auth/me");
+        Assert.Equal(Email, me!.Email);
+        Assert.Equal(Roles.Owner, me.Role);
+
+        (await LoginAsync(app.CreateClient(), ApiFactory.OwnerEmail, ApiFactory.OwnerPassword)).EnsureSuccessStatusCode();
+    }
+
+    [Fact]
+    public async Task ExtraUser_DoesNotSeeOwnersListings()
+    {
+        var app = WithUser(Password);
+        var owner = app.CreateClient();
+        (await LoginAsync(owner, ApiFactory.OwnerEmail, ApiFactory.OwnerPassword)).EnsureSuccessStatusCode();
+        var listingId = (await ListingTests.CreateAsync(owner, ListingTests.NewListing(ListingTests.Unique("Acme"))))
+            .GetProperty("id").GetInt32();
+
+        var user = app.CreateClient();
+        (await LoginAsync(user, Email, Password)).EnsureSuccessStatusCode();
+        var data = await user.GraphQLAsync("{ listings { items { id } } }");
+
+        Assert.DoesNotContain(data.GetProperty("listings").GetProperty("items").EnumerateArray(),
+            l => l.GetProperty("id").GetInt32() == listingId);
+    }
+
+    [Fact]
+    public async Task Restart_KeepsAccountAndData_AndAppliesChangedPassword()
+    {
+        var before = WithUser(Password).CreateClient();
+        (await LoginAsync(before, Email, Password)).EnsureSuccessStatusCode();
+        var listingId = (await ListingTests.CreateAsync(before, ListingTests.NewListing(ListingTests.Unique("Acme"))))
+            .GetProperty("id").GetInt32();
+
+        var restarted = WithUser("Changed-Passw0rd!");
+        Assert.Equal(HttpStatusCode.Unauthorized, (await LoginAsync(restarted.CreateClient(), Email, Password)).StatusCode);
+        var after = restarted.CreateClient();
+        (await LoginAsync(after, Email, "Changed-Passw0rd!")).EnsureSuccessStatusCode();
+
+        var data = await after.GraphQLAsync("query ($id: Int!) { listingById(id: $id) { id } }", new { id = listingId });
+        Assert.Equal(listingId, data.GetProperty("listingById").GetProperty("id").GetInt32());
     }
 }

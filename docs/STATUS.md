@@ -71,6 +71,7 @@ All endpoints require auth (fallback policy) unless marked anon.
 - `ConnectionStrings:Default` — `Data Source=jobhunt.db` (dev), `/data/jobhunt.db` (Docker)
 - `Seed:OwnerEmail`, `Seed:OwnerPassword` — required; dev defaults in `appsettings.Development.json` (override with user-secrets), `.env` → compose (Docker). Password re-applied on startup.
 - `Seed:GuestEmail` — `guest@jobhunt.local`; guest has no password
+- `Seed:Users:N:Email`, `Seed:Users:N:Password` — optional extra `Owner` accounts (e.g. a real account next to the test owner); user-secrets. Created if missing, password re-applied on startup, blank value → startup error
 - `Llm:Gemini:ApiKey` — required (ValidateOnStart); user-secrets (dev), `GEMINI_API_KEY` in `.env` → compose (Docker). `Llm:Gemini:Model` — `gemini-3.1-flash-lite` in appsettings.json. `Llm:Gemini:RequestsPerDay` — optional, 500 in appsettings.json (free tier, copied from AI Studio's rate-limit page 2026-10-06; Gemini has no API for it). `Llm:Pricing:{model}:InputPerMTok` / `OutputPerMTok` — optional paid-tier prices for the cost estimate, none set
 
 ## Stack
