@@ -10,7 +10,7 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
     private const string ListingFields = """
         id title seniority employmentType schedule workMode description url
         postedOn deadlineType deadlineOn postingLanguage createdAt updatedAt analyzedAt
-        company { id name location { city countryCode } }
+        company { id name industry { name } locations { location { city countryCode } } }
         jobRole { id name }
         skills { level minYears isRequired skill { id name } }
         languages { language level isRequired }
@@ -480,25 +480,6 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var delete = await guest.GraphQLAsync(DeleteListing, new { id });
         Assert.Equal("ListingNotFoundError",
             delete.GetProperty("deleteListing").GetProperty("errors")[0].GetProperty("__typename").GetString());
-    }
-
-    [Fact]
-    public async Task UpdateCompany_SetsLocation()
-    {
-        var client = await factory.GetOwnerClientAsync();
-        var created = await CreateAsync(client, NewListing(Unique("Acme")));
-
-        var data = await client.GraphQLAsync("""
-            mutation ($id: Int!) {
-              updateCompany(input: { id: $id, name: "Acme Renamed", location: { city: "Bergen", countryCode: "NO" } }) {
-                company { name location { city countryCode } }
-              }
-            }
-            """, new { id = Id(created, "company") });
-
-        var company = data.GetProperty("updateCompany").GetProperty("company");
-        Assert.Equal("Acme Renamed", company.GetProperty("name").GetString());
-        Assert.Equal("Bergen", company.GetProperty("location").GetProperty("city").GetString());
     }
 
     [Fact]
