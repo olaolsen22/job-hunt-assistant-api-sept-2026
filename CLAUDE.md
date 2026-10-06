@@ -46,6 +46,7 @@ or Ollama, with a background queue + GraphQL subscriptions over SSE.
 - **Record the why at change time**, not commit time: after each change, append one line to `.claude/commit-notes.md` (`- <area>: <what> — <why>`, prefixing the why with `owner requested: ` when it was the owner's request). When committing, build messages from it, then remove the lines you used. This survives long chats, compaction, and `/clear`.
 
 ## Working rules (token budget: personal plan)
+- This repo is the API only. The Nuxt UI is a separate repo (`../job-hunt-assistant-ui-sept-2026`); never edit it, even when asked. The owner sometimes sends UI requests to this session by mistake (the Claude app doesn't show the current repo clearly). If a request is about UI (dashboard, pages, components, styling, Vue/Nuxt code), edit nothing, say it belongs to the UI repo, and ask whether they meant a different session. Reading `schema.graphql` and `docs/STATUS.md` for UI questions is fine.
 - Don't spawn subagents unless the user asks or the task clearly matches `dotnet-expert` / `db-architect`.
 - Prefer targeted reads (Grep, then a line range) over whole-file reads. Never read `bin/`, `obj/`, or `Migrations/*.Designer.cs`.
 - Answer style: direct, like pre-2020 StackOverflow/GitHub. Answer first, no preamble, no recap, no closing offers. Code over prose.
