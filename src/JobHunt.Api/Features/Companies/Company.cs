@@ -1,4 +1,5 @@
 using JobHunt.Api.Features.Auth;
+using JobHunt.Api.Features.Contacts;
 using JobHunt.Api.Features.Industries;
 // Hot Chocolate also has a global Location type (a position in a query document).
 using Location = JobHunt.Api.Features.Locations.Location;
@@ -17,8 +18,13 @@ public class Company
     public Industry? Industry { get; set; }
     // Null = not favorited. A time rather than a bool so the shortlist can sort by when you favorited.
     public DateTime? FavoritedAt { get; set; }
+    // Null = not avoided. Independent of FavoritedAt: the why goes in Notes, which any company can have.
+    public DateTime? AvoidedAt { get; set; }
+    // Markdown; the UI sanitizes on render.
+    public string? Notes { get; set; }
     // Offices, in no particular role: a listing's own locations can differ.
     public List<CompanyLocation> Locations { get; set; } = [];
+    public List<Contact> Contacts { get; set; } = [];
 }
 
 public class CompanyLocation

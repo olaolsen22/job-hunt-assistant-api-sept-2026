@@ -1,4 +1,5 @@
 using JobHunt.Api.Data;
+using JobHunt.Api.Features.Applications;
 using JobHunt.Api.Features.Industries;
 // Hot Chocolate also has a global Location type (a position in a query document).
 using JobHunt.Api.Features.Locations;
@@ -85,6 +86,36 @@ public static class CompanyMutations
             company.FavoritedAt ??= time.GetUtcNow().UtcDateTime;
         else
             company.FavoritedAt = null;
+        await db.SaveChangesAsync(ct);
+        return company;
+    }
+
+    [Error<CompanyNotFoundException>]
+    public static async Task<Company> SetCompanyAvoidedAsync(
+        int id, bool isAvoided, AppDbContext db, TimeProvider time, CancellationToken ct)
+    {
+        var company = await db.Companies.FirstOrDefaultAsync(c => c.Id == id, ct)
+            ?? throw new CompanyNotFoundException(id);
+        if (isAvoided)
+            company.AvoidedAt ??= time.GetUtcNow().UtcDateTime;
+        else
+            company.AvoidedAt = null;
+        await db.SaveChangesAsync(ct);
+        return company;
+    }
+
+    // Separate from updateCompany: that's a full replace, so clients that don't send notes would wipe them.
+    [Error<CompanyNotFoundException>]
+    [Error<InvalidCompanyException>]
+    public static async Task<Company> SetCompanyNotesAsync(
+        int id, string? notes, AppDbContext db, CancellationToken ct)
+    {
+        var company = await db.Companies.FirstOrDefaultAsync(c => c.Id == id, ct)
+            ?? throw new CompanyNotFoundException(id);
+        notes = ApplicationMutations.CleanNote(notes);
+        if (notes?.Length > ApplicationMutations.MaxNoteLength)
+            throw new InvalidCompanyException($"The notes are longer than {ApplicationMutations.MaxNoteLength} characters.");
+        company.Notes = notes;
         await db.SaveChangesAsync(ct);
         return company;
     }

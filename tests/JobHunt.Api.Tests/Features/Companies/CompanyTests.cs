@@ -441,6 +441,179 @@ public class CompanyTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal(favorited, after.GetProperty("companies").GetProperty("nodes")[0].GetProperty("favoritedAt").GetString());
     }
 
+    private const string SetAvoided = """
+        mutation ($id: Int!, $isAvoided: Boolean!) {
+          setCompanyAvoided(input: { id: $id, isAvoided: $isAvoided }) {
+            company { id avoidedAt favoritedAt notes }
+            errors { __typename }
+          }
+        }
+        """;
+
+    private const string SetNotes = """
+        mutation ($id: Int!, $notes: String) {
+          setCompanyNotes(input: { id: $id, notes: $notes }) {
+            company { id avoidedAt favoritedAt notes }
+            errors { __typename }
+          }
+        }
+        """;
+
+    [Fact]
+    public async Task SetCompanyAvoided_SetsClearsAndKeepsFirstTime()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var id = await CompanyIdAsync(client, ListingTests.Unique("Acme"));
+
+        var first = await AvoidAsync(client, id, true);
+        var again = await AvoidAsync(client, id, true);
+        var removed = await AvoidAsync(client, id, false);
+
+        Assert.NotEqual(JsonValueKind.Null, first.GetProperty("avoidedAt").ValueKind);
+        Assert.Equal(first.GetProperty("avoidedAt").GetString(), again.GetProperty("avoidedAt").GetString());
+        Assert.Equal(JsonValueKind.Null, removed.GetProperty("avoidedAt").ValueKind);
+    }
+
+    [Fact]
+    public async Task SetCompanyAvoidedAndNotes_OnUnknownOrOtherUsersCompany_ReturnCompanyNotFoundError()
+    {
+        var owner = await factory.GetOwnerClientAsync();
+        var guest = await factory.GetGuestClientAsync();
+        var id = await CompanyIdAsync(owner, ListingTests.Unique("Acme"));
+
+        foreach (var (mutation, data) in new[]
+                 {
+                     ("setCompanyAvoided", await guest.GraphQLAsync(SetAvoided, new { id, isAvoided = true })),
+                     ("setCompanyAvoided", await owner.GraphQLAsync(SetAvoided, new { id = int.MaxValue, isAvoided = true })),
+                     ("setCompanyNotes", await guest.GraphQLAsync(SetNotes, new { id, notes = "x" })),
+                     ("setCompanyNotes", await owner.GraphQLAsync(SetNotes, new { id = int.MaxValue, notes = "x" })),
+                 })
+            Assert.Equal("CompanyNotFoundError",
+                data.GetProperty(mutation).GetProperty("errors")[0].GetProperty("__typename").GetString());
+    }
+
+    [Fact]
+    public async Task Companies_FilterByAvoided_ExcludesOthers()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var avoided = await CompanyIdAsync(client, ListingTests.Unique("Acme"));
+        var other = await CompanyIdAsync(client, ListingTests.Unique("Bravo"));
+        await AvoidAsync(client, avoided, true);
+
+        var data = await client.GraphQLAsync("{ companies(where: { avoidedAt: { neq: null } }) { nodes { id } } }");
+        var ids = data.GetProperty("companies").GetProperty("nodes").EnumerateArray()
+            .Select(n => n.GetProperty("id").GetInt32()).ToList();
+
+        Assert.Contains(avoided, ids);
+        Assert.DoesNotContain(other, ids);
+    }
+
+    [Fact]
+    public async Task AvoidedFavoriteAndNotes_DontChangeEachOther()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var id = await CompanyIdAsync(client, ListingTests.Unique("Acme"));
+        var favorited = (await FavoriteAsync(client, id, true)).GetProperty("favoritedAt").GetString();
+
+        var avoided = await AvoidAsync(client, id, true);
+        Assert.Equal(favorited, avoided.GetProperty("favoritedAt").GetString());
+
+        var noted = await NotesAsync(client, id, "Good mentors");
+        Assert.Equal(favorited, noted.GetProperty("favoritedAt").GetString());
+        Assert.Equal(avoided.GetProperty("avoidedAt").GetString(), noted.GetProperty("avoidedAt").GetString());
+
+        var unfavorited = await FavoriteAsync(client, id, false);
+        var after = await AvoidAsync(client, id, true);
+        Assert.Equal(JsonValueKind.Null, unfavorited.GetProperty("favoritedAt").ValueKind);
+        Assert.Equal(avoided.GetProperty("avoidedAt").GetString(), after.GetProperty("avoidedAt").GetString());
+        Assert.Equal("Good mentors", after.GetProperty("notes").GetString());
+    }
+
+    [Fact]
+    public async Task AvoidedAndNotes_SurviveUpdateCompanyAndCreateCompanies()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var name = ListingTests.Unique("Acme");
+        var id = await CompanyIdAsync(client, name);
+        var avoidedAt = (await AvoidAsync(client, id, true)).GetProperty("avoidedAt").GetString();
+        await NotesAsync(client, id, "Three reorgs in a year");
+
+        await client.GraphQLAsync(UpdateCompany, new
+        {
+            id, name = name + " AS", industryName = (string?)null, locations = Array.Empty<object>(),
+        });
+        await client.GraphQLAsync("""
+            mutation ($name: String!) {
+              createCompanies(input: { companies: [{ name: $name, locations: [] }] }) { errors { __typename } }
+            }
+            """, new { name = name + " AS" });
+
+        var after = (await client.GraphQLAsync("""
+            query ($id: Int!) { companies(where: { id: { eq: $id } }) { nodes { avoidedAt notes } } }
+            """, new { id })).GetProperty("companies").GetProperty("nodes")[0];
+        Assert.Equal(avoidedAt, after.GetProperty("avoidedAt").GetString());
+        Assert.Equal("Three reorgs in a year", after.GetProperty("notes").GetString());
+    }
+
+    [Fact]
+    public async Task ListingsOfAvoidedCompany_StayVisibleWithAvoidedAt()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var name = ListingTests.Unique("Acme");
+        var id = await CompanyIdAsync(client, name);
+        await AvoidAsync(client, id, true);
+
+        var second = await ListingTests.CreateAsync(client, ListingTests.NewListing(name));
+        var data = await client.GraphQLAsync("""
+            query ($id: Int!) { listings(where: { company: { id: { eq: $id } } }) { items { company { avoidedAt } } } }
+            """, new { id });
+        var nodes = data.GetProperty("listings").GetProperty("items").EnumerateArray().ToList();
+
+        Assert.Equal(id, second.GetProperty("company").GetProperty("id").GetInt32());
+        Assert.Equal(2, nodes.Count);
+        Assert.All(nodes, n =>
+            Assert.NotEqual(JsonValueKind.Null, n.GetProperty("company").GetProperty("avoidedAt").ValueKind));
+    }
+
+    [Fact]
+    public async Task SetCompanyNotes_TrimsReplacesAndClearsBlank()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var id = await CompanyIdAsync(client, ListingTests.Unique("Acme"));
+
+        Assert.Equal("Avoid: three reorgs in a year",
+            (await NotesAsync(client, id, "  Avoid: three reorgs in a year  ")).GetProperty("notes").GetString());
+        Assert.Equal("Changed my mind", (await NotesAsync(client, id, "Changed my mind")).GetProperty("notes").GetString());
+        Assert.Equal(JsonValueKind.Null, (await NotesAsync(client, id, "   ")).GetProperty("notes").ValueKind);
+        await NotesAsync(client, id, "Back");
+        Assert.Equal(JsonValueKind.Null, (await NotesAsync(client, id, null)).GetProperty("notes").ValueKind);
+    }
+
+    [Fact]
+    public async Task SetCompanyNotes_TooLong_ReturnsInvalidCompanyErrorAndKeepsNotes()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var id = await CompanyIdAsync(client, ListingTests.Unique("Acme"));
+        await NotesAsync(client, id, "Keep me");
+
+        var data = await client.GraphQLAsync(SetNotes, new { id, notes = new string('x', 10_001) });
+        var after = await client.GraphQLAsync("""
+            query ($id: Int!) { companies(where: { id: { eq: $id } }) { nodes { notes } } }
+            """, new { id });
+
+        Assert.Equal("InvalidCompanyError",
+            data.GetProperty("setCompanyNotes").GetProperty("errors")[0].GetProperty("__typename").GetString());
+        Assert.Equal("Keep me", after.GetProperty("companies").GetProperty("nodes")[0].GetProperty("notes").GetString());
+    }
+
+    private static async Task<JsonElement> AvoidAsync(HttpClient client, int id, bool isAvoided) =>
+        (await client.GraphQLAsync(SetAvoided, new { id, isAvoided }))
+        .GetProperty("setCompanyAvoided").GetProperty("company");
+
+    private static async Task<JsonElement> NotesAsync(HttpClient client, int id, string? notes) =>
+        (await client.GraphQLAsync(SetNotes, new { id, notes }))
+        .GetProperty("setCompanyNotes").GetProperty("company");
+
     private static async Task<JsonElement> FavoriteAsync(HttpClient client, int id, bool isFavorite) =>
         (await client.GraphQLAsync(SetFavorite, new { id, isFavorite }))
         .GetProperty("setCompanyFavorite").GetProperty("company");
