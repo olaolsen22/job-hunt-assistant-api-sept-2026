@@ -360,6 +360,41 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal([sameRole.GetProperty("id").GetInt32(), sameTitle.GetProperty("id").GetInt32()], ids);
     }
 
+    // Quick add sends every row as an aliased createListing in one request, sharing one DbContext.
+    private const string CreateTwoListings = """
+        mutation ($a: ListingInput!, $b: ListingInput!) {
+          a: createListing(input: { listing: $a }) { listing { id } possibleDuplicates { id } errors { __typename } }
+          b: createListing(input: { listing: $b }) { listing { id } possibleDuplicates { id } errors { __typename } }
+        }
+        """;
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CreateListing_BatchedAtDifferentCompanies_ReturnsNoPossibleDuplicates(bool companiesExist)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var (first, second) = (Unique("Acme"), Unique("Globex"));
+        if (companiesExist)
+        {
+            await CreateAsync(client, NewListing(first, title: "Lagermedarbeider", jobRoleName: "Warehouse Worker"));
+            await CreateAsync(client, NewListing(second, title: "Lagermedarbeider", jobRoleName: "Warehouse Worker"));
+        }
+
+        var data = await client.GraphQLAsync(CreateTwoListings, new
+        {
+            a = NewListing(first, title: "Senior Developer", jobRoleName: "Senior Developer"),
+            b = NewListing(second, title: "Senior Developer", jobRoleName: "Senior Developer"),
+        });
+
+        foreach (var alias in new[] { "a", "b" })
+        {
+            var payload = data.GetProperty(alias);
+            Assert.Equal(JsonValueKind.Null, payload.GetProperty("errors").ValueKind);
+            Assert.Empty(payload.GetProperty("possibleDuplicates").EnumerateArray());
+        }
+    }
+
     [Fact]
     public async Task UpdateListing_ReplacesSkillsAndLanguages()
     {

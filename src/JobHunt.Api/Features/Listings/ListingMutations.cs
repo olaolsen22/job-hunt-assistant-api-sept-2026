@@ -1,6 +1,7 @@
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Applications;
 using JobHunt.Api.Features.Companies;
+using JobHunt.Api.Features.Contacts;
 using JobHunt.Api.Features.JobRoles;
 using JobHunt.Api.Features.Locations;
 using JobHunt.Api.Features.Skills;
@@ -27,7 +28,9 @@ public record ListingInput(
     List<ListingSkillInput> Skills,
     List<ListingLanguageInput> Languages,
     List<LocationInput> Locations,
-    [property: DefaultValue(false)] bool IsAnalyzed);
+    [property: DefaultValue(false)] bool IsAnalyzed,
+    // Null leaves the links as they are, so clients that don't know about contacts don't wipe them.
+    List<ContactInput>? Contacts = null);
 
 public record ListingSkillInput(
     string Name,
@@ -171,6 +174,7 @@ public static class ListingMutations
             .Include(l => l.Documents)
             .Include(l => l.StatusHistory)
             .Include(l => l.Interviews)
+            .Include(l => l.Contacts).ThenInclude(c => c.Contact)
             // One query per collection: joining six collections in one would multiply their rows together.
             .AsSplitQuery();
 
@@ -208,6 +212,11 @@ public static class ListingMutations
         var companyName = Names.Normalize(input.CompanyName);
         entity.Company = await db.Companies.FirstOrDefaultAsync(c => c.NormalizedName == companyName, ct)
             ?? new Company { UserId = entity.UserId, Name = input.CompanyName.Trim(), NormalizedName = companyName };
+        // Contacts belong to the company, so a listing moved to another company can't keep the old ones.
+        if (entity.CompanyId != entity.Company.Id)
+            entity.Contacts.Clear();
+        if (input.Contacts is not null)
+            await ApplyContactsAsync(entity, input.Contacts, db, ct);
 
         var jobRoleName = Names.Normalize(input.JobRoleName);
         entity.JobRole = await db.JobRoles.FirstOrDefaultAsync(r => r.NormalizedName == jobRoleName, ct)
@@ -243,6 +252,48 @@ public static class ListingMutations
         entity.Locations.Clear();
         foreach (var location in input.Locations)
             entity.Locations.Add(new ListingLocation { Location = await LocationLookup.FindOrCreateAsync(location, db, ct) });
+    }
+
+    // Found by name within the listing's company or created. A match only gets its empty fields filled,
+    // so a parsed ad can't overwrite what the user edited.
+    private static async Task ApplyContactsAsync(
+        Listing entity, List<ContactInput> inputs, AppDbContext db, CancellationToken ct)
+    {
+        var names = inputs.Select(c => Names.Normalize(c.Name)).ToList();
+        var company = entity.Company;
+        var known = company.Id == 0
+            ? []
+            : await db.Contacts
+                .Where(c => c.CompanyId == company.Id && names.Contains(c.NormalizedName))
+                .ToDictionaryAsync(c => c.NormalizedName, ct);
+
+        entity.Contacts.Clear();
+        foreach (var input in inputs)
+        {
+            var name = Names.Normalize(input.Name);
+            if (known.TryGetValue(name, out var contact))
+            {
+                contact.Title ??= ContactMutations.Clean(input.Title);
+                contact.Email ??= ContactMutations.Clean(input.Email);
+                contact.Phone ??= ContactMutations.Clean(input.Phone);
+                contact.Url ??= ContactMutations.Clean(input.Url);
+                contact.Notes ??= ApplicationMutations.CleanNote(input.Notes);
+            }
+            else
+                contact = new Contact
+                {
+                    UserId = entity.UserId,
+                    Company = company,
+                    Name = input.Name.Trim(),
+                    NormalizedName = name,
+                    Title = ContactMutations.Clean(input.Title),
+                    Email = ContactMutations.Clean(input.Email),
+                    Phone = ContactMutations.Clean(input.Phone),
+                    Url = ContactMutations.Clean(input.Url),
+                    Notes = ApplicationMutations.CleanNote(input.Notes),
+                };
+            entity.Contacts.Add(new ListingContact { Contact = contact });
+        }
     }
 
     // Stored normalized so the unique index catches the same ad pasted with tracking params, a #fragment
@@ -298,5 +349,14 @@ public static class ListingMutations
 
         if (input.Locations.GroupBy(LocationLookup.Key).Any(g => g.Count() > 1))
             throw new InvalidListingException("A location is listed twice.");
+
+        foreach (var contact in input.Contacts ?? [])
+        {
+            try { ContactMutations.Validate(contact); }
+            catch (InvalidContactException e) { throw new InvalidListingException(e.Message); }
+        }
+        var duplicateContact = (input.Contacts ?? []).GroupBy(c => Names.Normalize(c.Name)).FirstOrDefault(g => g.Count() > 1);
+        if (duplicateContact is not null)
+            throw new InvalidListingException($"Contact \"{duplicateContact.First().Name.Trim()}\" is listed twice.");
     }
 }

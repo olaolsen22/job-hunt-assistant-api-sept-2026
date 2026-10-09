@@ -2,12 +2,14 @@ using System.Security.Claims;
 using JobHunt.Api.Features.Applications;
 using JobHunt.Api.Features.Auth;
 using JobHunt.Api.Features.Companies;
+using JobHunt.Api.Features.Contacts;
 using JobHunt.Api.Features.Documents;
 using JobHunt.Api.Features.Dashboard;
 using JobHunt.Api.Features.Industries;
 using JobHunt.Api.Features.JobRoles;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Parsing;
+using JobHunt.Api.Features.Profiles;
 // Hot Chocolate also has a global Location type (a position in a query document).
 using Location = JobHunt.Api.Features.Locations.Location;
 using JobHunt.Api.Features.Skills;
@@ -28,6 +30,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
     public DbSet<ListingLocation> ListingLocations => Set<ListingLocation>();
     public DbSet<Company> Companies => Set<Company>();
     public DbSet<CompanyLocation> CompanyLocations => Set<CompanyLocation>();
+    public DbSet<Contact> Contacts => Set<Contact>();
+    public DbSet<ListingContact> ListingContacts => Set<ListingContact>();
     public DbSet<Industry> Industries => Set<Industry>();
     public DbSet<DashboardWidget> DashboardWidgets => Set<DashboardWidget>();
     public DbSet<JobRole> JobRoles => Set<JobRole>();
@@ -39,6 +43,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
     public DbSet<Interview> Interviews => Set<Interview>();
     public DbSet<ParseJob> ParseJobs => Set<ParseJob>();
     public DbSet<LlmUsage> LlmUsages => Set<LlmUsage>();
+    public DbSet<Profile> Profiles => Set<Profile>();
+    public DbSet<ProfileExperience> ProfileExperiences => Set<ProfileExperience>();
+    public DbSet<ProfileEducation> ProfileEducations => Set<ProfileEducation>();
+    public DbSet<ProfileCertification> ProfileCertifications => Set<ProfileCertification>();
+    public DbSet<ProfileProject> ProfileProjects => Set<ProfileProject>();
+    public DbSet<ProfileBullet> ProfileBullets => Set<ProfileBullet>();
+    public DbSet<ProfileBulletTranslation> ProfileBulletTranslations => Set<ProfileBulletTranslation>();
+    public DbSet<ProfileTranslation> ProfileTranslations => Set<ProfileTranslation>();
+    public DbSet<ProfileSkill> ProfileSkills => Set<ProfileSkill>();
+    public DbSet<ProfileLanguage> ProfileLanguages => Set<ProfileLanguage>();
+    public DbSet<ProfileReference> ProfileReferences => Set<ProfileReference>();
 
     // Null outside a request (startup, seeding), so the user filters below then match nothing.
     public string? CurrentUserId => httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -63,6 +78,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
         modelBuilder.Entity<ListingLocation>().HasQueryFilter(l => l.Listing.UserId == CurrentUserId);
         modelBuilder.Entity<Company>().HasQueryFilter(c => c.UserId == CurrentUserId);
         modelBuilder.Entity<CompanyLocation>().HasQueryFilter(l => l.Company.UserId == CurrentUserId);
+        modelBuilder.Entity<Contact>().HasQueryFilter(c => c.UserId == CurrentUserId);
+        modelBuilder.Entity<ListingContact>().HasQueryFilter(c => c.Listing.UserId == CurrentUserId);
         modelBuilder.Entity<Industry>().HasQueryFilter(i => i.UserId == CurrentUserId);
         modelBuilder.Entity<DashboardWidget>().HasQueryFilter(w => w.UserId == CurrentUserId);
         modelBuilder.Entity<JobRole>().HasQueryFilter(r => r.UserId == CurrentUserId);
@@ -74,5 +91,18 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
         modelBuilder.Entity<Interview>().HasQueryFilter(i => i.UserId == CurrentUserId);
         modelBuilder.Entity<ParseJob>().HasQueryFilter(j => j.UserId == CurrentUserId);
         modelBuilder.Entity<LlmUsage>().HasQueryFilter(u => u.UserId == CurrentUserId);
+        modelBuilder.Entity<Profile>().HasQueryFilter(p => p.UserId == CurrentUserId);
+        modelBuilder.Entity<ProfileWorkMode>().HasQueryFilter(w => w.Profile.UserId == CurrentUserId);
+        modelBuilder.Entity<ProfileEmploymentType>().HasQueryFilter(t => t.Profile.UserId == CurrentUserId);
+        modelBuilder.Entity<ProfileExperience>().HasQueryFilter(e => e.UserId == CurrentUserId);
+        modelBuilder.Entity<ProfileEducation>().HasQueryFilter(e => e.UserId == CurrentUserId);
+        modelBuilder.Entity<ProfileCertification>().HasQueryFilter(c => c.UserId == CurrentUserId);
+        modelBuilder.Entity<ProfileProject>().HasQueryFilter(p => p.UserId == CurrentUserId);
+        modelBuilder.Entity<ProfileBullet>().HasQueryFilter(b => b.UserId == CurrentUserId);
+        modelBuilder.Entity<ProfileBulletTranslation>().HasQueryFilter(t => t.UserId == CurrentUserId);
+        modelBuilder.Entity<ProfileTranslation>().HasQueryFilter(t => t.UserId == CurrentUserId);
+        modelBuilder.Entity<ProfileSkill>().HasQueryFilter(s => s.Profile.UserId == CurrentUserId);
+        modelBuilder.Entity<ProfileLanguage>().HasQueryFilter(l => l.Profile.UserId == CurrentUserId);
+        modelBuilder.Entity<ProfileReference>().HasQueryFilter(r => r.UserId == CurrentUserId);
     }
 }

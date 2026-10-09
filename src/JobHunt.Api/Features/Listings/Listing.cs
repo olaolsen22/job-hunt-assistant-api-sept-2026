@@ -1,6 +1,7 @@
 using JobHunt.Api.Features.Applications;
 using JobHunt.Api.Features.Auth;
 using JobHunt.Api.Features.Companies;
+using JobHunt.Api.Features.Contacts;
 using JobHunt.Api.Features.Documents;
 using JobHunt.Api.Features.JobRoles;
 // Hot Chocolate also has a global Location type (a position in a query document).
@@ -53,6 +54,7 @@ public class Listing
     public List<Document> Documents { get; set; } = [];
     public List<StatusChange> StatusHistory { get; set; } = [];
     public List<Interview> Interviews { get; set; } = [];
+    public List<ListingContact> Contacts { get; set; } = [];
 }
 
 public class ListingSkill
