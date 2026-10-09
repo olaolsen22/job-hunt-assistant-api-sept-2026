@@ -1,4 +1,5 @@
 using JobHunt.Api.Features.JobRoles;
+using JobHunt.Api.Features.Profiles;
 using JobHunt.Api.Features.Skills;
 using Microsoft.EntityFrameworkCore;
 // Hot Chocolate also has a global Location type (a position in a query document).
@@ -58,6 +59,10 @@ public static class LookupSeeder
                 .Select(city => (City: city, Normalized: city is null ? "" : Names.Normalize(city)))
                 .Where(c => !cities.Contains(c.Normalized))
                 .Select(c => new Location { UserId = userId, City = c.City, NormalizedCity = c.Normalized, CountryCode = "NO" }));
+
+            // Created up front so the profile query and mutations never have to handle a missing profile.
+            if (!await db.Profiles.IgnoreQueryFilters().AnyAsync(p => p.UserId == userId, ct))
+                db.Profiles.Add(new Profile { UserId = userId });
         }
         await db.SaveChangesAsync(ct);
     }
