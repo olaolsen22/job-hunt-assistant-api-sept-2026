@@ -12,10 +12,10 @@ public record ListingParsePrompt(int Version, string Instructions);
 public static partial class ListingParsePromptQueries
 {
     // Bump whenever the prompt or output shape changes; the server-side parse cache keys on it.
-    public const int Version = 7;
+    public const int Version = 8;
 
     // Separate from Version: the quick prompt changes on its own schedule.
-    public const int QuickVersion = 4;
+    public const int QuickVersion = 5;
 
     // Keeps the prompt short (and cheap on the API-key path) for users with many roles/skills.
     private const int MaxNames = 100;
@@ -36,7 +36,7 @@ public static partial class ListingParsePromptQueries
 
             # Output
             {
-              "title": string,              // exactly as written in the ad, original language
+              "title": string,              // short job title in natural English
               "companyName": string,
               "jobRoleName": string,        // core role in English, no seniority or tech: "Backend Developer", "Warehouse Worker"
               "seniority": {{Values<Seniority>()}} | null,
@@ -64,8 +64,10 @@ public static partial class ListingParsePromptQueries
             Existing skills: {{NameList(skills)}}
 
             # Rules
-            title: the formal job title: the "Stillingstittel"/"Job title" field when the page has one, otherwise the ad's
-              heading. Never a slogan or a full sentence.
+            title: a short, direct job title in natural English, based on the "Stillingstittel"/"Job title" field when the
+              page has one, otherwise the ad's heading. Translate it if the ad isn't in English. Keep seniority and
+              specialty; drop company, location, workload/employment type, slogans and duplicate bilingual variants.
+              "Senior systemutvikler .NET – Oslo, 100 % fast" → "Senior .NET Developer".
             companyName: as the company calls itself, without legal suffixes (AS, ASA, AB, GmbH, Ltd, Inc).
             seniority: a word in the title or text wins (Senior, Junior, Lead, "Trainee" = JUNIOR). Otherwise infer from the experience asked for:
               0–1 years or graduate → JUNIOR, 2–4 years → MID, 5+ years or "erfaren"/"experienced" → SENIOR,
@@ -142,7 +144,7 @@ public static partial class ListingParsePromptQueries
 
             # Output
             [{
-              "title": string,              // exactly as written in the ad, original language
+              "title": string,              // short job title in natural English
               "companyName": string,
               "jobRoleName": string,        // core role in English, no seniority or tech: "Backend Developer", "Warehouse Worker"
               "url": string | null,         // the ad's own link if the text has one; never invent one
@@ -155,8 +157,10 @@ public static partial class ListingParsePromptQueries
             Never invent names, dates or URLs that aren't in the text.
 
             # Rules
-            title: the formal job title: the "Stillingstittel"/"Job title" field when the page has one, otherwise the ad's
-              heading. Never a slogan or a full sentence.
+            title: a short, direct job title in natural English, based on the "Stillingstittel"/"Job title" field when the
+              page has one, otherwise the ad's heading. Translate it if the ad isn't in English. Keep seniority and
+              specialty; drop company, location, workload/employment type, slogans and duplicate bilingual variants.
+              "Senior systemutvikler .NET – Oslo, 100 % fast" → "Senior .NET Developer".
             jobRoleName: reuse an existing role when it means the same thing, otherwise the standard English job title.
               Existing job roles: {{NameList(jobRoles)}}
             companyName: as the company calls itself, without legal suffixes (AS, ASA, AB, GmbH, Ltd, Inc).
