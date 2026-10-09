@@ -82,6 +82,13 @@ builder.Services.AddKeyedSingleton<IChatClient>(GeminiOptions.Provider, (sp, _) 
 });
 builder.Services.AddOptions<LlmPricingOptions>().BindConfiguration(LlmPricingOptions.Section);
 builder.Services.AddScoped<ListingParser>();
+// Browser-like User-Agent: several job boards answer 403 to the default .NET one.
+builder.Services.AddHttpClient<ListingPageFetcher>(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(10);
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36");
+    })
+    .ConfigurePrimaryHttpMessageHandler(ListingPageFetcher.CreateHandler);
 
 builder.AddGraphQL()
     .RegisterDbContextFactory<AppDbContext>()

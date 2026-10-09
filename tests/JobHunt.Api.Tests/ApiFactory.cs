@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using JobHunt.Api.Features.Auth;
+using JobHunt.Api.Features.Parsing;
 using JobHunt.Api.Llm;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -23,6 +24,7 @@ public class ApiFactory : WebApplicationFactory<Program>
     private HttpClient? _guest;
 
     public FakeChatClient Llm { get; } = new();
+    public FakePageHandler Pages { get; } = new();
 
     public ApiFactory()
     {
@@ -40,7 +42,12 @@ public class ApiFactory : WebApplicationFactory<Program>
         // A model with prices, so usageDaily's estimated cost has something to compute; the configured model has none.
         builder.UseSetting("Llm:Pricing:priced-model:InputPerMTok", "0.10");
         builder.UseSetting("Llm:Pricing:priced-model:OutputPerMTok", "0.40");
-        builder.ConfigureServices(services => services.AddKeyedSingleton<IChatClient>(GeminiOptions.Provider, Llm));
+        builder.ConfigureServices(services =>
+        {
+            services.AddKeyedSingleton<IChatClient>(GeminiOptions.Provider, Llm);
+            // The last primary handler registered wins, so listing pages come from the fake, never the network.
+            services.AddHttpClient<ListingPageFetcher>().ConfigurePrimaryHttpMessageHandler(() => Pages);
+        });
     }
 
     // Signed in once per factory and reused: the login rate limit (10/min) would trip if every test logged in.

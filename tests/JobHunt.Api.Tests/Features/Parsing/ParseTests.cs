@@ -1,5 +1,7 @@
+using System.Net;
 using Google.GenAI;
 using JobHunt.Api.Data;
+using JobHunt.Api.Tests.Features.Listings;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -41,6 +43,36 @@ public class ParseTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.True(usage.Success);
         Assert.Equal(1200, usage.InputTokens);
         Assert.Equal(300, usage.OutputTokens);
+    }
+
+    [Theory]
+    [InlineData("FULL", true)]
+    [InlineData("QUICK", false)]
+    public async Task ParseListing_AsksForThinking_OnlyInFullMode(string mode, bool thinking)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        factory.Llm.Respond = () => Answer(mode == "FULL" ? "{}" : "[]");
+
+        await client.GraphQLAsync(ParseListing, new { text = "Some ad", mode });
+
+        Assert.Equal(thinking ? ReasoningEffort.Low : null, factory.Llm.LastOptions!.Reasoning?.Effort);
+    }
+
+    [Fact]
+    public async Task ParseListing_CountsThinkingTokensAsOutput()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant, "{}"))
+        {
+            Usage = new UsageDetails { InputTokenCount = 100, OutputTokenCount = 50, ReasoningTokenCount = 400 },
+        };
+
+        await client.GraphQLAsync(ParseListing, new { text = "Some ad", mode = "FULL" });
+
+        using var scope = factory.Services.CreateScope();
+        var usage = await scope.ServiceProvider.GetRequiredService<AppDbContext>().LlmUsages
+            .IgnoreQueryFilters().OrderByDescending(u => u.Id).FirstAsync();
+        Assert.Equal(450, usage.OutputTokens);
     }
 
     [Fact]
@@ -101,6 +133,151 @@ public class ParseTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var payload = (await client.GraphQLAsync(ParseListing, new { text = "   ", mode = "FULL" })).GetProperty("parseListing");
 
         Assert.Equal("InvalidParseRequestError", payload.GetProperty("errors")[0].GetProperty("__typename").GetString());
+    }
+
+    private const string ParseListingFromUrl = """
+        mutation ($listingId: Int!) {
+          parseListingFromUrl(input: { listingId: $listingId }) {
+            parseJob { id mode status result }
+            errors { __typename }
+          }
+        }
+        """;
+
+    private const string AdPage = """
+        <html><head><script type="application/ld+json">{"@type":"JobPosting","title":"Backend Engineer",
+        "hiringOrganization":{"name":"Six Robotics"},"description":"<p>Build things.</p>"}</script></head>
+        <body><article>Similar job: Other</article></body></html>
+        """;
+
+    private static HttpResponseMessage Page(string html, HttpStatusCode status = HttpStatusCode.OK) =>
+        new(status) { Content = new StringContent(html) };
+
+    private async Task<(int Jobs, int Usages)> CountsAsync()
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return (await db.ParseJobs.IgnoreQueryFilters().CountAsync(), await db.LlmUsages.IgnoreQueryFilters().CountAsync());
+    }
+
+    [Fact]
+    public async Task ParseListingFromUrl_Succeeds_AndSendsTheExtractedPosting()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var listingId = await ListingTests.ListingWithStatusAsync(client, ListingTests.UniqueUrl(), "SAVED");
+        factory.Pages.Respond = () => Page(AdPage);
+        factory.Llm.Respond = () => Answer("""{ "title": "Backend Engineer" }""");
+        var before = await CountsAsync();
+
+        var job = (await client.GraphQLAsync(ParseListingFromUrl, new { listingId }))
+            .GetProperty("parseListingFromUrl").GetProperty("parseJob");
+
+        Assert.Equal("SUCCEEDED", job.GetProperty("status").GetString());
+        Assert.Equal("FULL", job.GetProperty("mode").GetString());
+        var posting = factory.Llm.LastMessages[1].Text;
+        Assert.Contains("Title: Backend Engineer", posting);
+        Assert.Contains("Company: Six Robotics", posting);
+        Assert.DoesNotContain("Similar job", posting);
+        Assert.Equal((before.Jobs + 1, before.Usages + 1), await CountsAsync());
+    }
+
+    [Fact]
+    public async Task ParseListingFromUrl_UnknownOrForeignListing_ReturnsNotFound_WithoutFetching()
+    {
+        var owner = await factory.GetOwnerClientAsync();
+        var guest = await factory.GetGuestClientAsync();
+        var guestListingId = await ListingTests.ListingWithStatusAsync(guest, ListingTests.UniqueUrl(), "SAVED");
+        var requests = factory.Pages.Requests;
+        var before = await CountsAsync();
+
+        foreach (var listingId in new[] { guestListingId, 999_999 })
+        {
+            var errors = (await owner.GraphQLAsync(ParseListingFromUrl, new { listingId }))
+                .GetProperty("parseListingFromUrl").GetProperty("errors");
+            Assert.Equal("ListingNotFoundError", errors[0].GetProperty("__typename").GetString());
+        }
+
+        Assert.Equal(requests, factory.Pages.Requests);
+        Assert.Equal(before, await CountsAsync());
+    }
+
+    [Theory]
+    [InlineData(403, "denied")]
+    [InlineData(200, "<html><body><div id=\"app\"></div></body></html>")]
+    public async Task ParseListingFromUrl_UnreadablePage_ReturnsError_AndCreatesNothing(int status, string html)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var listingId = await ListingTests.ListingWithStatusAsync(client, ListingTests.UniqueUrl(), "SAVED");
+        factory.Pages.Respond = () => Page(html, (HttpStatusCode)status);
+        var before = await CountsAsync();
+
+        var errors = (await client.GraphQLAsync(ParseListingFromUrl, new { listingId }))
+            .GetProperty("parseListingFromUrl").GetProperty("errors");
+
+        Assert.Equal("InvalidParseRequestError", errors[0].GetProperty("__typename").GetString());
+        Assert.Equal(before, await CountsAsync());
+    }
+
+    private const string ParseUrl = """
+        mutation ($url: String!) {
+          parseUrl(input: { url: $url }) {
+            parseJob { id mode status }
+            errors { __typename }
+          }
+        }
+        """;
+
+    [Fact]
+    public async Task ParseUrl_Succeeds_AndSendsTheExtractedPosting()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        factory.Pages.Respond = () => Page(AdPage);
+        factory.Llm.Respond = () => Answer("""{ "title": "Backend Engineer" }""");
+        var before = await CountsAsync();
+
+        var job = (await client.GraphQLAsync(ParseUrl, new { url = ListingTests.UniqueUrl() }))
+            .GetProperty("parseUrl").GetProperty("parseJob");
+
+        Assert.Equal("SUCCEEDED", job.GetProperty("status").GetString());
+        Assert.Equal("FULL", job.GetProperty("mode").GetString());
+        Assert.Contains("Title: Backend Engineer", factory.Llm.LastMessages[1].Text);
+        Assert.Equal((before.Jobs + 1, before.Usages + 1), await CountsAsync());
+    }
+
+    [Theory]
+    [InlineData("   ")]
+    [InlineData("/jobs/1")]
+    [InlineData("ftp://example.com/ad")]
+    [InlineData("TOO_LONG")]
+    public async Task ParseUrl_InvalidUrl_ReturnsError_WithoutFetching(string url)
+    {
+        if (url == "TOO_LONG") url = "https://example.com/" + new string('a', 2048);
+        var client = await factory.GetOwnerClientAsync();
+        var requests = factory.Pages.Requests;
+        var before = await CountsAsync();
+
+        var errors = (await client.GraphQLAsync(ParseUrl, new { url }))
+            .GetProperty("parseUrl").GetProperty("errors");
+
+        Assert.Equal("InvalidParseRequestError", errors[0].GetProperty("__typename").GetString());
+        Assert.Equal(requests, factory.Pages.Requests);
+        Assert.Equal(before, await CountsAsync());
+    }
+
+    [Theory]
+    [InlineData(403, "denied")]
+    [InlineData(200, "<html><body><div id=\"app\"></div></body></html>")]
+    public async Task ParseUrl_UnreadablePage_ReturnsError_AndCreatesNothing(int status, string html)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        factory.Pages.Respond = () => Page(html, (HttpStatusCode)status);
+        var before = await CountsAsync();
+
+        var errors = (await client.GraphQLAsync(ParseUrl, new { url = ListingTests.UniqueUrl() }))
+            .GetProperty("parseUrl").GetProperty("errors");
+
+        Assert.Equal("InvalidParseRequestError", errors[0].GetProperty("__typename").GetString());
+        Assert.Equal(before, await CountsAsync());
     }
 
     [Fact]
