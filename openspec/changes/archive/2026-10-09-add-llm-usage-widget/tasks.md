@@ -15,6 +15,6 @@
 
 ## 3. Docs and final check
 
-- [ ] 3.1 Check that `/usr/share/zoneinfo/America/Los_Angeles` exists in the `mcr.microsoft.com/dotnet/aspnet:10.0` image (`docker run --rm --entrypoint ls <image> /usr/share/zoneinfo/America/Los_Angeles`); if it is missing, install `tzdata` in the final stage of `Dockerfile`; verify the file is present
+- [x] 3.1 Check that `/usr/share/zoneinfo/America/Los_Angeles` exists in the `mcr.microsoft.com/dotnet/aspnet:10.0` image (`docker run --rm --entrypoint ls <image> /usr/share/zoneinfo/America/Los_Angeles`); if it is missing, install `tzdata` in the final stage of `Dockerfile`; verify the file is present
 - [x] 3.2 Regenerate `schema.graphql`, update `docs/STATUS.md` (`llmUsageToday`, `usageDaily`, `LLM_USAGE` widget, `Llm:Gemini:RequestsPerDay` and `Llm:Pricing` keys, ten widgets, breaking save) with `/log-progress`, append the why to `.claude/commit-notes.md`; verify `SchemaTests` passes and STATUS lists both queries and the config keys
 - [x] 3.3 Run `dotnet test` and `openspec validate add-llm-usage-widget`; verify both pass and `schema.graphql` is current
