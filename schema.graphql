@@ -111,6 +111,7 @@ type Query {
     )
     @cost(weight: "10")
   parseJob(id: UUID!): ParseJob @cost(weight: "10")
+  profile: Profile! @cost(weight: "10")
   skills(
     search: String
     "Returns the first _n_ elements from the list."
@@ -159,7 +160,16 @@ type Mutation {
     @cost(weight: "10")
   setCompanyFavorite(input: SetCompanyFavoriteInput!): SetCompanyFavoritePayload!
     @cost(weight: "10")
+  setCompanyAvoided(input: SetCompanyAvoidedInput!): SetCompanyAvoidedPayload!
+    @cost(weight: "10")
+  setCompanyNotes(input: SetCompanyNotesInput!): SetCompanyNotesPayload!
+    @cost(weight: "10")
   updateCompany(input: UpdateCompanyInput!): UpdateCompanyPayload!
+    @cost(weight: "10")
+  addContact(input: AddContactInput!): AddContactPayload! @cost(weight: "10")
+  updateContact(input: UpdateContactInput!): UpdateContactPayload!
+    @cost(weight: "10")
+  deleteContact(input: DeleteContactInput!): DeleteContactPayload!
     @cost(weight: "10")
   saveDashboardLayout(input: SaveDashboardLayoutInput!): SaveDashboardLayoutPayload!
     @cost(weight: "10")
@@ -177,11 +187,111 @@ type Mutation {
     @cost(weight: "10")
   parseListing(input: ParseListingInput!): ParseListingPayload!
     @cost(weight: "10")
+  parseListingFromUrl(input: ParseListingFromUrlInput!): ParseListingFromUrlPayload!
+    @cost(weight: "10")
+  parseUrl(input: ParseUrlInput!): ParseUrlPayload! @cost(weight: "10")
+  addProfileBullet(input: AddProfileBulletInput!): AddProfileBulletPayload!
+    @cost(weight: "10")
+  updateProfileBullet(input: UpdateProfileBulletInput!): UpdateProfileBulletPayload!
+    @cost(weight: "10")
+  moveProfileBullet(input: MoveProfileBulletInput!): MoveProfileBulletPayload!
+    @cost(weight: "10")
+  deleteProfileBullet(input: DeleteProfileBulletInput!): DeleteProfileBulletPayload!
+    @cost(weight: "10")
+  addProfileExperience(input: AddProfileExperienceInput!): AddProfileExperiencePayload!
+    @cost(weight: "10")
+  updateProfileExperience(input: UpdateProfileExperienceInput!): UpdateProfileExperiencePayload!
+    @cost(weight: "10")
+  deleteProfileExperience(input: DeleteProfileExperienceInput!): DeleteProfileExperiencePayload!
+    @cost(weight: "10")
+  addProfileEducation(input: AddProfileEducationInput!): AddProfileEducationPayload!
+    @cost(weight: "10")
+  updateProfileEducation(input: UpdateProfileEducationInput!): UpdateProfileEducationPayload!
+    @cost(weight: "10")
+  deleteProfileEducation(input: DeleteProfileEducationInput!): DeleteProfileEducationPayload!
+    @cost(weight: "10")
+  addProfileCertification(input: AddProfileCertificationInput!): AddProfileCertificationPayload!
+    @cost(weight: "10")
+  updateProfileCertification(input: UpdateProfileCertificationInput!): UpdateProfileCertificationPayload!
+    @cost(weight: "10")
+  deleteProfileCertification(input: DeleteProfileCertificationInput!): DeleteProfileCertificationPayload!
+    @cost(weight: "10")
+  addProfileProject(input: AddProfileProjectInput!): AddProfileProjectPayload!
+    @cost(weight: "10")
+  updateProfileProject(input: UpdateProfileProjectInput!): UpdateProfileProjectPayload!
+    @cost(weight: "10")
+  deleteProfileProject(input: DeleteProfileProjectInput!): DeleteProfileProjectPayload!
+    @cost(weight: "10")
+  updateProfile(input: UpdateProfileInput!): UpdateProfilePayload!
+    @cost(weight: "10")
+  updateProfilePreferences(input: UpdateProfilePreferencesInput!): UpdateProfilePreferencesPayload!
+    @cost(weight: "10")
+  setProfileSkill(input: SetProfileSkillInput!): SetProfileSkillPayload!
+    @cost(weight: "10")
+  removeProfileSkill(input: RemoveProfileSkillInput!): RemoveProfileSkillPayload!
+    @cost(weight: "10")
+  setProfileLanguage(input: SetProfileLanguageInput!): SetProfileLanguagePayload!
+    @cost(weight: "10")
+  removeProfileLanguage(input: RemoveProfileLanguageInput!): RemoveProfileLanguagePayload!
+    @cost(weight: "10")
+  addProfileReference(input: AddProfileReferenceInput!): AddProfileReferencePayload!
+    @cost(weight: "10")
+  updateProfileReference(input: UpdateProfileReferenceInput!): UpdateProfileReferencePayload!
+    @cost(weight: "10")
+  moveProfileReference(input: MoveProfileReferenceInput!): MoveProfileReferencePayload!
+    @cost(weight: "10")
+  deleteProfileReference(input: DeleteProfileReferenceInput!): DeleteProfileReferencePayload!
+    @cost(weight: "10")
+  setProfileContentLanguage(input: SetProfileContentLanguageInput!): SetProfileContentLanguagePayload!
+    @cost(weight: "10")
+  setProfileBulletTranslation(input: SetProfileBulletTranslationInput!): SetProfileBulletTranslationPayload!
+    @cost(weight: "10")
+  deleteProfileBulletTranslation(input: DeleteProfileBulletTranslationInput!): DeleteProfileBulletTranslationPayload!
+    @cost(weight: "10")
+  setProfileTranslation(input: SetProfileTranslationInput!): SetProfileTranslationPayload!
+    @cost(weight: "10")
+  deleteProfileTranslation(input: DeleteProfileTranslationInput!): DeleteProfileTranslationPayload!
+    @cost(weight: "10")
+}
+
+type AddContactPayload {
+  contact: Contact
+  errors: [AddContactError!]
 }
 
 type AddInterviewPayload {
   interview: Interview
   errors: [AddInterviewError!]
+}
+
+type AddProfileBulletPayload {
+  profileBullet: ProfileBullet
+  errors: [AddProfileBulletError!]
+}
+
+type AddProfileCertificationPayload {
+  profileCertification: ProfileCertification
+  errors: [AddProfileCertificationError!]
+}
+
+type AddProfileEducationPayload {
+  profileEducation: ProfileEducation
+  errors: [AddProfileEducationError!]
+}
+
+type AddProfileExperiencePayload {
+  profileExperience: ProfileExperience
+  errors: [AddProfileExperienceError!]
+}
+
+type AddProfileProjectPayload {
+  profileProject: ProfileProject
+  errors: [AddProfileProjectError!]
+}
+
+type AddProfileReferencePayload {
+  profileReference: ProfileReference
+  errors: [AddProfileReferenceError!]
 }
 
 type ApplyToListingPayload {
@@ -225,7 +335,10 @@ type Company {
   industryId: Int
   industry: Industry
   favoritedAt: DateTime
+  avoidedAt: DateTime
+  notes: String
   locations: [CompanyLocation!]!
+  contacts: [Contact!]!
 }
 
 type CompanyLocation {
@@ -247,6 +360,22 @@ type CompanyParsePrompt {
 type CompanyResult {
   company: Company!
   created: Boolean!
+}
+
+type Contact {
+  id: Int!
+  companyId: Int!
+  company: Company!
+  name: String!
+  title: String
+  email: String
+  phone: String
+  url: String
+  notes: String
+}
+
+type ContactNotFoundError implements Error {
+  message: String!
 }
 
 type CreateCompaniesPayload {
@@ -275,6 +404,11 @@ type DashboardWidgetState {
   isShown: Boolean!
 }
 
+type DeleteContactPayload {
+  id: Int
+  errors: [DeleteContactError!]
+}
+
 type DeleteDocumentPayload {
   id: Int
   errors: [DeleteDocumentError!]
@@ -288,6 +422,46 @@ type DeleteInterviewPayload {
 type DeleteListingPayload {
   id: Int
   errors: [DeleteListingError!]
+}
+
+type DeleteProfileBulletPayload {
+  id: Int
+  errors: [DeleteProfileBulletError!]
+}
+
+type DeleteProfileBulletTranslationPayload {
+  id: Int
+  errors: [DeleteProfileBulletTranslationError!]
+}
+
+type DeleteProfileCertificationPayload {
+  id: Int
+  errors: [DeleteProfileCertificationError!]
+}
+
+type DeleteProfileEducationPayload {
+  id: Int
+  errors: [DeleteProfileEducationError!]
+}
+
+type DeleteProfileExperiencePayload {
+  id: Int
+  errors: [DeleteProfileExperienceError!]
+}
+
+type DeleteProfileProjectPayload {
+  id: Int
+  errors: [DeleteProfileProjectError!]
+}
+
+type DeleteProfileReferencePayload {
+  id: Int
+  errors: [DeleteProfileReferenceError!]
+}
+
+type DeleteProfileTranslationPayload {
+  language: Language
+  errors: [DeleteProfileTranslationError!]
 }
 
 type Document {
@@ -309,6 +483,11 @@ type DocumentNotFoundError implements Error {
 
 type DocumentSentError implements Error {
   message: String!
+}
+
+type DuplicateContactError implements Error {
+  message: String!
+  existingContactId: Int!
 }
 
 type DuplicateListingError implements Error {
@@ -364,6 +543,10 @@ type InvalidCompanyError implements Error {
   message: String!
 }
 
+type InvalidContactError implements Error {
+  message: String!
+}
+
 type InvalidDashboardLayoutError implements Error {
   message: String!
 }
@@ -385,6 +568,10 @@ type InvalidLocationError implements Error {
 }
 
 type InvalidParseRequestError implements Error {
+  message: String!
+}
+
+type InvalidProfileError implements Error {
   message: String!
 }
 
@@ -449,6 +636,14 @@ type Listing {
   languages: [ListingLanguage!]!
   locations: [ListingLocation!]!
   documents: [Document!]!
+  contacts: [ListingContact!]!
+}
+
+type ListingContact {
+  listingId: Int!
+  listing: Listing!
+  contactId: Int!
+  contact: Contact!
 }
 
 type ListingInUseError implements Error {
@@ -526,6 +721,16 @@ type LocationsEdge {
   node: Location!
 }
 
+type MoveProfileBulletPayload {
+  bullets: [ProfileBullet!]
+  errors: [MoveProfileBulletError!]
+}
+
+type MoveProfileReferencePayload {
+  references: [ProfileReference!]
+  errors: [MoveProfileReferenceError!]
+}
+
 "Information about pagination in a connection."
 type PageInfo {
   "Indicates whether more edges exist following the set defined by the clients arguments."
@@ -550,14 +755,168 @@ type ParseJob {
   completedAt: DateTime
 }
 
+type ParseListingFromUrlPayload {
+  parseJob: ParseJob
+  errors: [ParseListingFromUrlError!]
+}
+
 type ParseListingPayload {
   parseJob: ParseJob
   errors: [ParseListingError!]
 }
 
+type ParseUrlPayload {
+  parseJob: ParseJob
+  errors: [ParseUrlError!]
+}
+
+type Profile {
+  translations: [ProfileTranslation!]!
+  workModes: [WorkMode!]!
+  employmentTypes: [EmploymentType!]!
+  targetLocations: [Location!]! @cost(weight: "10")
+  id: Int!
+  fullName: String
+  headline: String
+  summary: String
+  contentLanguage: Language!
+  email: String
+  phone: String
+  dateOfBirth: LocalDate
+  nationality: String
+  workAuthorization: String
+  hobbies: [String!]!
+  location: Location
+  links: [ProfileLink!]!
+  jobRoles: [JobRole!]!
+  minSalary: Int
+  salaryCurrency: String
+  noticePeriodMonths: Int
+  experiences: [ProfileExperience!]!
+  educations: [ProfileEducation!]!
+  certifications: [ProfileCertification!]!
+  projects: [ProfileProject!]!
+  skills: [ProfileSkill!]!
+  languages: [ProfileLanguage!]!
+  references: [ProfileReference!]!
+}
+
+type ProfileBullet {
+  translations: [ProfileBulletTranslation!]!
+  id: Int!
+  text: String!
+  position: Int!
+}
+
+type ProfileBulletTranslation {
+  id: Int!
+  language: Language!
+  text: String!
+  sourceText: String!
+  isMachine: Boolean!
+  isStale: Boolean!
+}
+
+type ProfileCertification {
+  id: Int!
+  name: String!
+  issuer: String
+  issuedMonth: LocalDate
+  expiresMonth: LocalDate
+  url: String
+  bullets: [ProfileBullet!]!
+}
+
+type ProfileEducation {
+  id: Int!
+  school: String!
+  degree: String
+  field: String
+  location: Location
+  startMonth: LocalDate!
+  endMonth: LocalDate
+  bullets: [ProfileBullet!]!
+}
+
+type ProfileEntryNotFoundError implements Error {
+  message: String!
+}
+
+type ProfileExperience {
+  id: Int!
+  employer: String!
+  title: String!
+  location: Location
+  startMonth: LocalDate!
+  endMonth: LocalDate
+  bullets: [ProfileBullet!]!
+  skills: [Skill!]!
+}
+
+type ProfileLanguage {
+  language: Language!
+  level: CefrLevel!
+}
+
+type ProfileLink {
+  kind: LinkKind!
+  label: String!
+  url: String!
+}
+
+type ProfileProject {
+  id: Int!
+  name: String!
+  url: String
+  location: Location
+  startMonth: LocalDate
+  endMonth: LocalDate
+  bullets: [ProfileBullet!]!
+  skills: [Skill!]!
+}
+
+type ProfileReference {
+  id: Int!
+  name: String!
+  relationship: String!
+  company: String
+  email: String
+  phone: String
+  note: String
+  position: Int!
+}
+
+type ProfileSkill {
+  experienceMonths: Int! @cost(weight: "10")
+  skill: Skill!
+  level: Int!
+}
+
+type ProfileTranslation {
+  id: Int!
+  language: Language!
+  headline: String
+  summary: String
+  sourceHeadline: String
+  sourceSummary: String
+  isMachine: Boolean!
+  isHeadlineStale: Boolean!
+  isSummaryStale: Boolean!
+}
+
 type RecordOutcomePayload {
   listing: Listing
   errors: [RecordOutcomeError!]
+}
+
+type RemoveProfileLanguagePayload {
+  language: Language
+  errors: [RemoveProfileLanguageError!]
+}
+
+type RemoveProfileSkillPayload {
+  skillId: Int
+  errors: [RemoveProfileSkillError!]
 }
 
 type SaveDashboardLayoutPayload {
@@ -570,9 +929,19 @@ type SaveLocationPayload {
   errors: [SaveLocationError!]
 }
 
+type SetCompanyAvoidedPayload {
+  company: Company
+  errors: [SetCompanyAvoidedError!]
+}
+
 type SetCompanyFavoritePayload {
   company: Company
   errors: [SetCompanyFavoriteError!]
+}
+
+type SetCompanyNotesPayload {
+  company: Company
+  errors: [SetCompanyNotesError!]
 }
 
 type SetListingArchivedPayload {
@@ -583,6 +952,30 @@ type SetListingArchivedPayload {
 type SetListingFavoritePayload {
   listing: Listing
   errors: [SetListingFavoriteError!]
+}
+
+type SetProfileBulletTranslationPayload {
+  profileBulletTranslation: ProfileBulletTranslation
+  errors: [SetProfileBulletTranslationError!]
+}
+
+type SetProfileContentLanguagePayload {
+  profile: Profile
+  errors: [SetProfileContentLanguageError!]
+}
+
+type SetProfileLanguagePayload {
+  profileLanguage: ProfileLanguage
+}
+
+type SetProfileSkillPayload {
+  profileSkill: ProfileSkill
+  errors: [SetProfileSkillError!]
+}
+
+type SetProfileTranslationPayload {
+  profileTranslation: ProfileTranslation
+  errors: [SetProfileTranslationError!]
 }
 
 type Skill {
@@ -635,6 +1028,11 @@ type UpdateCompanyPayload {
   errors: [UpdateCompanyError!]
 }
 
+type UpdateContactPayload {
+  contact: Contact
+  errors: [UpdateContactError!]
+}
+
 type UpdateInterviewPayload {
   interview: Interview
   errors: [UpdateInterviewError!]
@@ -643,6 +1041,46 @@ type UpdateInterviewPayload {
 type UpdateListingPayload {
   listing: Listing
   errors: [UpdateListingError!]
+}
+
+type UpdateProfileBulletPayload {
+  profileBullet: ProfileBullet
+  errors: [UpdateProfileBulletError!]
+}
+
+type UpdateProfileCertificationPayload {
+  profileCertification: ProfileCertification
+  errors: [UpdateProfileCertificationError!]
+}
+
+type UpdateProfileEducationPayload {
+  profileEducation: ProfileEducation
+  errors: [UpdateProfileEducationError!]
+}
+
+type UpdateProfileExperiencePayload {
+  profileExperience: ProfileExperience
+  errors: [UpdateProfileExperienceError!]
+}
+
+type UpdateProfilePayload {
+  profile: Profile
+  errors: [UpdateProfileError!]
+}
+
+type UpdateProfilePreferencesPayload {
+  profile: Profile
+  errors: [UpdateProfilePreferencesError!]
+}
+
+type UpdateProfileProjectPayload {
+  profileProject: ProfileProject
+  errors: [UpdateProfileProjectError!]
+}
+
+type UpdateProfileReferencePayload {
+  profileReference: ProfileReference
+  errors: [UpdateProfileReferenceError!]
 }
 
 type UpdateStatusChangePayload {
@@ -668,10 +1106,27 @@ interface Error {
   message: String!
 }
 
+union AddContactError =
+  | CompanyNotFoundError
+  | InvalidContactError
+  | DuplicateContactError
+
 union AddInterviewError =
   | ListingNotFoundError
   | InvalidStatusTransitionError
   | InvalidInterviewError
+
+union AddProfileBulletError = ProfileEntryNotFoundError | InvalidProfileError
+
+union AddProfileCertificationError = InvalidProfileError
+
+union AddProfileEducationError = InvalidProfileError | InvalidLocationError
+
+union AddProfileExperienceError = InvalidProfileError | InvalidLocationError
+
+union AddProfileProjectError = InvalidProfileError | InvalidLocationError
+
+union AddProfileReferenceError = InvalidProfileError
 
 union ApplyToListingError =
   | ListingNotFoundError
@@ -687,28 +1142,74 @@ union CreateListingError =
   | InvalidLocationError
   | DuplicateListingError
 
+union DeleteContactError = ContactNotFoundError
+
 union DeleteDocumentError = DocumentNotFoundError | DocumentSentError
 
 union DeleteInterviewError = InterviewNotFoundError
 
 union DeleteListingError = ListingNotFoundError | ListingInUseError
 
+union DeleteProfileBulletError = ProfileEntryNotFoundError
+
+union DeleteProfileBulletTranslationError = ProfileEntryNotFoundError
+
+union DeleteProfileCertificationError = ProfileEntryNotFoundError
+
+union DeleteProfileEducationError = ProfileEntryNotFoundError
+
+union DeleteProfileExperienceError = ProfileEntryNotFoundError
+
+union DeleteProfileProjectError = ProfileEntryNotFoundError
+
+union DeleteProfileReferenceError = ProfileEntryNotFoundError
+
+union DeleteProfileTranslationError = ProfileEntryNotFoundError
+
+union MoveProfileBulletError = ProfileEntryNotFoundError | InvalidProfileError
+
+union MoveProfileReferenceError =
+  | ProfileEntryNotFoundError
+  | InvalidProfileError
+
 union ParseListingError = InvalidParseRequestError
+
+union ParseListingFromUrlError = ListingNotFoundError | InvalidParseRequestError
+
+union ParseUrlError = InvalidParseRequestError
 
 union RecordOutcomeError =
   | ListingNotFoundError
   | InvalidStatusTransitionError
   | InvalidApplicationError
 
+union RemoveProfileLanguageError = ProfileEntryNotFoundError
+
+union RemoveProfileSkillError = ProfileEntryNotFoundError
+
 union SaveDashboardLayoutError = InvalidDashboardLayoutError
 
 union SaveLocationError = InvalidLocationError
 
+union SetCompanyAvoidedError = CompanyNotFoundError
+
 union SetCompanyFavoriteError = CompanyNotFoundError
+
+union SetCompanyNotesError = CompanyNotFoundError | InvalidCompanyError
 
 union SetListingArchivedError = ListingNotFoundError
 
 union SetListingFavoriteError = ListingNotFoundError
+
+union SetProfileBulletTranslationError =
+  | ProfileEntryNotFoundError
+  | InvalidProfileError
+
+union SetProfileContentLanguageError = InvalidProfileError
+
+union SetProfileSkillError = InvalidProfileError
+
+union SetProfileTranslationError = InvalidProfileError
 
 union UndoStatusChangeError =
   | ListingNotFoundError
@@ -720,6 +1221,11 @@ union UpdateCompanyError =
   | InvalidCompanyError
   | InvalidLocationError
 
+union UpdateContactError =
+  | ContactNotFoundError
+  | InvalidContactError
+  | DuplicateContactError
+
 union UpdateInterviewError = InterviewNotFoundError | InvalidInterviewError
 
 union UpdateListingError =
@@ -728,17 +1234,101 @@ union UpdateListingError =
   | InvalidLocationError
   | DuplicateListingError
 
+union UpdateProfileBulletError = ProfileEntryNotFoundError | InvalidProfileError
+
+union UpdateProfileCertificationError =
+  | ProfileEntryNotFoundError
+  | InvalidProfileError
+
+union UpdateProfileEducationError =
+  | ProfileEntryNotFoundError
+  | InvalidProfileError
+  | InvalidLocationError
+
+union UpdateProfileError = InvalidProfileError | InvalidLocationError
+
+union UpdateProfileExperienceError =
+  | ProfileEntryNotFoundError
+  | InvalidProfileError
+  | InvalidLocationError
+
+union UpdateProfilePreferencesError = InvalidProfileError
+
+union UpdateProfileProjectError =
+  | ProfileEntryNotFoundError
+  | InvalidProfileError
+  | InvalidLocationError
+
+union UpdateProfileReferenceError =
+  | ProfileEntryNotFoundError
+  | InvalidProfileError
+
 union UpdateStatusChangeError =
   | StatusChangeNotFoundError
   | InvalidApplicationError
 
 union UploadDocumentError = ListingNotFoundError | InvalidDocumentError
 
+input AddContactInput {
+  companyId: Int!
+  contact: ContactInput!
+}
+
 input AddInterviewInput {
   listingId: Int!
   scheduledAt: DateTime!
   title: String
   notes: String
+}
+
+input AddProfileBulletInput {
+  kind: ProfileEntryKind!
+  entryId: Int!
+  text: String!
+}
+
+input AddProfileCertificationInput {
+  name: String!
+  issuer: String
+  issuedMonth: LocalDate
+  expiresMonth: LocalDate
+  url: String
+}
+
+input AddProfileEducationInput {
+  school: String!
+  degree: String
+  field: String
+  location: LocationInput
+  startMonth: LocalDate!
+  endMonth: LocalDate
+}
+
+input AddProfileExperienceInput {
+  employer: String!
+  title: String!
+  location: LocationInput
+  startMonth: LocalDate!
+  endMonth: LocalDate
+  skillNames: [String!]!
+}
+
+input AddProfileProjectInput {
+  name: String!
+  url: String
+  location: LocationInput
+  startMonth: LocalDate
+  endMonth: LocalDate
+  skillNames: [String!]!
+}
+
+input AddProfileReferenceInput {
+  name: String!
+  relationship: String!
+  company: String
+  email: String
+  phone: String
+  note: String
 }
 
 input ApplicationStatusOperationFilterInput {
@@ -769,7 +1359,10 @@ input CompanyFilterInput {
   industryId: IntOperationFilterInput
   industry: IndustryFilterInput
   favoritedAt: DateTimeOperationFilterInput
+  avoidedAt: DateTimeOperationFilterInput
+  notes: StringOperationFilterInput
   locations: ListFilterInputTypeOfCompanyLocationFilterInput
+  contacts: ListFilterInputTypeOfContactFilterInput
 }
 
 input CompanyInput {
@@ -793,6 +1386,31 @@ input CompanySortInput {
   industryId: SortEnumType @cost(weight: "10")
   industry: IndustrySortInput @cost(weight: "10")
   favoritedAt: SortEnumType @cost(weight: "10")
+  avoidedAt: SortEnumType @cost(weight: "10")
+  notes: SortEnumType @cost(weight: "10")
+}
+
+input ContactFilterInput {
+  and: [ContactFilterInput!]
+  or: [ContactFilterInput!]
+  id: IntOperationFilterInput
+  companyId: IntOperationFilterInput
+  company: CompanyFilterInput
+  name: StringOperationFilterInput
+  title: StringOperationFilterInput
+  email: StringOperationFilterInput
+  phone: StringOperationFilterInput
+  url: StringOperationFilterInput
+  notes: StringOperationFilterInput
+}
+
+input ContactInput {
+  name: String!
+  title: String
+  email: String
+  phone: String
+  url: String
+  notes: String
 }
 
 input CreateCompaniesInput {
@@ -830,6 +1448,10 @@ input DeadlineTypeOperationFilterInput {
   nin: [DeadlineType!] @cost(weight: "10")
 }
 
+input DeleteContactInput {
+  id: Int!
+}
+
 input DeleteDocumentInput {
   id: Int!
 }
@@ -840,6 +1462,38 @@ input DeleteInterviewInput {
 
 input DeleteListingInput {
   id: Int!
+}
+
+input DeleteProfileBulletInput {
+  id: Int!
+}
+
+input DeleteProfileBulletTranslationInput {
+  id: Int!
+}
+
+input DeleteProfileCertificationInput {
+  id: Int!
+}
+
+input DeleteProfileEducationInput {
+  id: Int!
+}
+
+input DeleteProfileExperienceInput {
+  id: Int!
+}
+
+input DeleteProfileProjectInput {
+  id: Int!
+}
+
+input DeleteProfileReferenceInput {
+  id: Int!
+}
+
+input DeleteProfileTranslationInput {
+  language: Language!
 }
 
 input DocumentFilterInput {
@@ -941,6 +1595,13 @@ input ListFilterInputTypeOfCompanyLocationFilterInput {
   any: Boolean @cost(weight: "10")
 }
 
+input ListFilterInputTypeOfContactFilterInput {
+  all: ContactFilterInput @cost(weight: "10")
+  none: ContactFilterInput @cost(weight: "10")
+  some: ContactFilterInput @cost(weight: "10")
+  any: Boolean @cost(weight: "10")
+}
+
 input ListFilterInputTypeOfDocumentFilterInput {
   all: DocumentFilterInput @cost(weight: "10")
   none: DocumentFilterInput @cost(weight: "10")
@@ -952,6 +1613,13 @@ input ListFilterInputTypeOfInterviewFilterInput {
   all: InterviewFilterInput @cost(weight: "10")
   none: InterviewFilterInput @cost(weight: "10")
   some: InterviewFilterInput @cost(weight: "10")
+  any: Boolean @cost(weight: "10")
+}
+
+input ListFilterInputTypeOfListingContactFilterInput {
+  all: ListingContactFilterInput @cost(weight: "10")
+  none: ListingContactFilterInput @cost(weight: "10")
+  some: ListingContactFilterInput @cost(weight: "10")
   any: Boolean @cost(weight: "10")
 }
 
@@ -981,6 +1649,15 @@ input ListFilterInputTypeOfStatusChangeFilterInput {
   none: StatusChangeFilterInput @cost(weight: "10")
   some: StatusChangeFilterInput @cost(weight: "10")
   any: Boolean @cost(weight: "10")
+}
+
+input ListingContactFilterInput {
+  and: [ListingContactFilterInput!]
+  or: [ListingContactFilterInput!]
+  listingId: IntOperationFilterInput
+  listing: ListingFilterInput
+  contactId: IntOperationFilterInput
+  contact: ContactFilterInput
 }
 
 input ListingFilterInput {
@@ -1015,6 +1692,7 @@ input ListingFilterInput {
   documents: ListFilterInputTypeOfDocumentFilterInput
   statusHistory: ListFilterInputTypeOfStatusChangeFilterInput
   interviews: ListFilterInputTypeOfInterviewFilterInput
+  contacts: ListFilterInputTypeOfListingContactFilterInput
 }
 
 input ListingInput {
@@ -1035,6 +1713,7 @@ input ListingInput {
   languages: [ListingLanguageInput!]!
   locations: [LocationInput!]!
   isAnalyzed: Boolean! = false
+  contacts: [ContactInput!]
 }
 
 input ListingLanguageFilterInput {
@@ -1158,6 +1837,16 @@ input LongOperationFilterInput {
   nlte: Long @cost(weight: "10")
 }
 
+input MoveProfileBulletInput {
+  id: Int!
+  position: Int!
+}
+
+input MoveProfileReferenceInput {
+  id: Int!
+  position: Int!
+}
+
 input NullableOfCefrLevelOperationFilterInput {
   eq: CefrLevel @cost(weight: "10")
   neq: CefrLevel @cost(weight: "10")
@@ -1200,9 +1889,23 @@ input NullableOfWorkModeOperationFilterInput {
   nin: [WorkMode] @cost(weight: "10")
 }
 
+input ParseListingFromUrlInput {
+  listingId: Int!
+}
+
 input ParseListingInput {
   text: String!
   mode: ParseMode!
+}
+
+input ParseUrlInput {
+  url: String!
+}
+
+input ProfileLinkInput {
+  kind: LinkKind!
+  label: String
+  url: String!
 }
 
 input RecordOutcomeInput {
@@ -1210,6 +1913,14 @@ input RecordOutcomeInput {
   outcome: ApplicationOutcome!
   occurredAt: DateTime
   note: String
+}
+
+input RemoveProfileLanguageInput {
+  language: Language!
+}
+
+input RemoveProfileSkillInput {
+  skillId: Int!
 }
 
 input SaveDashboardLayoutInput {
@@ -1222,9 +1933,19 @@ input SaveLocationInput {
   isTarget: Boolean!
 }
 
+input SetCompanyAvoidedInput {
+  id: Int!
+  isAvoided: Boolean!
+}
+
 input SetCompanyFavoriteInput {
   id: Int!
   isFavorite: Boolean!
+}
+
+input SetCompanyNotesInput {
+  id: Int!
+  notes: String
 }
 
 input SetListingArchivedInput {
@@ -1235,6 +1956,34 @@ input SetListingArchivedInput {
 input SetListingFavoriteInput {
   id: Int!
   isFavorite: Boolean!
+}
+
+input SetProfileBulletTranslationInput {
+  bulletId: Int!
+  language: Language!
+  text: String!
+  isMachine: Boolean! = false
+}
+
+input SetProfileContentLanguageInput {
+  language: Language!
+}
+
+input SetProfileLanguageInput {
+  language: Language!
+  level: CefrLevel!
+}
+
+input SetProfileSkillInput {
+  name: String!
+  level: Int!
+}
+
+input SetProfileTranslationInput {
+  language: Language!
+  headline: String
+  summary: String
+  isMachine: Boolean! = false
 }
 
 input SkillFilterInput {
@@ -1297,6 +2046,11 @@ input UpdateCompanyInput {
   locations: [LocationInput!]!
 }
 
+input UpdateContactInput {
+  id: Int!
+  contact: ContactInput!
+}
+
 input UpdateInterviewInput {
   id: Int!
   scheduledAt: DateTime!
@@ -1307,6 +2061,83 @@ input UpdateInterviewInput {
 input UpdateListingInput {
   id: Int!
   listing: ListingInput!
+}
+
+input UpdateProfileBulletInput {
+  id: Int!
+  text: String!
+}
+
+input UpdateProfileCertificationInput {
+  id: Int!
+  name: String!
+  issuer: String
+  issuedMonth: LocalDate
+  expiresMonth: LocalDate
+  url: String
+}
+
+input UpdateProfileEducationInput {
+  id: Int!
+  school: String!
+  degree: String
+  field: String
+  location: LocationInput
+  startMonth: LocalDate!
+  endMonth: LocalDate
+}
+
+input UpdateProfileExperienceInput {
+  id: Int!
+  employer: String!
+  title: String!
+  location: LocationInput
+  startMonth: LocalDate!
+  endMonth: LocalDate
+  skillNames: [String!]!
+}
+
+input UpdateProfileInput {
+  fullName: String
+  headline: String
+  summary: String
+  email: String
+  phone: String
+  location: LocationInput
+  dateOfBirth: LocalDate
+  nationality: String
+  workAuthorization: String
+  hobbies: [String!]!
+  links: [ProfileLinkInput!]!
+}
+
+input UpdateProfilePreferencesInput {
+  jobRoleNames: [String!]!
+  workModes: [WorkMode!]!
+  employmentTypes: [EmploymentType!]!
+  minSalary: Int
+  salaryCurrency: String
+  noticePeriodMonths: Int
+}
+
+input UpdateProfileProjectInput {
+  id: Int!
+  name: String!
+  url: String
+  location: LocationInput
+  startMonth: LocalDate
+  endMonth: LocalDate
+  skillNames: [String!]!
+}
+
+input UpdateProfileReferenceInput {
+  id: Int!
+  name: String!
+  relationship: String!
+  company: String
+  email: String
+  phone: String
+  note: String
 }
 
 input UpdateStatusChangeInput {
@@ -1385,6 +2216,13 @@ enum Language {
   NORWEGIAN
 }
 
+enum LinkKind {
+  GITHUB
+  LINKEDIN
+  PORTFOLIO
+  OTHER
+}
+
 enum ParseJobStatus {
   QUEUED
   RUNNING
@@ -1397,6 +2235,13 @@ enum ParseMode {
   FULL
   QUICK
   COMPANIES
+}
+
+enum ProfileEntryKind {
+  EXPERIENCE
+  EDUCATION
+  CERTIFICATION
+  PROJECT
 }
 
 enum Schedule {

@@ -21,7 +21,7 @@ that other developers browsing GitHub can find their way around.
 | Token saving | Hash-based cache, structured JSON output, input trimming |
 | Usage | **Track only, no quotas** for Owner: daily trends, model, tokens, estimated cost. Guest keeps a small daily cap |
 | Hosting | Docker (docker-compose) on a VPS or home server; SQLite on a volume |
-| CV storage | Structured data in the DB (see §4). *Assumption: "actual data" = structured fields, not a blob* |
+| CV storage | One structured master profile per user in the DB (see §4); tailored CVs are generated from it later |
 
 ## 2. Solution layout
 
@@ -37,7 +37,7 @@ job-hunt-assistant-api/
 │  │  ├─ Applications/            # CRUD, status changes, history
 │  │  ├─ Notes/
 │  │  ├─ Contacts/
-│  │  ├─ Cvs/
+│  │  ├─ Profiles/               # master profile: basics, preferences, history, skills
 │  │  ├─ Dashboard/
 │  │  ├─ JobPostings/             # parse request, results, queue worker
 │  │  ├─ Usage/                   # LLM usage stats
@@ -117,7 +117,7 @@ AppUser (Identity) ── UserSettings (PreferredProvider, PreferredModel)      
 
 Company (Name, NormalizedName, LocationId?)    ┐ per user, found-or-created by name,
 JobRole (Name, NormalizedName)  ← core role, EN │ unique (UserId, NormalizedName)
-Skill   (Name, NormalizedName)  ← shared w/ CVs ┘
+Skill   (Name, NormalizedName)  ← shared w/ profile ┘
 Location (City?, NormalizedCity ("" if none), CountryCode ISO 3166, IsTarget)  unique (UserId, CountryCode, NormalizedCity)
   City null = whole country ("Norway, anywhere" for remote). IsTarget → dashboard "jobs in your target cities".
 
@@ -150,15 +150,34 @@ Documents belong to one listing: the PDF sent with that attempt. Bytes live in a
 so listing queries never load them. Counts (per company/role/skill/location) are computed with
 DataLoaders, never stored.
 
-Cv                                               ← planned (M3), relational
-  Id, UserId, Name, IsDefault, FullName, Headline, Summary, Email, Phone, Location, Links[]
-  ├─ CvExperience    (Company, Title, Start, End?, Description, Highlights[])
-  ├─ CvEducation     (School, Degree, Field, Start, End?)
-  ├─ CvSkill         (SkillId → shared Skill lookup, Level 1–5)
-  ├─ CvLanguage      (Language, Level A1–C2)
-  └─ CvCertification (Name, Issuer, Date?)
-  Skills and languages use the same lookup and scales as listings so CV ↔ job matching is a join.
-  JSON only for leaf lists that are never filtered (Highlights[], Links[]). db-architect designs this in M3.
+Profile = one per user, created by LookupSeeder   ← built (M3), relational
+  FullName?, Headline?, Summary? (Markdown), Email?, Phone?, LocationId? → Location,
+  Links (JSON: Kind GITHUB/LINKEDIN/PORTFOLIO/OTHER, Label only for OTHER, Url), Hobbies (JSON list),
+  ContentLanguage (ENGLISH default: the language the user's own text is written in)
+  DateOfBirth?, Nationality?, WorkAuthorization?   ← sensitive: an AI CV prompt builder must use a field allowlist
+  MinSalary?, SalaryCurrency? (ISO 4217), NoticePeriodMonths?
+  ├─ ProfileJobRoles / ProfileWorkModes / ProfileEmploymentTypes   ← preferences, rows so listings can match on them
+  ├─ ProfileExperience    (Employer free text, Title, LocationId?, StartMonth, EndMonth?, Skills)
+  ├─ ProfileEducation     (School, Degree?, Field?, LocationId?, StartMonth, EndMonth?)
+  ├─ ProfileCertification (Name, Issuer?, IssuedMonth?, ExpiresMonth?, Url?)
+  ├─ ProfileProject       (Name, Url?, LocationId?, StartMonth?, EndMonth?, Skills)
+  ├─ ProfileSkill         (SkillId → shared Skill lookup, Level 1–5)  + computed experienceMonths from tagged jobs
+  ├─ ProfileLanguage      (Language, Level A1–C2)
+  ├─ ProfileReference     (Name, Relationship, Company?, Email?, Phone?, Note?, Position)
+  ├─ ProfileBullet        (Text, Position; belongs to exactly one experience/education/certification/project)
+  │    └─ ProfileBulletTranslation (Language, Text, SourceText, IsMachine; unique per bullet + language)
+  └─ ProfileTranslation   (Language, Headline?, Summary?, SourceHeadline?, SourceSummary?, IsMachine; unique per language)
+  Bullets are the only free text on an entry. They are rows with ids, not JSON, so a later per-listing draft or AI
+  pick can refer to them; one table, four nullable FKs + CHECK, so there is one id space.
+  Translations: the original stays where it is and a translation hangs off its id. Each stores a copy of the text it
+  was made from, and "stale" is computed by comparing that copy with the current text, so editing the original has
+  nothing to update. A translation exists only in the language other than ContentLanguage, which can't change while
+  any translation exists. Titles, degrees, entry names, references and hobbies are not translated.
+  Tagging a skill on an experience or project adds it to ProfileSkill at level 1 if missing (a tag has no level;
+  setProfileSkill raises it). Untagging or removing the profile skill never touches the other side.
+  Months are DateOnly on the 1st; no end = current. Target cities stay on Location.IsTarget.
+  Skills, roles and languages use the same lookups and scales as listings, so profile ↔ job matching is a join.
+  One master profile instead of several CVs: data is entered once; tailored CVs are selections from it later.
 
 ParseJob                           ← built (runs inline until the queue, M6)
   Id (Guid), UserId, Mode (Full/Quick), RawText, Status (Queued/Running/Retrying/Succeeded/Failed),
@@ -262,7 +281,8 @@ Query
   companies, jobRoles, skills, locations    → cursor-paged lookups (search, listingCount)
   listingParsePrompt, listingQuickParsePrompt → prompt for copy-paste into an external AI
   parseJob(id)
-  cvs, cv(id)                               (planned, M3) → Cv { experiences educations skills languages certifications }
+  profile                                   → Profile { location links jobRoles workModes employmentTypes targetLocations
+                                                        experiences educations certifications projects skills languages references }
   dashboardStats                            (planned, M4) → counts by status, applications/week (last 12w),
                    response rate, avg days to first response, upcoming interviews,
                    ghosted = Applied/Interviewing with no status change or interview for N days (derived, never stored)
@@ -281,7 +301,11 @@ Mutation
   addInterview, updateInterview, deleteInterview
   parseListing(text, mode)
   add/update/deleteNote, add/update/deleteContact   (planned, M2)
-  create/update/deleteCv, setDefaultCv               (planned, M3)
+  updateProfile, updateProfilePreferences
+  add/update/deleteProfileExperience|Education|Certification|Project
+  set/removeProfileSkill, set/removeProfileLanguage
+  add/update/move/deleteProfileBullet, add/update/move/deleteProfileReference
+  setProfileContentLanguage, set/deleteProfileBulletTranslation, set/deleteProfileTranslation
   updateSettings                                     (planned, M5)
 
 Subscription
@@ -306,15 +330,17 @@ current paid-tier prices, and the numbers update without code changes.
 | M0 | Install .NET 10 SDK in WSL; scaffold solution, props files, CI, Scalar, EF Core + SQLite, Dockerfile + compose | `dotnet test` + `docker build` green in CI |
 | M1 | Identity + cookie auth, seeded Owner/Guest, user query filter | can log in as both via Scalar |
 | M2 | Listings + application tracking (status, timeline, interviews, documents) + notes + contacts | CRUD + history tested; notes/contacts still pending |
-| M3 | Structured CVs (relational tables, see §4) | CV CRUD tested; CV skills/languages use the listing lookups |
+| M3 | Profile (relational tables, see §4) | profile CRUD tested; profile skills/languages/roles use the listing lookups |
 | M4 | Dashboard stats | stats endpoint tested with seeded data |
 | M5 | LLM layer: Gemini client, Ollama health handler, usage logging, settings | one parse call works end-to-end synchronously |
 | M6 | Parse queue + SSE + cache + trimming + retries | UI receives events; repeat paste = cache hit |
 | M7 | Guest sandbox: nightly reset, sample data, AI cap | guest resets, capped at N calls |
 | M8 | Deploy to VPS, DataProtection keys volume, README polish (incl. "Design decisions": why vertical slices, why no repository layer, why cookies over JWT, token-saving strategy) | runs on the VPS |
 
-**After MVP:** CV ↔ job match, CV generation (renders a CV as a PDF `Document` on a listing, so
-`applyToListing` sends it like an upload), PDF/image posting input, Claude/OpenAI providers,
+**After MVP:** profile ↔ job match, CV generation from the profile (renders a CV as a PDF `Document` on a listing, so
+`applyToListing` sends it like an upload; any LLM step gets only allowlisted profile fields, never date of birth,
+contact details or references; generation takes a target language and uses the translation where one exists, and a
+later auto-translate writes translations one bullet at a time with `isMachine` set), PDF/image posting input, Claude/OpenAI providers,
 URL scraping, maybe Postgres.
 
 **Deferred follow-ups** (found in the project review, not built yet):
