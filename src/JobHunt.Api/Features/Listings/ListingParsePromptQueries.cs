@@ -12,10 +12,10 @@ public record ListingParsePrompt(int Version, string Instructions);
 public static partial class ListingParsePromptQueries
 {
     // Bump whenever the prompt or output shape changes; the server-side parse cache keys on it.
-    public const int Version = 4;
+    public const int Version = 7;
 
     // Separate from Version: the quick prompt changes on its own schedule.
-    public const int QuickVersion = 2;
+    public const int QuickVersion = 4;
 
     // Keeps the prompt short (and cheap on the API-key path) for users with many roles/skills.
     private const int MaxNames = 100;
@@ -50,9 +50,11 @@ public static partial class ListingParsePromptQueries
               "postingLanguage": {{Values<Language>()}} | null,
               "skills":    [{ "name": string, "level": 1-5, "minYears": number | null, "isRequired": boolean }],
               "languages": [{ "language": {{Values<Language>()}}, "level": {{Values<CefrLevel>()}} | null, "isRequired": boolean }],
-              "locations": [{ "city": string | null, "countryCode": string }]   // ISO 3166-1 alpha-2, e.g. "NO"
+              "locations": [{ "city": string | null, "countryCode": string }],  // ISO 3166-1 alpha-2, e.g. "NO"
+              "contacts":  [{ "name": string, "title": string | null, "email": string | null, "phone": string | null, "url": string | null }]
             }
-            Use null when the ad doesn't say. Don't guess.
+            Infer from clear signals in the ad; use null only when it gives nothing to go on.
+            Never invent names, dates or URLs that aren't in the text.
 
             # Names
             Reuse an existing name when it means the same thing, even if the ad words it differently.
@@ -62,13 +64,22 @@ public static partial class ListingParsePromptQueries
             Existing skills: {{NameList(skills)}}
 
             # Rules
+            title: the formal job title: the "Stillingstittel"/"Job title" field when the page has one, otherwise the ad's
+              heading. Never a slogan or a full sentence.
             companyName: as the company calls itself, without legal suffixes (AS, ASA, AB, GmbH, Ltd, Inc).
-            seniority: only when the title or text says it (Senior, Junior, Lead, "Trainee" = JUNIOR). Not from years alone.
+            seniority: a word in the title or text wins (Senior, Junior, Lead, "Trainee" = JUNIOR). Otherwise infer from the experience asked for:
+              0–1 years or graduate → JUNIOR, 2–4 years → MID, 5+ years or "erfaren"/"experienced" → SENIOR,
+              leading people or a team → LEAD.
             employmentType: Fast = PERMANENT, Vikariat = TEMPORARY, Engasjement/midlertidig = FIXED_TERM,
               Konsulent/Oppdrag/Frilans = CONTRACT, Trainee-program/Lærling/Internship = INTERNSHIP, Sesong = SEASONAL.
             schedule: Heltid/100 % = FULL_TIME, Deltid/under 100 % = PART_TIME.
+            workMode: from explicit wording only. "Hjemmekontor"/"hybrid" → HYBRID, "fjernarbeid"/"fully remote" → REMOTE,
+              explicitly on site → ONSITE. Flexible hours alone → null.
+            postedOn: the publication date only. "Sist endret"/"last modified"/"oppdatert" is not postedOn.
             deadline: a date → DATE + deadlineOn (dates without a year: the next such date after today).
-              "Snarest"/"ASAP"/"straks"/"Løpende"/"fortløpende"/"rolling" → ASAP. None given → UNSPECIFIED. deadlineOn only with DATE.
+              "i dag"/"today" → DATE with today's date, "i morgen"/"tomorrow" → DATE with tomorrow's date.
+              "Snarest"/"ASAP"/"straks"/"Løpende"/"fortløpende"/"rolling" → ASAP, never a date: "snarest" means "as soon
+              as possible", not today. None given → UNSPECIFIED. deadlineOn only with DATE.
 
             description: always in English; translate if the ad is in another language.
               Plain text (no Markdown), max 1000 characters in total.
@@ -84,6 +95,7 @@ public static partial class ListingParsePromptQueries
               Short phrases, not full sentences. Blank line between sections.
 
             skills: concrete technologies, tools, methods, certifications and licences (e.g. "Truckførerbevis", "Førerkort klasse B").
+              Only names that appear in the posting.
               Skip personality traits ("team player", "selvgående", "strukturert").
               level, the higher of years and wording:
                 1 basic         "basic knowledge", "grunnleggende kjennskap"
@@ -102,6 +114,10 @@ public static partial class ListingParsePromptQueries
 
             locations: every city the job can be based in. Remote limited to a country → { "city": null, "countryCode": "NO" }.
               Remote anywhere → []. Use the city name as written locally ("Tromsø", not "Tromso").
+
+            contacts: people the ad names as contacts for the job ("Kontaktperson", "Spørsmål om stillingen?", "Contact").
+              Copy name, title, email, phone and url exactly as written; null for anything not given, never invented.
+              Skip shared inboxes and switchboards without a person ("jobb@firma.no", "sentralbord"). None → [].
             """;
 
         return new ListingParsePrompt(Version, instructions);
@@ -135,14 +151,20 @@ public static partial class ListingParsePromptQueries
               "deadlineOn": "YYYY-MM-DD" | null,
               "locations": [{ "city": string | null, "countryCode": string }]   // ISO 3166-1 alpha-2, e.g. "NO"
             }]
-            Use null when the text doesn't say. Don't guess.
+            Infer from clear signals in the text; use null only when it gives nothing to go on.
+            Never invent names, dates or URLs that aren't in the text.
 
             # Rules
+            title: the formal job title: the "Stillingstittel"/"Job title" field when the page has one, otherwise the ad's
+              heading. Never a slogan or a full sentence.
             jobRoleName: reuse an existing role when it means the same thing, otherwise the standard English job title.
               Existing job roles: {{NameList(jobRoles)}}
             companyName: as the company calls itself, without legal suffixes (AS, ASA, AB, GmbH, Ltd, Inc).
+            postedOn: the publication date only. "Sist endret"/"last modified"/"oppdatert" is not postedOn.
             deadline: a date → DATE + deadlineOn (dates without a year: the next such date after today).
-              "Snarest"/"ASAP"/"straks"/"Løpende"/"fortløpende"/"rolling" → ASAP. None given → UNSPECIFIED. deadlineOn only with DATE.
+              "i dag"/"today" → DATE with today's date, "i morgen"/"tomorrow" → DATE with tomorrow's date.
+              "Snarest"/"ASAP"/"straks"/"Løpende"/"fortløpende"/"rolling" → ASAP, never a date: "snarest" means "as soon
+              as possible", not today. None given → UNSPECIFIED. deadlineOn only with DATE.
             locations: every city the job can be based in. Remote limited to a country → { "city": null, "countryCode": "NO" }.
               Remote anywhere → []. Use the city name as written locally ("Tromsø", not "Tromso").
             """;

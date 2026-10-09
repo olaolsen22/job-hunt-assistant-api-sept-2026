@@ -7,11 +7,13 @@ public class FakeChatClient : IChatClient
 {
     public Func<ChatResponse> Respond { get; set; } = () => throw new InvalidOperationException("No fake LLM response set.");
     public List<ChatMessage> LastMessages { get; private set; } = [];
+    public ChatOptions? LastOptions { get; private set; }
 
     public Task<ChatResponse> GetResponseAsync(
         IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
     {
         LastMessages = messages.ToList();
+        LastOptions = options;
         return Task.FromResult(Respond());
     }
 

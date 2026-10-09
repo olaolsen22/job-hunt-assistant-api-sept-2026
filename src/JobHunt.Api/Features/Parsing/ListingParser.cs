@@ -48,6 +48,9 @@ public class ListingParser(
             Temperature = 0,
             MaxOutputTokens = MaxOutputTokens,
         };
+        // Deep analysis of one ad benefits from thinking; quick-add arrays would burn their output budget on it.
+        if (job.Mode == ParseMode.Full)
+            options.Reasoning = new ReasoningOptions { Effort = ReasoningEffort.Low };
 
         var usage = new LlmUsage
         {
@@ -64,7 +67,10 @@ public class ListingParser(
         {
             var response = await chat.GetResponseAsync(messages, options, ct);
             usage.InputTokens = response.Usage?.InputTokenCount;
-            usage.OutputTokens = response.Usage?.OutputTokenCount;
+            // Gemini bills thinking as output but reports it separately.
+            usage.OutputTokens = response.Usage?.OutputTokenCount is { } output
+                ? output + (response.Usage.ReasoningTokenCount ?? 0)
+                : null;
             if (IsExpectedJson(response.Text, job.Mode))
             {
                 job.Status = ParseJobStatus.Succeeded;

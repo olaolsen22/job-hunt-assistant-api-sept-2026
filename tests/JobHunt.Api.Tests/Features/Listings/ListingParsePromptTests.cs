@@ -17,12 +17,22 @@ public class ListingParsePromptTests(ApiFactory factory) : IClassFixture<ApiFact
         var guestPrompt = (await guest.GraphQLAsync(query)).GetProperty("listingParsePrompt");
 
         var instructions = ownerPrompt.GetProperty("instructions").GetString()!;
-        Assert.Equal(4, ownerPrompt.GetProperty("version").GetInt32());
+        Assert.Equal(7, ownerPrompt.GetProperty("version").GetInt32());
         Assert.Contains("\"FIXED_TERM\"", instructions);
         Assert.Contains("\"FULL_TIME\"", instructions);
         Assert.Contains("\"C2\"", instructions);
         Assert.Contains("\"Løpende\"/\"fortløpende\"/\"rolling\" → ASAP", instructions);
         Assert.DoesNotContain("ROLLING", instructions);
+        Assert.Contains("Stillingstittel", instructions);
+        Assert.Contains("\"contacts\"", instructions);
+        Assert.Contains("Kontaktperson", instructions);
+        Assert.Contains("erfaren", instructions);
+        Assert.Contains("hjemmekontor", instructions, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Sist endret", instructions);
+        Assert.Contains("i dag", instructions);
+        Assert.Contains("Only names that appear in the posting", instructions);
+        Assert.DoesNotContain("Don't guess", instructions);
+        Assert.DoesNotContain("Not from years alone", instructions);
         Assert.Contains(jobRole, instructions);
         Assert.Contains(skill, instructions);
         Assert.DoesNotContain(skill, guestPrompt.GetProperty("instructions").GetString());
@@ -39,8 +49,12 @@ public class ListingParsePromptTests(ApiFactory factory) : IClassFixture<ApiFact
             .GetProperty("listingQuickParsePrompt");
 
         var instructions = prompt.GetProperty("instructions").GetString()!;
-        Assert.Equal(2, prompt.GetProperty("version").GetInt32());
+        Assert.Equal(4, prompt.GetProperty("version").GetInt32());
+        Assert.DoesNotContain("contacts", instructions);
         Assert.Contains("ONE JSON array", instructions);
+        Assert.Contains("Stillingstittel", instructions);
+        Assert.Contains("i dag", instructions);
+        Assert.DoesNotContain("Don't guess", instructions);
         Assert.Contains("\"Løpende\"/\"fortløpende\"/\"rolling\" → ASAP", instructions);
         Assert.DoesNotContain("ROLLING", instructions);
         Assert.Contains(jobRole, instructions);
