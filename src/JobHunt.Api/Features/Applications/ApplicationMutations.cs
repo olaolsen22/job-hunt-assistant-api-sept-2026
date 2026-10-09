@@ -28,20 +28,22 @@ public static class ApplicationMutations
         [ApplicationStatus.Offer] = [ApplicationStatus.Accepted, ApplicationStatus.Rejected, ApplicationStatus.Withdrawn],
     };
 
-    // The CV is required: it's the record of what was sent. Upload first with uploadDocument.
+    // Documents are optional: form-only portals send no file, and old applications may have lost their CV.
+    // Upload first with uploadDocument when there is one.
     [Error<ListingNotFoundException>]
     [Error<InvalidStatusTransitionException>]
     [Error<InvalidApplicationException>]
     [Error<DocumentNotFoundException>]
     [Error<InvalidDocumentException>]
     public static async Task<Listing> ApplyToListingAsync(
-        int listingId, int cvDocumentId, int? coverLetterDocumentId, DateTimeOffset? appliedAt, string? note,
+        int listingId, int? cvDocumentId, int? coverLetterDocumentId, DateTimeOffset? appliedAt, string? note,
         AppDbContext db, TimeProvider time, CancellationToken ct)
     {
         var listing = await ListingMutations.FindWithDetailsAsync(listingId, db, ct);
         var now = time.GetUtcNow().UtcDateTime;
         var change = ChangeStatus(listing, ApplicationStatus.Applied, appliedAt?.UtcDateTime ?? now, note, now);
-        Send(listing, cvDocumentId, DocumentKind.Cv, change.OccurredAt);
+        if (cvDocumentId is not null)
+            Send(listing, cvDocumentId.Value, DocumentKind.Cv, change.OccurredAt);
         if (coverLetterDocumentId is not null)
             Send(listing, coverLetterDocumentId.Value, DocumentKind.CoverLetter, change.OccurredAt);
         await db.SaveChangesAsync(ct);

@@ -17,7 +17,7 @@ public class ApplicationTests(ApiFactory factory) : IClassFixture<ApiFactory>
         """;
 
     private const string Apply = $$"""
-        mutation ($listingId: Int!, $cvDocumentId: Int!, $coverLetterDocumentId: Int, $appliedAt: DateTime, $note: String) {
+        mutation ($listingId: Int!, $cvDocumentId: Int, $coverLetterDocumentId: Int, $appliedAt: DateTime, $note: String) {
           applyToListing(input: {
             listingId: $listingId, cvDocumentId: $cvDocumentId, coverLetterDocumentId: $coverLetterDocumentId,
             appliedAt: $appliedAt, note: $note
@@ -122,6 +122,36 @@ public class ApplicationTests(ApiFactory factory) : IClassFixture<ApiFactory>
             .GetProperty("applyToListing");
 
         Assert.Equal("InvalidStatusTransitionError", ErrorType(payload));
+    }
+
+    [Fact]
+    public async Task Apply_WithoutDocuments_RecordsStepAndSendsNothing()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var (listingId, _) = await ListingWithCvAsync(client);
+        var appliedAt = DateTimeOffset.UtcNow.AddDays(-10);
+
+        var payload = (await client.GraphQLAsync(Apply, new { listingId, appliedAt = Iso(appliedAt), note = "Applied via form" }))
+            .GetProperty("applyToListing");
+
+        var listing = Listing(payload);
+        Assert.Equal("APPLIED", listing.GetProperty("status").GetString());
+        var change = Assert.Single(listing.GetProperty("statusHistory").EnumerateArray());
+        Assert.Equal("Applied via form", change.GetProperty("note").GetString());
+        Assert.All(listing.GetProperty("documents").EnumerateArray(),
+            d => Assert.Equal(JsonValueKind.Null, d.GetProperty("sentAt").ValueKind));
+    }
+
+    [Fact]
+    public async Task Undo_ApplicationWithoutDocuments_ReturnsToSaved()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var listingId = await DocumentTests.CreateListingAsync(client, "Fjord");
+        await client.GraphQLAsync(Apply, new { listingId });
+
+        var payload = (await client.GraphQLAsync(Undo, new { listingId })).GetProperty("undoStatusChange");
+
+        Assert.Equal("SAVED", Listing(payload).GetProperty("status").GetString());
     }
 
     [Fact]

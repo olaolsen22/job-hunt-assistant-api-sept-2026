@@ -1340,7 +1340,7 @@ input ApplicationStatusOperationFilterInput {
 
 input ApplyToListingInput {
   listingId: Int!
-  cvDocumentId: Int!
+  cvDocumentId: Int
   coverLetterDocumentId: Int
   appliedAt: DateTime
   note: String
