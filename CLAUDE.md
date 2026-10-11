@@ -1,57 +1,78 @@
 # Job Hunt Assistant API
 
-Hobby .NET 10 backend (Minimal APIs, EF Core + SQLite, Identity cookie auth) for a Nuxt job-tracker UI.
-REST for auth, GraphQL (Hot Chocolate) for domain data. LLM job-posting parsing via Gemini (free tier)
-or Ollama, with a background queue + GraphQL subscriptions over SSE.
+Personal .NET 10 job-tracker backend and GitHub portfolio project: Minimal APIs,
+EF Core + SQLite, Identity cookie auth, Hot Chocolate GraphQL, and LLM parsing
+through Microsoft.Extensions.AI. Optimize for readable, idiomatic code and useful
+features within a single API project. Add operational complexity only for a
+concrete need. User isolation, input validation, secret handling, and preserving
+real data are required even for this personal app.
 
-## Read first (instead of exploring the codebase)
-- `docs/STATUS.md` — what exists right now: endpoints, entities, config keys, milestone progress. **Start here.**
-- `docs/PLAN.md` — design and decisions. Read only the section you need.
+## Context and scope
+- API only; the Nuxt UI lives in `../job-hunt-assistant-ui-sept-2026`. For a
+  misplaced UI request, explain the repo boundary before editing. Explicit owner
+  instructions can change scope.
+- `docs/STATUS.md` describes current behavior; `docs/PLAN.md` holds design and
+  roadmap decisions. Read relevant sections when needed, once per task, and
+  reread only after changes or compaction. For small edits, start at the affected
+  file. Code is authoritative when documentation disagrees.
+- Use targeted searches (`rg` or Grep), then relevant line ranges. Batch
+  independent reads. Skip `bin/`, `obj/`, `Migrations/*.Designer.cs`, and `*.db`;
+  read model snapshots only for migration debugging.
 
-## Commands
-- Build: `dotnet build`
-- Test: `dotnet test` (run a single test class with `--filter` while iterating)
-- Run: `make run` (or `dotnet run --project src/JobHunt.Api`) → Scalar UI at `/scalar`. `make watch` for hot reload.
-- Migration: `make migration name=<Name>`
+## Commands and verification
+- Build: `dotnet build`. Test: `dotnet test`; use `--filter` while iterating.
+- Run only when asked: `make run` or `make watch`; Scalar is at `/scalar`.
+- Migration: `make migration name=<Name>` (backs up first).
+- Test observable behavior: success plus relevant validation, user isolation,
+  and failure cases. Match verification to the change; skip runtime tests for
+  documentation-only edits. `dotnet test` builds too, so avoid a separate build
+  unless needed. Run the full suite once before finishing runtime changes;
+  repeat only after new edits or unresolved failures.
+- The owner usually has the API running. Do not start or stop it without a
+  request. If a live probe is necessary, ask first, use a separate port and DB,
+  and stop only that PID. Never use `pkill` or `killall`.
+- `src/JobHunt.Api/jobhunt.db` contains real data. Run `make backup` before
+  creating or applying migrations. Review migration `Up()` for data loss;
+  never delete the DB to recover: fix forward or restore a backup.
 
-## Conventions
-- Vertical slices: `src/JobHunt.Api/Features/<Feature>/` holds endpoints or GraphQL types, records, and entities.
-- REST (auth, health, document download only): `Map<Feature>Endpoints(this IEndpointRouteBuilder)` using `MapGroup("/api/<feature>")`. REST errors are `ProblemDetails`; validate with built-in minimal-API validation (DataAnnotations).
-- GraphQL (all domain data): `<Feature>Queries.cs` / `<Feature>Mutations.cs` with `[QueryType]`/`[MutationType]`. Return `IQueryable` + paging/projection/filtering/sorting. Expected failures use mutation-convention typed errors. Never add the same operation to both REST and GraphQL.
-- Inject `TimeProvider`, never `DateTime.UtcNow`. Store UTC `DateTime` (SQLite can't ORDER BY `DateTimeOffset`).
-- Every user-owned entity has `UserId` and is covered by the global query filter.
-- LLM access only through `IChatClient` (Microsoft.Extensions.AI) keyed by provider. Every call logs `LlmUsage`.
-- No Ollama container. A missing Ollama marks the ParseJob `FAILED` (pushed via the `onParseJobUpdated` subscription).
-- Secrets: user-secrets / env vars only. Never commit keys.
+## Implementation conventions
+- Vertical slices: `src/JobHunt.Api/Features/<Feature>/` contains its API types,
+  records, entities, and `IEntityTypeConfiguration<T>` configurations.
+- REST only for auth, health, and document download: `MapGroup`, typed results,
+  built-in DataAnnotations validation, `ProblemDetails` errors.
+- Domain data uses GraphQL `[QueryType]` / `[MutationType]`, queryable paging,
+  projection/filtering/sorting where suitable, and typed mutation errors.
+  Never expose the same operation through both REST and GraphQL.
+- Inject `TimeProvider`. Store UTC `DateTime` for SQLite sorting, enums as
+  strings. User-owned entities need `UserId`, its index, and the global filter.
+- Use real FKs and navigation properties. JSON is for leaf data never queried
+  relationally. Add indexes for actual queries; account for SQLite table rebuilds.
+- LLM calls use provider-keyed `IChatClient` and log `LlmUsage`. No Ollama
+  container; unavailable providers fail the parse job through its existing flow.
+- Secrets belong in user-secrets or environment variables; never commit keys.
 
-## Code style: simple over clever
-- Write the simplest code that works. Readable beats reusable.
-- No abstractions (interfaces, base classes, generic helpers, factories, wrappers) until there are 2+ real uses. A test fake counts as a use (e.g. external HTTP services). No repository layer over EF Core.
-- Planning for later is fine when it's on the roadmap (PLAN.md §9 "After MVP"): shape the schema and boundaries so those features fit without rewrites. Don't build abstractions for things that aren't on the roadmap.
-- Data model: relational, with real FKs and navigation properties. Expect many related tables. Use JSON columns only for leaf data that's never filtered, joined, or matched.
-- No defensive code for impossible cases. Only catch exceptions you actually handle.
-- Comments explain *why*, never *what*.
-- Change only what the task needs. No drive-by refactors or renames.
-- Use framework built-ins before adding a package.
-- Delete dead code; don't comment it out.
+## Keep work small
+- Prefer framework built-ins and straightforward code. Add abstractions when
+  repeated use or an external boundary justifies them; a test fake counts.
+  No repository layer over EF Core or MediatR by default.
+- Follow established patterns. Consider relevant roadmap constraints without
+  building future features. Avoid unrelated refactors, renames, and packages.
+- Validate external input; catch exceptions only when handling them. Comments
+  explain non-obvious reasons. Remove dead code.
+- Use OpenSpec when requested or continuing an existing change. Keep artifacts
+  proportional to scope; small fixes need no new proposal by default.
+- Use specialist guidance for non-trivial .NET or data-model work. Spawn
+  subagents only when requested. Skip formal plans for straightforward edits.
+- After notable behavior changes, use `log-progress` to update relevant STATUS
+  sections; do not rewrite unrelated documentation.
 
-## Commits
-
-- Atomic: one logical change per commit. Don't mix features, refactors, and formatting.
-- Subject: imperative, ≤ 50 chars, no trailing period (e.g. `Add application status history`).
-- Body: 1–3 lines of _why_, wrapped at 72 chars. For an owner request, one block per request:
-  an `Owner requested <x>, so <goal>:` line, then a `- <what changed and where>` bullet per change.
-  Blank line between blocks.
-- Commit only when asked.
-- **Record the why at change time**, not commit time: after each change, append one line to `.claude/commit-notes.md` (`- <area>: <what> — <why>`, prefixing the why with `owner requested: ` when it was the owner's request). When committing, build messages from it, then remove the lines you used. This survives long chats, compaction, and `/clear`.
-
-## Working rules (token budget: personal plan)
-- This repo is the API only. The Nuxt UI is a separate repo (`../job-hunt-assistant-ui-sept-2026`); never edit it, even when asked. The owner sometimes sends UI requests to this session by mistake (the Claude app doesn't show the current repo clearly). If a request is about UI (dashboard, pages, components, styling, Vue/Nuxt code), edit nothing, say it belongs to the UI repo, and ask whether they meant a different session. Reading `schema.graphql` and `docs/STATUS.md` for UI questions is fine.
-- Don't spawn subagents unless the user asks or the task clearly matches `dotnet-expert` / `db-architect`.
-- Prefer targeted reads (Grep, then a line range) over whole-file reads. Never read `bin/`, `obj/`, or `Migrations/*.Designer.cs`.
-- Answer style: direct, like pre-2020 StackOverflow/GitHub. Answer first, no preamble, no recap, no closing offers. Code over prose.
-- Show changed snippets, not whole files.
-- `src/JobHunt.Api/jobhunt.db` holds the owner's real data. Run `make backup` before creating or applying a migration (`make migration` does it), and never delete the DB to recover from a broken migration: fix forward or restore a `*.db.bak`.
-- The owner usually has the API running (`make run`/`make watch`). Don't start or stop it unless the owner asks (then use `make run`/`make watch`). Verify with `dotnet test`; if a live probe is truly needed, ask first, then use another port and DB, and stop only that PID.
-- After finishing a milestone or a notable feature, run `/log-progress` to update `docs/STATUS.md`.
-- The owner is a senior frontend engineer (Vue/Nuxt) learning backend, and last used .NET Framework 4. When a backend or modern-.NET concept first comes up, explain *why it works that way* in 1–2 lines, with a frontend analogy if one fits. Skip HTTP/JSON/REST basics.
+## Communication and commits
+- Be direct and concise: outcome, meaningful changes, validation, limitations.
+  Show snippets only when useful. Explain a new backend/.NET concept in 1–2
+  lines for a senior Vue/Nuxt developer learning modern .NET; skip HTTP basics.
+- Commit only when asked. One logical change per commit; imperative subject
+  ≤50 chars. Body explains why, wrapped at 72 chars. For owner requests, use
+  `Owner requested <x>, so <goal>:` with concise change bullets.
+- Record one rationale per logical change in `.claude/commit-notes.md`:
+  `- <area>: <what> — owner requested: <why>` for owner requests. Reuse these
+  shared notes in commit messages, then remove only the consumed lines.
