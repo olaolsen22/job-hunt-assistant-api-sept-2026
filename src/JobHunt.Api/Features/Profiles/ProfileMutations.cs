@@ -52,16 +52,9 @@ public static class ProfileMutations
         profile.Nationality = Text(nationality, "Nationality");
         profile.WorkAuthorization = Text(workAuthorization, "Work authorization");
 
-        profile.Hobbies = [.. hobbies.Select(h => Text(h, "Hobby", MaxHobbyLength)).OfType<string>()
-            .DistinctBy(h => h, StringComparer.OrdinalIgnoreCase)];
-        if (profile.Hobbies.Count > MaxHobbies)
-            throw new InvalidProfileException($"A profile can have at most {MaxHobbies} hobbies.");
+        profile.Hobbies = ValidateHobbies(hobbies);
 
-        if (links.Count > MaxLinks)
-            throw new InvalidProfileException($"A profile can have at most {MaxLinks} links.");
-        if (links.Where(l => l.Kind != LinkKind.Other).GroupBy(l => l.Kind).Any(g => g.Count() > 1))
-            throw new InvalidProfileException("A profile can have only one link of each kind except Other.");
-        profile.Links = [.. links.Select(ToLink)];
+        profile.Links = ValidateLinks(links);
 
         if (location is null)
             profile.LocationId = null;
@@ -70,6 +63,24 @@ public static class ProfileMutations
 
         await db.SaveChangesAsync(ct);
         return await ProfileQueries.LoadAsync(db, ct);
+    }
+
+    internal static List<string> ValidateHobbies(List<string> hobbies)
+    {
+        var values = hobbies.Select(h => Text(h, "Hobby", MaxHobbyLength)).OfType<string>()
+            .DistinctBy(h => h, StringComparer.OrdinalIgnoreCase).ToList();
+        if (values.Count > MaxHobbies)
+            throw new InvalidProfileException($"A profile can have at most {MaxHobbies} hobbies.");
+        return values;
+    }
+
+    internal static List<ProfileLink> ValidateLinks(List<ProfileLinkInput> links)
+    {
+        if (links.Count > MaxLinks)
+            throw new InvalidProfileException($"A profile can have at most {MaxLinks} links.");
+        if (links.Where(l => l.Kind != LinkKind.Other).GroupBy(l => l.Kind).Any(g => g.Count() > 1))
+            throw new InvalidProfileException("A profile can have only one link of each kind except Other.");
+        return [.. links.Select(ToLink)];
     }
 
     private static ProfileLink ToLink(ProfileLinkInput input)
@@ -220,6 +231,7 @@ public static class ProfileMutations
         var normalized = distinct.Select(Names.Normalize).ToList();
         var existing = await db.Skills.Where(s => normalized.Contains(s.NormalizedName)).ToDictionaryAsync(s => s.NormalizedName, ct);
         return [.. distinct.Select(name => existing.GetValueOrDefault(Names.Normalize(name))
+            ?? db.Skills.Local.FirstOrDefault(s => s.UserId == userId && s.NormalizedName == Names.Normalize(name))
             ?? new Skill { UserId = userId, Name = name, NormalizedName = Names.Normalize(name) })];
     }
 }

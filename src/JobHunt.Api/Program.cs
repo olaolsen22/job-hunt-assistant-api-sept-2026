@@ -3,6 +3,8 @@ using JobHunt.Api.Data;
 using JobHunt.Api.Features.Auth;
 using JobHunt.Api.Features.Documents;
 using JobHunt.Api.Features.Parsing;
+using JobHunt.Api.Features.Profiles;
+using JobHunt.Api.Features.TailoredCvDrafts;
 using JobHunt.Api.Llm;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -82,6 +84,8 @@ builder.Services.AddKeyedSingleton<IChatClient>(GeminiOptions.Provider, (sp, _) 
 });
 builder.Services.AddOptions<LlmPricingOptions>().BindConfiguration(LlmPricingOptions.Section);
 builder.Services.AddScoped<ListingParser>();
+builder.Services.AddScoped<ProfileCvParser>();
+builder.Services.AddScoped<TailoredCvAnalyzer>();
 // Browser-like User-Agent: several job boards answer 403 to the default .NET one.
 builder.Services.AddHttpClient<ListingPageFetcher>(client =>
     {

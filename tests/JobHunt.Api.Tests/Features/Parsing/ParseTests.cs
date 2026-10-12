@@ -46,6 +46,39 @@ public class ParseTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Theory]
+    [InlineData("FULL")]
+    [InlineData("QUICK")]
+    [InlineData("URL")]
+    [InlineData("SAVED_URL")]
+    public async Task CategorySuggestions_RemainResults_WithoutChangingRoles(string mode)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var listingId = mode == "SAVED_URL"
+            ? await ListingTests.ListingWithStatusAsync(client, ListingTests.UniqueUrl(), "SAVED") : 0;
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var categories = await db.JobRoleCategories.IgnoreQueryFilters().OrderBy(c => c.Id)
+            .Select(c => new { c.Id, c.Name }).ToListAsync();
+        var roles = await db.JobRoles.IgnoreQueryFilters().OrderBy(r => r.Id)
+            .Select(r => new { r.Id, r.CategoryId }).ToListAsync();
+        var result = mode == "QUICK" ? """[{"jobRoleName":"New technical role","jobRoleCategoryName":"IT"}]"""
+            : """{"jobRoleName":"New technical role","jobRoleCategoryName":"IT"}""";
+        factory.Llm.Respond = () => Answer(result);
+        factory.Pages.Respond = () => Page(AdPage);
+        var job = mode switch
+        {
+            "URL" => (await client.GraphQLAsync(ParseUrl, new { url = ListingTests.UniqueUrl() })).GetProperty("parseUrl").GetProperty("parseJob"),
+            "SAVED_URL" => (await client.GraphQLAsync(ParseListingFromUrl, new { listingId })).GetProperty("parseListingFromUrl").GetProperty("parseJob"),
+            _ => (await client.GraphQLAsync(ParseListing, new { text = "An ad", mode })).GetProperty("parseListing").GetProperty("parseJob"),
+        };
+        Assert.Equal("SUCCEEDED", job.GetProperty("status").GetString());
+        Assert.Equal(result, job.GetProperty("result").GetString());
+        Assert.Contains("jobRoleCategoryName", factory.Llm.LastMessages[0].Text);
+        Assert.Equal(categories, await db.JobRoleCategories.IgnoreQueryFilters().OrderBy(c => c.Id).Select(c => new { c.Id, c.Name }).ToListAsync());
+        Assert.Equal(roles, await db.JobRoles.IgnoreQueryFilters().OrderBy(r => r.Id).Select(r => new { r.Id, r.CategoryId }).ToListAsync());
+    }
+
+    [Theory]
     [InlineData("FULL", true)]
     [InlineData("QUICK", false)]
     public async Task ParseListing_AsksForThinking_OnlyInFullMode(string mode, bool thinking)
@@ -221,7 +254,7 @@ public class ParseTests(ApiFactory factory) : IClassFixture<ApiFactory>
     private const string ParseUrl = """
         mutation ($url: String!) {
           parseUrl(input: { url: $url }) {
-            parseJob { id mode status }
+            parseJob { id mode status result }
             errors { __typename }
           }
         }

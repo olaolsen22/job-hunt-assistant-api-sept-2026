@@ -10,6 +10,7 @@ using JobHunt.Api.Features.JobRoles;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Parsing;
 using JobHunt.Api.Features.Profiles;
+using JobHunt.Api.Features.TailoredCvDrafts;
 // Hot Chocolate also has a global Location type (a position in a query document).
 using Location = JobHunt.Api.Features.Locations.Location;
 using JobHunt.Api.Features.Skills;
@@ -28,6 +29,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
     public DbSet<ListingSkill> ListingSkills => Set<ListingSkill>();
     public DbSet<ListingLanguage> ListingLanguages => Set<ListingLanguage>();
     public DbSet<ListingLocation> ListingLocations => Set<ListingLocation>();
+    public DbSet<TrainingProgram> TrainingPrograms => Set<TrainingProgram>();
     public DbSet<Company> Companies => Set<Company>();
     public DbSet<CompanyLocation> CompanyLocations => Set<CompanyLocation>();
     public DbSet<Contact> Contacts => Set<Contact>();
@@ -35,6 +37,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
     public DbSet<Industry> Industries => Set<Industry>();
     public DbSet<DashboardWidget> DashboardWidgets => Set<DashboardWidget>();
     public DbSet<JobRole> JobRoles => Set<JobRole>();
+    public DbSet<JobRoleCategory> JobRoleCategories => Set<JobRoleCategory>();
     public DbSet<Skill> Skills => Set<Skill>();
     public DbSet<Location> Locations => Set<Location>();
     public DbSet<Document> Documents => Set<Document>();
@@ -54,6 +57,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
     public DbSet<ProfileSkill> ProfileSkills => Set<ProfileSkill>();
     public DbSet<ProfileLanguage> ProfileLanguages => Set<ProfileLanguage>();
     public DbSet<ProfileReference> ProfileReferences => Set<ProfileReference>();
+    public DbSet<TailoredCvDraft> TailoredCvDrafts => Set<TailoredCvDraft>();
 
     // Null outside a request (startup, seeding), so the user filters below then match nothing.
     public string? CurrentUserId => httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -76,6 +80,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
         modelBuilder.Entity<ListingSkill>().HasQueryFilter(s => s.Listing.UserId == CurrentUserId);
         modelBuilder.Entity<ListingLanguage>().HasQueryFilter(l => l.Listing.UserId == CurrentUserId);
         modelBuilder.Entity<ListingLocation>().HasQueryFilter(l => l.Listing.UserId == CurrentUserId);
+        modelBuilder.Entity<TrainingProgram>().HasQueryFilter(t => t.Listing.UserId == CurrentUserId);
         modelBuilder.Entity<Company>().HasQueryFilter(c => c.UserId == CurrentUserId);
         modelBuilder.Entity<CompanyLocation>().HasQueryFilter(l => l.Company.UserId == CurrentUserId);
         modelBuilder.Entity<Contact>().HasQueryFilter(c => c.UserId == CurrentUserId);
@@ -83,6 +88,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
         modelBuilder.Entity<Industry>().HasQueryFilter(i => i.UserId == CurrentUserId);
         modelBuilder.Entity<DashboardWidget>().HasQueryFilter(w => w.UserId == CurrentUserId);
         modelBuilder.Entity<JobRole>().HasQueryFilter(r => r.UserId == CurrentUserId);
+        modelBuilder.Entity<JobRoleCategory>().HasQueryFilter(c => c.UserId == CurrentUserId);
         modelBuilder.Entity<Skill>().HasQueryFilter(s => s.UserId == CurrentUserId);
         modelBuilder.Entity<Location>().HasQueryFilter(l => l.UserId == CurrentUserId);
         modelBuilder.Entity<Document>().HasQueryFilter(d => d.UserId == CurrentUserId);
@@ -104,5 +110,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
         modelBuilder.Entity<ProfileSkill>().HasQueryFilter(s => s.Profile.UserId == CurrentUserId);
         modelBuilder.Entity<ProfileLanguage>().HasQueryFilter(l => l.Profile.UserId == CurrentUserId);
         modelBuilder.Entity<ProfileReference>().HasQueryFilter(r => r.UserId == CurrentUserId);
+        modelBuilder.Entity<TailoredCvDraft>().HasQueryFilter(d => d.UserId == CurrentUserId);
     }
 }

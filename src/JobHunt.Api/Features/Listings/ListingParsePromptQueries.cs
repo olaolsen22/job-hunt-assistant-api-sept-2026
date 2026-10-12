@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using System.Text.Json;
 using JobHunt.Api.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,10 +13,10 @@ public record ListingParsePrompt(int Version, string Instructions);
 public static partial class ListingParsePromptQueries
 {
     // Bump whenever the prompt or output shape changes; the server-side parse cache keys on it.
-    public const int Version = 8;
+    public const int Version = 10;
 
     // Separate from Version: the quick prompt changes on its own schedule.
-    public const int QuickVersion = 5;
+    public const int QuickVersion = 6;
 
     // Keeps the prompt short (and cheap on the API-key path) for users with many roles/skills.
     private const int MaxNames = 100;
@@ -25,6 +26,7 @@ public static partial class ListingParsePromptQueries
     {
         var jobRoles = await db.JobRoles.OrderBy(r => r.Name).Select(r => r.Name).Take(MaxNames).ToListAsync(ct);
         var skills = await db.Skills.OrderBy(s => s.Name).Select(s => s.Name).Take(MaxNames).ToListAsync(ct);
+        var categoryInstructions = await CategoryInstructionsAsync(db, ct);
         var today = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
 
         var instructions = $$"""
@@ -39,6 +41,7 @@ public static partial class ListingParsePromptQueries
               "title": string,              // short job title in natural English
               "companyName": string,
               "jobRoleName": string,        // core role in English, no seniority or tech: "Backend Developer", "Warehouse Worker"
+              "jobRoleCategoryName": string | null,
               "seniority": {{Values<Seniority>()}} | null,
               "employmentType": {{Values<EmploymentType>()}} | null,
               "schedule": {{Values<Schedule>()}} | null,
@@ -51,7 +54,14 @@ public static partial class ListingParsePromptQueries
               "skills":    [{ "name": string, "level": 1-5, "minYears": number | null, "isRequired": boolean }],
               "languages": [{ "language": {{Values<Language>()}}, "level": {{Values<CefrLevel>()}} | null, "isRequired": boolean }],
               "locations": [{ "city": string | null, "countryCode": string }],  // ISO 3166-1 alpha-2, e.g. "NO"
-              "contacts":  [{ "name": string, "title": string | null, "email": string | null, "phone": string | null, "url": string | null }]
+              "contacts":  [{ "name": string, "title": string | null, "email": string | null, "phone": string | null, "url": string | null }],
+              "trainingProgram": {
+                "endCompanyName": string | null,
+                "startsOn": "YYYY-MM-DD" | null,
+                "endsOn": "YYYY-MM-DD" | null,
+                "isPaid": boolean | null,
+                "jobOffer": {{Values<JobOfferType>()}}
+              } | null
             }
             Infer from clear signals in the ad; use null only when it gives nothing to go on.
             Never invent names, dates or URLs that aren't in the text.
@@ -63,6 +73,8 @@ public static partial class ListingParsePromptQueries
             Existing job roles: {{NameList(jobRoles)}}
             Existing skills: {{NameList(skills)}}
 
+            {{categoryInstructions}}
+
             # Rules
             title: a short, direct job title in natural English, based on the "Stillingstittel"/"Job title" field when the
               page has one, otherwise the ad's heading. Translate it if the ad isn't in English. Keep seniority and
@@ -73,7 +85,8 @@ public static partial class ListingParsePromptQueries
               0–1 years or graduate → JUNIOR, 2–4 years → MID, 5+ years or "erfaren"/"experienced" → SENIOR,
               leading people or a team → LEAD.
             employmentType: Fast = PERMANENT, Vikariat = TEMPORARY, Engasjement/midlertidig = FIXED_TERM,
-              Konsulent/Oppdrag/Frilans = CONTRACT, Trainee-program/Lærling/Internship = INTERNSHIP, Sesong = SEASONAL.
+              Konsulent/Oppdrag/Frilans = CONTRACT, Lærling/Internship = INTERNSHIP, Sesong = SEASONAL.
+              For a training program (see trainingProgram): the type of the job after it, or null if unstated; never INTERNSHIP.
             schedule: Heltid/100 % = FULL_TIME, Deltid/under 100 % = PART_TIME.
             workMode: from explicit wording only. "Hjemmekontor"/"hybrid" → HYBRID, "fjernarbeid"/"fully remote" → REMOTE,
               explicitly on site → ONSITE. Flexible hours alone → null.
@@ -120,6 +133,17 @@ public static partial class ListingParsePromptQueries
             contacts: people the ad names as contacts for the job ("Kontaktperson", "Spørsmål om stillingen?", "Contact").
               Copy name, title, email, phone and url exactly as written; null for anything not given, never invented.
               Skip shared inboxes and switchboards without a person ("jobb@firma.no", "sentralbord"). None → [].
+
+            trainingProgram: only when the ad is a training program, academy or bootcamp you complete before starting the job
+              ("academy", "traineeprogram", "kurs", "utdanning" followed by employment). An ordinary job, including a graduate or
+              trainee position that is paid employment from day one, → null.
+              For a program, companyName is the provider that runs it ("AW Academy"), not the employer afterwards.
+              endCompanyName: the employer after the program, only when named; "one of our partner companies" → null.
+              startsOn/endsOn: the program's own dates (bootcamp start and end or exam), not the first working day.
+              isPaid: true or false only when the ad says whether you are paid during the program ("gratis" alone means free
+                tuition, not unpaid); otherwise null.
+              jobOffer: job guaranteed regardless → GUARANTEED, job after passing an exam or completing → ON_PASS,
+                explicitly no job promise → NONE, vague or unstated → UNSPECIFIED.
             """;
 
         return new ListingParsePrompt(Version, instructions);
@@ -131,6 +155,7 @@ public static partial class ListingParsePromptQueries
         AppDbContext db, TimeProvider time, CancellationToken ct)
     {
         var jobRoles = await db.JobRoles.OrderBy(r => r.Name).Select(r => r.Name).Take(MaxNames).ToListAsync(ct);
+        var categoryInstructions = await CategoryInstructionsAsync(db, ct);
         var today = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
 
         var instructions = $$"""
@@ -147,6 +172,7 @@ public static partial class ListingParsePromptQueries
               "title": string,              // short job title in natural English
               "companyName": string,
               "jobRoleName": string,        // core role in English, no seniority or tech: "Backend Developer", "Warehouse Worker"
+              "jobRoleCategoryName": string | null,
               "url": string | null,         // the ad's own link if the text has one; never invent one
               "postedOn": "YYYY-MM-DD" | null,
               "deadlineType": {{Values<DeadlineType>()}},
@@ -155,6 +181,8 @@ public static partial class ListingParsePromptQueries
             }]
             Infer from clear signals in the text; use null only when it gives nothing to go on.
             Never invent names, dates or URLs that aren't in the text.
+
+            {{categoryInstructions}}
 
             # Rules
             title: a short, direct job title in natural English, based on the "Stillingstittel"/"Job title" field when the
@@ -174,6 +202,21 @@ public static partial class ListingParsePromptQueries
             """;
 
         return new ListingParsePrompt(QuickVersion, instructions);
+    }
+
+    private static async Task<string> CategoryInstructionsAsync(AppDbContext db, CancellationToken ct)
+    {
+        var categories = await db.JobRoleCategories.OrderBy(c => c.Name).Select(c => c.Name).ToListAsync(ct);
+        var assignments = await db.JobRoles.Where(r => r.CategoryId != null).OrderBy(r => r.Name)
+            .Select(r => new { jobRoleName = r.Name, jobRoleCategoryName = r.Category!.Name }).ToListAsync(ct);
+        return $"""
+            # Role categories
+            Existing categories (JSON): {JsonSerializer.Serialize(categories)}
+            Known role assignments (JSON): {JsonSerializer.Serialize(assignments)}
+            jobRoleCategoryName: reuse a known role assignment. Otherwise choose only an existing category based on
+              the role's duties, never solely from company industry. Technical duties such as software development → IT
+              only if IT exists. When uncertain or no existing category fits, return null. Never invent category names.
+            """;
     }
 
     // Built from the C# enums, so the prompt can't offer a value the schema doesn't have.

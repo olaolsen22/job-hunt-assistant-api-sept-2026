@@ -30,7 +30,18 @@ public record ListingInput(
     List<LocationInput> Locations,
     [property: DefaultValue(false)] bool IsAnalyzed,
     // Null leaves the links as they are, so clients that don't know about contacts don't wipe them.
-    List<ContactInput>? Contacts = null);
+    List<ContactInput>? Contacts = null,
+    // Omitted keeps the program, so clients that don't know about it don't wipe it; an explicit null removes it.
+    Optional<TrainingProgramInput?> TrainingProgram = default,
+    string? JobRoleCategoryName = null);
+
+// The end employer comes in by name like the listing's company; null when the ad doesn't name one.
+public record TrainingProgramInput(
+    string? EndCompanyName,
+    DateOnly? StartsOn,
+    DateOnly? EndsOn,
+    bool? IsPaid,
+    [property: DefaultValue(JobOfferType.Unspecified)] JobOfferType JobOffer);
 
 public record ListingSkillInput(
     string Name,
@@ -167,7 +178,7 @@ public static class ListingMutations
     private static IQueryable<Listing> WithDetails(AppDbContext db) =>
         db.Listings
             .Include(l => l.Company)
-            .Include(l => l.JobRole)
+            .Include(l => l.JobRole).ThenInclude(r => r.Category)
             .Include(l => l.Skills).ThenInclude(s => s.Skill)
             .Include(l => l.Languages)
             .Include(l => l.Locations).ThenInclude(l => l.Location)
@@ -175,6 +186,7 @@ public static class ListingMutations
             .Include(l => l.StatusHistory)
             .Include(l => l.Interviews)
             .Include(l => l.Contacts).ThenInclude(c => c.Contact)
+            .Include(l => l.TrainingProgram).ThenInclude(t => t!.EndCompany)
             // One query per collection: joining six collections in one would multiply their rows together.
             .AsSplitQuery();
 
@@ -182,6 +194,13 @@ public static class ListingMutations
         Listing entity, ListingInput input, DateTime now, AppDbContext db, CancellationToken ct)
     {
         Validate(input, DateOnly.FromDateTime(now));
+        JobRoleCategory? suggestedCategory = null;
+        if (!string.IsNullOrWhiteSpace(input.JobRoleCategoryName))
+        {
+            var categoryName = Names.Normalize(input.JobRoleCategoryName);
+            suggestedCategory = await db.JobRoleCategories.FirstOrDefaultAsync(c => c.NormalizedName == categoryName, ct)
+                ?? throw new InvalidListingException("Choose an existing job role category.");
+        }
 
         entity.Title = input.Title.Trim();
         entity.NormalizedTitle = Names.Normalize(entity.Title);
@@ -190,7 +209,7 @@ public static class ListingMutations
         entity.Schedule = input.Schedule;
         entity.WorkMode = input.WorkMode;
         entity.Description = input.Description;
-        entity.Url = NormalizeUrl(new Uri(input.Url.Trim()));
+        entity.Url = ListingUrls.Normalize(new Uri(input.Url.Trim()));
         // Only one open listing per URL; closed ones are earlier attempts. Archived listings count too:
         // re-adding an ad you saved and archived is still a duplicate. A closed listing may share an open one's URL.
         if (!ApplicationStatuses.Final.Contains(entity.Status))
@@ -209,18 +228,22 @@ public static class ListingMutations
         else
             entity.AnalyzedAt = null;
 
-        var companyName = Names.Normalize(input.CompanyName);
-        entity.Company = await db.Companies.FirstOrDefaultAsync(c => c.NormalizedName == companyName, ct)
-            ?? new Company { UserId = entity.UserId, Name = input.CompanyName.Trim(), NormalizedName = companyName };
+        entity.Company = await FindOrCreateCompanyAsync(input.CompanyName, entity.UserId, db, ct);
         // Contacts belong to the company, so a listing moved to another company can't keep the old ones.
         if (entity.CompanyId != entity.Company.Id)
             entity.Contacts.Clear();
         if (input.Contacts is not null)
             await ApplyContactsAsync(entity, input.Contacts, db, ct);
 
+        if (input.TrainingProgram.HasValue)
+            await ApplyTrainingProgramAsync(entity, input.TrainingProgram.Value, db, ct);
+
         var jobRoleName = Names.Normalize(input.JobRoleName);
-        entity.JobRole = await db.JobRoles.FirstOrDefaultAsync(r => r.NormalizedName == jobRoleName, ct)
+        entity.JobRole = await db.JobRoles.Include(r => r.Category).FirstOrDefaultAsync(r => r.NormalizedName == jobRoleName, ct)
             ?? new JobRole { UserId = entity.UserId, Name = input.JobRoleName.Trim(), NormalizedName = jobRoleName };
+
+        if (entity.JobRole.CategoryId is null && entity.JobRole.Category is null && suggestedCategory is not null)
+            entity.JobRole.Category = suggestedCategory;
 
         var skillNames = input.Skills.Select(s => Names.Normalize(s.Name)).ToList();
         var skills = await db.Skills
@@ -252,6 +275,34 @@ public static class ListingMutations
         entity.Locations.Clear();
         foreach (var location in input.Locations)
             entity.Locations.Add(new ListingLocation { Location = await LocationLookup.FindOrCreateAsync(location, db, ct) });
+    }
+
+    private static async Task<Company> FindOrCreateCompanyAsync(
+        string name, string userId, AppDbContext db, CancellationToken ct)
+    {
+        var normalized = Names.Normalize(name);
+        return await db.Companies.FirstOrDefaultAsync(c => c.NormalizedName == normalized, ct)
+            ?? new Company { UserId = userId, Name = name.Trim(), NormalizedName = normalized };
+    }
+
+    private static async Task ApplyTrainingProgramAsync(
+        Listing entity, TrainingProgramInput? input, AppDbContext db, CancellationToken ct)
+    {
+        if (input is null)
+        {
+            entity.TrainingProgram = null;
+            return;
+        }
+
+        var program = entity.TrainingProgram ??= new TrainingProgram();
+        program.StartsOn = input.StartsOn;
+        program.EndsOn = input.EndsOn;
+        program.IsPaid = input.IsPaid;
+        program.JobOffer = input.JobOffer;
+        // Same name as the provider would otherwise create that new company twice in one save.
+        program.EndCompany = string.IsNullOrWhiteSpace(input.EndCompanyName) ? null
+            : Names.Normalize(input.EndCompanyName) == entity.Company.NormalizedName ? entity.Company
+            : await FindOrCreateCompanyAsync(input.EndCompanyName, entity.UserId, db, ct);
     }
 
     // Found by name within the listing's company or created. A match only gets its empty fields filled,
@@ -296,22 +347,6 @@ public static class ListingMutations
         }
     }
 
-    // Stored normalized so the unique index catches the same ad pasted with tracking params, a #fragment
-    // or a trailing slash. Other params stay: some boards put the ad id in the query (?finnkode=123).
-    // Uri already lowercases scheme and host and drops the default port.
-    private static string NormalizeUrl(Uri url)
-    {
-        var query = string.Join('&', url.Query.TrimStart('?')
-            .Split('&', StringSplitOptions.RemoveEmptyEntries)
-            .Where(p => !IsTrackingParam(p.Split('=')[0])));
-        return $"{url.Scheme}://{url.Authority}{url.AbsolutePath.TrimEnd('/')}{(query == "" ? "" : "?" + query)}";
-    }
-
-    private static bool IsTrackingParam(string key) =>
-        key.StartsWith("utm_", StringComparison.OrdinalIgnoreCase)
-        || key.Equals("fbclid", StringComparison.OrdinalIgnoreCase)
-        || key.Equals("gclid", StringComparison.OrdinalIgnoreCase);
-
     private static void Validate(ListingInput input, DateOnly today)
     {
         if (string.IsNullOrWhiteSpace(input.Title))
@@ -328,6 +363,8 @@ public static class ListingMutations
             throw new InvalidListingException("Posted date can't be in the future.");
         if ((input.DeadlineType == DeadlineType.Date) != (input.DeadlineOn is not null))
             throw new InvalidListingException("Set deadlineOn if and only if deadlineType is DATE.");
+        if (input.TrainingProgram.Value is { StartsOn: { } startsOn, EndsOn: { } endsOn } && startsOn > endsOn)
+            throw new InvalidListingException("Training program can't end before it starts.");
 
         foreach (var skill in input.Skills)
         {

@@ -13,7 +13,7 @@ that other developers browsing GitHub can find their way around.
 | Auth | ASP.NET Core Identity + **HttpOnly cookie** auth. Two seeded accounts: Owner (you) and Guest |
 | Guest account | Sandbox: full CRUD, data reset nightly, AI calls heavily capped |
 | MVP scope | Tracker: applications + status history, notes, contacts, CVs, dashboard stats |
-| AI in MVP | **Job-posting parsing only**, from pasted text; includes language detection, language requirements, and an English summary |
+| AI in MVP | Job-posting parsing and English CV text import; both support built-in AI and external copy-paste prompts |
 | AI later | CV ↔ job matching, PDF/image parsing, more providers (Claude, OpenAI) |
 | LLM providers | Gemini `gemini-3.1-flash-lite` (free tier) by default; Ollama optional. **Chosen per user**. No Ollama container: if Ollama can't be reached, fail cleanly |
 | API style | **Hybrid**: REST for auth + health, **GraphQL (Hot Chocolate)** for all domain data. No endpoint exists in both |
@@ -179,6 +179,13 @@ Profile = one per user, created by LookupSeeder   ← built (M3), relational
   Skills, roles and languages use the same lookups and scales as listings, so profile ↔ job matching is a join.
   One master profile instead of several CVs: data is entered once; tailored CVs are selections from it later.
 
+English CV import accepts pasted plain text/Markdown using configured Gemini, or a copyable external prompt with no CV input.
+Both return candidates for review; `importProfileCv` saves explicit selections atomically into an empty or populated
+English-primary profile. It preserves omitted basics/entries, entry and bullet ids, and translations (source edits make
+them stale). Existing-entry structural updates still use full field values; no automatic matching or deduplication.
+Sensitive details/references and preferences are excluded from extraction and untouched by import. Raw pasted text can
+contain personal information; the API does not claim to redact it, but retains no raw CV parse job. See [integration guide](profile-cv-import.md).
+
 ParseJob                           ← built (runs inline until the queue, M6)
   Id (Guid), UserId, Mode (Full/Quick), RawText, Status (Queued/Running/Retrying/Succeeded/Failed),
   Result? (JSON text), Error?, Provider, CreatedAt, StartedAt?, CompletedAt?
@@ -281,6 +288,7 @@ Query
   companies, jobRoles, skills, locations    → cursor-paged lookups (search, listingCount)
   listingParsePrompt, listingQuickParsePrompt → prompt for copy-paste into an external AI
   parseJob(id)
+  profileCvParsePrompt                       → { version instructions } (no CV input)
   profile                                   → Profile { location links jobRoles workModes employmentTypes targetLocations
                                                         experiences educations certifications projects skills languages references }
   dashboardStats                            (planned, M4) → counts by status, applications/week (last 12w),
@@ -302,6 +310,7 @@ Mutation
   parseListing(text, mode)
   add/update/deleteNote, add/update/deleteContact   (planned, M2)
   updateProfile, updateProfilePreferences
+  parseProfileCv(text), previewProfileCvImport(json), importProfileCv(selection)
   add/update/deleteProfileExperience|Education|Certification|Project
   set/removeProfileSkill, set/removeProfileLanguage
   add/update/move/deleteProfileBullet, add/update/move/deleteProfileReference
@@ -341,7 +350,8 @@ current paid-tier prices, and the numbers update without code changes.
 `applyToListing` sends it like an upload; any LLM step gets only allowlisted profile fields, never date of birth,
 contact details or references; generation takes a target language and uses the translation where one exists, and a
 later auto-translate writes translations one bullet at a time with `isMachine` set), PDF/image posting input, Claude/OpenAI providers,
-URL scraping, maybe Postgres.
+URL scraping, maybe Postgres. English CV import is built; its Nuxt review UI, Norwegian import/translation matching,
+and API-side CV file extraction remain follow-ups.
 
 **Deferred follow-ups** (found in the project review, not built yet):
 - Guest AI cap (M7, must land before M8 deploy): guests can call `parseListing` on the owner's

@@ -22,8 +22,13 @@ public class ListingParser(
     // ≈3k tokens. Anything past this in a pasted ad is almost always footer and cookie text.
     private const int MaxInputChars = 12_000;
 
-    // Room for a quick-add array of ~30 rows; a full listing needs far less.
+    // A full listing needs far less output than this.
     private const int MaxOutputTokens = 8_192;
+
+    // Quick add is one call for a whole pasted search page (~150 rows at ~130 output tokens each).
+    // Flash-Lite takes 1M input and 65k output tokens, so these only guard against runaway pastes.
+    private const int QuickMaxInputChars = 200_000;
+    private const int QuickMaxOutputTokens = 32_768;
 
     // Sets the job's outcome and adds an LlmUsage row; the caller saves both.
     public async Task RunAsync(ParseJob job, AppDbContext db, CancellationToken ct)
@@ -35,7 +40,8 @@ public class ListingParser(
             ParseMode.Quick => (await ListingParsePromptQueries.GetListingQuickParsePromptAsync(db, time, ct)).Instructions,
             _ => (await CompanyParsePromptQueries.GetCompanyParsePromptAsync(db, ct)).Instructions,
         };
-        var posting = job.RawText.Length > MaxInputChars ? job.RawText[..MaxInputChars] : job.RawText;
+        var maxInputChars = job.Mode == ParseMode.Quick ? QuickMaxInputChars : MaxInputChars;
+        var posting = job.RawText.Length > maxInputChars ? job.RawText[..maxInputChars] : job.RawText;
         List<ChatMessage> messages =
         [
             new(ChatRole.System, instructions),
@@ -46,7 +52,7 @@ public class ListingParser(
             // JSON mode: the model can't wrap the answer in prose or code fences.
             ResponseFormat = ChatResponseFormat.Json,
             Temperature = 0,
-            MaxOutputTokens = MaxOutputTokens,
+            MaxOutputTokens = job.Mode == ParseMode.Quick ? QuickMaxOutputTokens : MaxOutputTokens,
         };
         // Deep analysis of one ad benefits from thinking; quick-add arrays would burn their output budget on it.
         if (job.Mode == ParseMode.Full)

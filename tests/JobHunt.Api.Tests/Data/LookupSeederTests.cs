@@ -36,4 +36,36 @@ public class LookupSeederTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var profileUserIds = await db.Profiles.IgnoreQueryFilters().Select(p => p.UserId).ToListAsync();
         Assert.Equal(userIds.Order(), profileUserIds.Order());
     }
+
+    [Fact]
+    public async Task Categories_SeedTechnicalRoles_AndPreserveCorrectionsAndClears()
+    {
+        await factory.GetOwnerClientAsync();
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var users = await db.Users.Select(u => u.Id).ToListAsync();
+        foreach (var userId in users)
+        {
+            var categories = await db.JobRoleCategories.IgnoreQueryFilters().Where(c => c.UserId == userId).ToListAsync();
+            Assert.Equal(8, categories.Count);
+            var backend = await db.JobRoles.IgnoreQueryFilters().SingleAsync(r => r.UserId == userId && r.Name == "Backend Developer");
+            var frontend = await db.JobRoles.IgnoreQueryFilters().SingleAsync(r => r.UserId == userId && r.Name == "Frontend Developer");
+            Assert.Equal(categories.Single(c => c.Name == "IT").Id, backend.CategoryId);
+            backend.CategoryId = categories.Single(c => c.Name == "Healthcare").Id;
+            frontend.CategoryId = null;
+            var manager = await db.JobRoles.IgnoreQueryFilters().SingleAsync(r => r.UserId == userId && r.Name == "Engineering Manager");
+            Assert.Null(manager.CategoryId);
+        }
+        await db.SaveChangesAsync();
+        await LookupSeeder.SeedAsync(db);
+        db.ChangeTracker.Clear();
+        foreach (var userId in users)
+        {
+            var backend = await db.JobRoles.IgnoreQueryFilters().Include(r => r.Category)
+                .SingleAsync(r => r.UserId == userId && r.Name == "Backend Developer");
+            Assert.Equal("Healthcare", backend.Category!.Name);
+            Assert.Null((await db.JobRoles.IgnoreQueryFilters().SingleAsync(r => r.UserId == userId && r.Name == "Frontend Developer")).CategoryId);
+            Assert.Equal(8, await db.JobRoleCategories.IgnoreQueryFilters().CountAsync(c => c.UserId == userId));
+        }
+    }
 }

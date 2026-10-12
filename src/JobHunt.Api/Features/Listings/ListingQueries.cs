@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using HotChocolate.Data.Sorting;
 using JobHunt.Api.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.Listings;
 
@@ -25,6 +26,44 @@ public static class ListingQueries
 
     internal static DateOnly DueOn(Listing listing) => CompiledWithDue(listing).Due;
 
+    public static async Task<List<ListingUrlCheckResult>> CheckListingUrlsAsync(
+        List<string> urls, AppDbContext db, CancellationToken ct)
+    {
+        if (urls.Count is < 1 or > 100)
+            throw new GraphQLException("urls must contain 1 to 100 URLs.");
+
+        var normalized = new string[urls.Count];
+        for (var i = 0; i < urls.Count; i++)
+        {
+            var value = urls[i].Trim();
+            if (value.Length > 2048 || !Uri.TryCreate(value, UriKind.Absolute, out var uri)
+                || uri.Scheme is not ("http" or "https"))
+                throw new GraphQLException($"URL at index {i} must be an absolute HTTP(S) URL of at most 2048 characters.");
+            normalized[i] = ListingUrls.Normalize(uri);
+        }
+
+        var distinctUrls = normalized.Distinct(StringComparer.Ordinal).ToArray();
+        // All statuses and archive states count as seen; the global filter still scopes matches to this user.
+        var matches = await db.Listings.AsNoTracking()
+            .Where(l => distinctUrls.Contains(l.Url))
+            .Select(l => new { l.Id, l.Url })
+            .ToListAsync(ct);
+        var idsByUrl = matches.GroupBy(l => l.Url, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Select(l => l.Id).Order().ToList(), StringComparer.Ordinal);
+
+        var firstIndices = new Dictionary<string, int>(StringComparer.Ordinal);
+        var results = new List<ListingUrlCheckResult>(urls.Count);
+        for (var i = 0; i < urls.Count; i++)
+        {
+            int? duplicateOfIndex = firstIndices.TryGetValue(normalized[i], out var first) ? first : null;
+            firstIndices.TryAdd(normalized[i], i);
+            var ids = idsByUrl.GetValueOrDefault(normalized[i]) ?? [];
+            results.Add(new(i, urls[i], normalized[i], ids, duplicateOfIndex,
+                ids.Count == 0 && duplicateOfIndex is null));
+        }
+        return results;
+    }
+
     // Offset paging (skip/take), not cursors: the UI shows numbered pages and jumps straight to page N.
     [UseOffsetPaging(DefaultPageSize = 20, MaxPageSize = 100, IncludeTotalCount = true)]
     [UseProjection]
@@ -32,7 +71,7 @@ public static class ListingQueries
     [UseSorting]
     public static IQueryable<Listing> GetListings(
         AppDbContext db, ISortingContext sorting, TimeProvider time, bool archived = false, int? dueWithinDays = null,
-        string? search = null)
+        string? search = null, bool? isTrainingProgram = null)
     {
         // Hot Chocolate adds a client's `order` as ThenBy, so a fixed OrderBy here would always win.
         // Default order only without one; with one, Id breaks ties so equal values (e.g. no deadline)
@@ -45,6 +84,9 @@ public static class ListingQueries
                 : ByClosestDeadline(query, today));
 
         var query = db.Listings.Where(l => (l.ArchivedAt != null) == archived);
+        // An argument because `where` can't test a 1:1 navigation for null: its key is non-null, so `eq: null` is rejected.
+        if (isTrainingProgram is { } program)
+            query = query.Where(l => (l.TrainingProgram != null) == program);
         if (dueWithinDays is { } days)
         {
             if (days < 0)
@@ -78,6 +120,14 @@ public static class ListingQueries
     public static IQueryable<Listing> GetListingById(int id, AppDbContext db) =>
         db.Listings.Where(l => l.Id == id);
 }
+
+public record ListingUrlCheckResult(
+    int Index,
+    string Url,
+    string NormalizedUrl,
+    List<int> ExistingListingIds,
+    int? DuplicateOfIndex,
+    bool ShouldProcess);
 
 [ObjectType<Listing>]
 public static partial class ListingNode

@@ -160,7 +160,7 @@ public static class ProfileEntryMutations
         return id;
     }
 
-    private static async Task ApplyAsync(
+    internal static async Task ApplyAsync(
         ProfileExperience experience, string employer, string title, LocationInput? location, DateOnly startMonth,
         DateOnly? endMonth, List<string> skillNames, AppDbContext db, CancellationToken ct)
     {
@@ -180,7 +180,7 @@ public static class ProfileEntryMutations
         AddToProfileSkills(experience.ProfileId, skills, await ProfileSkillIdsAsync(skills, db, ct), db);
     }
 
-    private static async Task ApplyAsync(
+    internal static async Task ApplyAsync(
         ProfileEducation education, string school, string? degree, string? field, LocationInput? location,
         DateOnly startMonth, DateOnly? endMonth, AppDbContext db, CancellationToken ct)
     {
@@ -196,7 +196,7 @@ public static class ProfileEntryMutations
         CheckOrder(education.StartMonth, education.EndMonth, "The end month");
     }
 
-    private static void Apply(
+    internal static void Apply(
         ProfileCertification certification, string name, string? issuer, DateOnly? issuedMonth, DateOnly? expiresMonth,
         string? url)
     {
@@ -207,7 +207,7 @@ public static class ProfileEntryMutations
         certification.Url = Url(url);
     }
 
-    private static async Task ApplyAsync(
+    internal static async Task ApplyAsync(
         ProfileProject project, string name, string? url, LocationInput? location, DateOnly? startMonth,
         DateOnly? endMonth, List<string> skillNames, AppDbContext db, CancellationToken ct)
     {
@@ -236,7 +236,8 @@ public static class ProfileEntryMutations
     // setProfileSkill raises it. Existing levels are never touched, and untagging never removes a profile skill.
     private static void AddToProfileSkills(int profileId, List<Skill> skills, List<int> existingIds, AppDbContext db)
     {
-        foreach (var skill in skills.Where(s => s.Id == 0 || !existingIds.Contains(s.Id)))
+        foreach (var skill in skills.Where(s => (s.Id == 0 || !existingIds.Contains(s.Id))
+            && !db.ProfileSkills.Local.Any(p => p.ProfileId == profileId && (p.Skill == s || (s.Id != 0 && p.SkillId == s.Id)))))
             db.ProfileSkills.Add(new ProfileSkill { ProfileId = profileId, Skill = skill, Level = 1 });
     }
 

@@ -55,6 +55,8 @@ public class Listing
     public List<StatusChange> StatusHistory { get; set; } = [];
     public List<Interview> Interviews { get; set; } = [];
     public List<ListingContact> Contacts { get; set; } = [];
+    // Set when the ad is a training program that leads to a job; null for ordinary jobs.
+    public TrainingProgram? TrainingProgram { get; set; }
 }
 
 public class ListingSkill

@@ -17,7 +17,12 @@ public class ListingParsePromptTests(ApiFactory factory) : IClassFixture<ApiFact
         var guestPrompt = (await guest.GraphQLAsync(query)).GetProperty("listingParsePrompt");
 
         var instructions = ownerPrompt.GetProperty("instructions").GetString()!;
-        Assert.Equal(8, ownerPrompt.GetProperty("version").GetInt32());
+        Assert.Equal(10, ownerPrompt.GetProperty("version").GetInt32());
+        Assert.Contains("\"trainingProgram\"", instructions);
+        Assert.Contains("\"ON_PASS\"", instructions);
+        Assert.Contains("partner companies", instructions);
+        Assert.Contains("never INTERNSHIP", instructions);
+        Assert.DoesNotContain("Trainee-program", instructions);
         Assert.Contains("\"FIXED_TERM\"", instructions);
         Assert.Contains("\"FULL_TIME\"", instructions);
         Assert.Contains("\"C2\"", instructions);
@@ -41,6 +46,39 @@ public class ListingParsePromptTests(ApiFactory factory) : IClassFixture<ApiFact
     }
 
     [Fact]
+    public async Task Categories_ArePrivate_IncludeAssignments_AndHaveUncertaintyRules()
+    {
+        var owner = await factory.GetOwnerClientAsync();
+        var guest = await factory.GetGuestClientAsync();
+        var name = ListingTests.Unique("Private category");
+        var categoryId = await JobRoles.JobRoleCategoryTests.CategoryAsync(owner, name);
+        var roleName = ListingTests.Unique("Private role");
+        var listing = await ListingTests.CreateAsync(owner, ListingTests.NewListing(ListingTests.Unique("Acme"), jobRoleName: roleName));
+        await owner.GraphQLAsync(JobRoles.JobRoleCategoryTests.AssignCategory,
+            new { jobRoleId = listing.GetProperty("jobRole").GetProperty("id").GetInt32(), categoryId });
+        foreach (var field in new[] { "listingParsePrompt", "listingQuickParsePrompt" })
+        {
+            var instructions = (await owner.GraphQLAsync("{ " + field + " { instructions } }"))
+                .GetProperty(field).GetProperty("instructions").GetString()!;
+            Assert.Contains(name, instructions);
+            Assert.Contains(roleName, instructions);
+            Assert.Contains("Known role assignments", instructions);
+            Assert.Contains("jobRoleCategoryName", instructions);
+            Assert.Contains("Never invent category names", instructions);
+            Assert.Contains("When uncertain or no existing category fits, return null", instructions);
+            Assert.Contains("never solely from company industry", instructions);
+            var foreign = (await guest.GraphQLAsync("{ " + field + " { instructions } }"))
+                .GetProperty(field).GetProperty("instructions").GetString()!;
+            Assert.DoesNotContain(name, foreign);
+            Assert.DoesNotContain(roleName, foreign);
+        }
+        var companies = (await owner.GraphQLAsync("{companyParsePrompt{version instructions}}"))
+            .GetProperty("companyParsePrompt");
+        Assert.Equal(1, companies.GetProperty("version").GetInt32());
+        Assert.DoesNotContain("jobRoleCategoryName", companies.GetProperty("instructions").GetString());
+    }
+
+    [Fact]
     public async Task ListingQuickParsePrompt_AsksForArrayWithOwnRoles()
     {
         var owner = await factory.GetOwnerClientAsync();
@@ -51,8 +89,9 @@ public class ListingParsePromptTests(ApiFactory factory) : IClassFixture<ApiFact
             .GetProperty("listingQuickParsePrompt");
 
         var instructions = prompt.GetProperty("instructions").GetString()!;
-        Assert.Equal(5, prompt.GetProperty("version").GetInt32());
+        Assert.Equal(6, prompt.GetProperty("version").GetInt32());
         Assert.DoesNotContain("contacts", instructions);
+        Assert.DoesNotContain("trainingProgram", instructions);
         Assert.Contains("ONE JSON array", instructions);
         Assert.Contains("Stillingstittel", instructions);
         Assert.Contains("short, direct job title in natural English", instructions);

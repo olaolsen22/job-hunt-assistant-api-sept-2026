@@ -10,8 +10,8 @@ public enum ProfileEntryKind { Experience, Education, Certification, Project }
 [MutationType]
 public static class ProfileBulletMutations
 {
-    private const int MaxTextLength = 500;
-    private const int MaxPerEntry = 20;
+    internal const int MaxTextLength = 500;
+    internal const int MaxPerEntry = 20;
 
     [Error<ProfileEntryNotFoundException>]
     [Error<InvalidProfileException>]

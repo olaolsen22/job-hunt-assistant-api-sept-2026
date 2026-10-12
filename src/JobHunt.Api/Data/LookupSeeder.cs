@@ -41,11 +41,26 @@ public static class LookupSeeder
         // No signed-in user at startup, so the user filters would hide every row; filter by UserId by hand.
         foreach (var userId in await db.Users.Select(u => u.Id).ToListAsync(ct))
         {
+            var categories = await db.JobRoleCategories.IgnoreQueryFilters()
+                .Where(c => c.UserId == userId).ToDictionaryAsync(c => c.NormalizedName, ct);
+            foreach (var name in StarterJobRoleCategories.Names)
+            {
+                var normalized = Names.Normalize(name);
+                if (categories.ContainsKey(normalized)) continue;
+                var category = new JobRoleCategory { UserId = userId, Name = name, NormalizedName = normalized };
+                db.JobRoleCategories.Add(category);
+                categories.Add(normalized, category);
+            }
+
             var roles = await db.JobRoles.IgnoreQueryFilters()
                 .Where(r => r.UserId == userId).Select(r => r.NormalizedName).ToListAsync(ct);
             db.JobRoles.AddRange(JobRoles
                 .Where(name => !roles.Contains(Names.Normalize(name)))
-                .Select(name => new JobRole { UserId = userId, Name = name, NormalizedName = Names.Normalize(name) }));
+                .Select(name => new JobRole
+                {
+                    UserId = userId, Name = name, NormalizedName = Names.Normalize(name),
+                    Category = StarterJobRoleCategories.TechnicalRoles.Contains(Names.Normalize(name)) ? categories["IT"] : null,
+                }));
 
             var skills = await db.Skills.IgnoreQueryFilters()
                 .Where(s => s.UserId == userId).Select(s => s.NormalizedName).ToListAsync(ct);

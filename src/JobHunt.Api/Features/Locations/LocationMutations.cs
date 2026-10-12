@@ -37,7 +37,9 @@ public static class LocationLookup
 
         var city = string.IsNullOrWhiteSpace(input.City) ? null : input.City.Trim();
         var normalizedCity = city is null ? "" : Names.Normalize(city);
-        return await db.Locations.FirstOrDefaultAsync(
+        return db.Locations.Local.FirstOrDefault(l => l.UserId == db.CurrentUserId
+                && l.CountryCode == countryCode && l.NormalizedCity == normalizedCity)
+            ?? await db.Locations.FirstOrDefaultAsync(
                 l => l.CountryCode == countryCode && l.NormalizedCity == normalizedCity, ct)
             ?? new Location
             {
@@ -52,7 +54,7 @@ public static class LocationLookup
         $"{input.CountryCode.Trim().ToUpperInvariant()}|{(input.City is null ? "" : Names.Normalize(input.City))}";
 
     // Framework region data (ICU), so there's no country list to maintain.
-    private static bool IsCountryCode(string code)
+    internal static bool IsCountryCode(string code)
     {
         if (code.Length != 2 || !code.All(char.IsAsciiLetterUpper)) return false;
         try

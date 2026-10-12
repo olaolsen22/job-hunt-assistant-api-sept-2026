@@ -219,6 +219,25 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal($"https://www.finn.no/job/ad?finnkode={id}", listing.GetProperty("url").GetString());
     }
 
+    [Theory]
+    [InlineData(false, "https", "443")]
+    [InlineData(true, "https", "443")]
+    [InlineData(false, "http", "80")]
+    [InlineData(true, "http", "80")]
+    public async Task CreateOrUpdate_NormalizesUrlAndPreservesMeaningfulParts(bool update, string scheme, string port)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var company = Unique("URL normalization");
+        var path = $"/Job/{Guid.NewGuid():N}";
+        var input = NewListing(company,
+            url: $"  {scheme.ToUpperInvariant()}://JOBS.Example.com:{port}{path}/?id=7&UTM_source=x&FBCLID=y&GCLID=z&category=IT#apply  ");
+        var result = update
+            ? await UpdateAsync(client, (await CreateAsync(client, NewListing(company))).GetProperty("id").GetInt32(), input)
+            : await CreateAsync(client, input);
+
+        Assert.Equal($"{scheme}://jobs.example.com{path}?id=7&category=IT", result.GetProperty("url").GetString());
+    }
+
     [Fact]
     public async Task CreateListing_WithSameUrlAsArchivedListing_ReturnsDuplicateListingError()
     {
