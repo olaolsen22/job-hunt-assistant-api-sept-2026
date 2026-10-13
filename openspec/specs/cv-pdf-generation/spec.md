@@ -28,6 +28,7 @@ The system SHALL render the saved tailored CV draft of one of the user's listing
 
 ### Requirement: Draft content is rendered as extractable text
 Every non-empty draft field SHALL appear in the PDF as extractable text, in the order contact, headline, summary, experience, education, certifications, projects, skills, languages, links. Within a section, entries and bullets SHALL keep the draft's order. Empty sections SHALL be omitted with their heading.
+Each work experience SHALL support bullet or paragraph presentation. Bullet presentation SHALL be the default for drafts that do not specify a style. Paragraph presentation SHALL render the generated paragraph when present, or the selected experience points as one unbulleted paragraph in their existing order.
 
 #### Scenario: Full draft round trip
 - **WHEN** a draft with every section filled is rendered and its text extracted
@@ -36,6 +37,10 @@ Every non-empty draft field SHALL appear in the PDF as extractable text, in the 
 #### Scenario: Empty sections
 - **WHEN** a draft has no projects or certifications
 - **THEN** the extracted text contains no Projects or Certifications heading
+
+#### Scenario: Paragraph style for one experience
+- **WHEN** a work experience selects paragraph presentation
+- **THEN** its point texts appear together in one paragraph without bullet symbols
 
 ### Requirement: ATS-safe text
 The PDF SHALL use a standard single-column layout with English section headings (Summary, Experience, Education, Certifications, Projects, Skills, Languages, Links). Contact details SHALL be in the page body, not in page headers or footers. Dates SHALL be `MM/yyyy`, with an open end shown as `Present`. Skills SHALL be plain names without level graphics.

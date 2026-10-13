@@ -46,9 +46,11 @@ public record TailoredCvContent(
     bool ReferencesOnRequest = false);
 
 public record TailoredCvBullet(string Text, int? SourceBulletId = null);
+public enum TailoredCvExperienceContentStyle { Bullets, Paragraph }
 // Location is display text such as "Lagos, Nigeria"; the guidance favours City, Country for foreign roles.
 public record TailoredCvExperience(string Employer, string Title, DateOnly? StartMonth, DateOnly? EndMonth,
-    List<TailoredCvBullet> Bullets, int? SourceEntryId = null, string? Location = null);
+    List<TailoredCvBullet> Bullets, int? SourceEntryId = null, string? Location = null,
+    TailoredCvExperienceContentStyle ContentStyle = TailoredCvExperienceContentStyle.Bullets, string? Paragraph = null);
 public record TailoredCvEducation(string School, string? Degree, string? Field, DateOnly? StartMonth,
     DateOnly? EndMonth, List<TailoredCvBullet> Bullets, int? SourceEntryId = null, string? Location = null);
 public record TailoredCvCertification(string Name, string? Issuer, DateOnly? IssuedMonth, DateOnly? ExpiresMonth,

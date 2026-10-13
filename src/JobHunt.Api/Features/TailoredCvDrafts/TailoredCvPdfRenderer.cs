@@ -12,7 +12,7 @@ namespace JobHunt.Api.Features.TailoredCvDrafts;
 // 11 pt body, labelled contact lines, and title / organization / date lines per entry so extracted text stays clear.
 public static class TailoredCvPdfRenderer
 {
-    private const string Bullet = "• ";
+    private const string Bullet = "•";
 
     public static byte[] Render(TailoredCvContent content)
     {
@@ -99,14 +99,18 @@ public static class TailoredCvPdfRenderer
     {
         if (experiences is not { Count: > 0 })
             return;
-        AddHeading(column, t.Experience);
+        // Keep the section label and enough room for the first role header together.
+        column.Item().EnsureSpace(72).PaddingTop(12).PaddingBottom(6).Text(t.Experience).FontSize(13).Bold();
         foreach (var experience in experiences)
         {
-            column.Item().PaddingBottom(6).Column(entry =>
+            column.Item().PreventPageBreak().PaddingBottom(6).Column(entry =>
             {
                 AddEntryHeader(entry, experience.Title, JoinPlace(experience.Employer, experience.Location),
                     t.FormatRange(experience.StartMonth, experience.EndMonth));
-                AddBullets(entry, experience.Bullets);
+                if (experience.ContentStyle == TailoredCvExperienceContentStyle.Paragraph)
+                    entry.Item().Text(experience.Paragraph ?? string.Join(" ", experience.Bullets.Select(b => b.Text)));
+                else
+                    AddBullets(entry, experience.Bullets);
             });
         }
     }
@@ -118,7 +122,7 @@ public static class TailoredCvPdfRenderer
         AddHeading(column, t.Education);
         foreach (var education in educations)
         {
-            column.Item().PaddingBottom(6).Column(entry =>
+            column.Item().PreventPageBreak().PaddingBottom(6).Column(entry =>
             {
                 var degreeField = JoinPlace(education.Degree, education.Field);
                 var dates = t.FormatRange(education.StartMonth, education.EndMonth);
@@ -138,7 +142,7 @@ public static class TailoredCvPdfRenderer
         AddHeading(column, t.Certifications);
         foreach (var certification in certifications)
         {
-            column.Item().PaddingBottom(6).Column(entry =>
+            column.Item().PreventPageBreak().PaddingBottom(6).Column(entry =>
             {
                 var dates = (certification.IssuedMonth, certification.ExpiresMonth) switch
                 {
@@ -162,7 +166,7 @@ public static class TailoredCvPdfRenderer
         AddHeading(column, t.Projects);
         foreach (var project in projects)
         {
-            column.Item().PaddingBottom(6).Column(entry =>
+            column.Item().PreventPageBreak().PaddingBottom(6).Column(entry =>
             {
                 AddEntryHeader(entry, project.Name, project.Location, t.FormatRange(project.StartMonth, project.EndMonth));
                 if (!string.IsNullOrWhiteSpace(project.Url))
@@ -212,7 +216,11 @@ public static class TailoredCvPdfRenderer
     private static void AddBullets(ColumnDescriptor entry, List<TailoredCvBullet> bullets)
     {
         foreach (var bullet in bullets)
-            entry.Item().PaddingBottom(3).Text($"{Bullet}{bullet.Text}");
+            entry.Item().PaddingBottom(3).Row(row =>
+            {
+                row.ConstantItem(12).Text(Bullet);
+                row.RelativeItem().Text(bullet.Text);
+            });
     }
 
     private static void AddHeading(ColumnDescriptor column, string text) =>

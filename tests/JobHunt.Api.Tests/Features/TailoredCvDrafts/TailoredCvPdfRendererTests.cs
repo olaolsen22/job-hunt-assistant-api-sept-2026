@@ -75,6 +75,8 @@ public class TailoredCvPdfRendererTests
         foreach (var value in new[] { "March 2021 - Present", "January 2018 - February 2021",
                      "Written: Native (first language)", "Spoken: Good", "Available on request." })
             Assert.Contains(value, text);
+        Assert.Contains("•", text);
+        Assert.Contains("Led the migration", text);
         // Entries and bullets keep draft order.
         AssertInOrder(text, "Senior Dev", "Led the migration", "Mentored juniors", "Old Co", "Shipped features");
     }
@@ -113,6 +115,23 @@ public class TailoredCvPdfRendererTests
             [new TailoredCvCertification("Certificate", null, null, new DateOnly(2027, 4, 1), null, [])]);
 
         Assert.Contains("Utløper April 2027", ExtractText(content));
+    }
+
+    [Fact]
+    public void Render_ParagraphExperience_CombinesSelectedPointsWithoutBulletGlyphs()
+    {
+        var content = new TailoredCvContent(Experiences:
+        [
+            new TailoredCvExperience("Acme", "Developer", null, null,
+                [new TailoredCvBullet("Built the service."), new TailoredCvBullet("Cut latency by 30%.")],
+                ContentStyle: TailoredCvExperienceContentStyle.Paragraph,
+                Paragraph: "Built the service and cut latency by 30%."),
+        ]);
+
+        var text = ExtractText(content);
+
+        Assert.Contains("Built the service and cut latency by 30%.", text);
+        Assert.DoesNotContain("•", text);
     }
 
     private static void AssertInOrder(string text, params string[] values)

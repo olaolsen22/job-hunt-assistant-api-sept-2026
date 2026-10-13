@@ -1379,6 +1379,7 @@ type TailoredCvAnalysisResult {
   summary: String
   error: String
   errorCode: String
+  paragraph: String
 }
 
 type TailoredCvBullet {
@@ -1445,6 +1446,8 @@ type TailoredCvExperience {
   bullets: [TailoredCvBullet!]!
   sourceEntryId: Int
   location: String
+  contentStyle: TailoredCvExperienceContentStyle!
+  paragraph: String
 }
 
 type TailoredCvExternalCandidate {
@@ -2830,6 +2833,8 @@ input TailoredCvExperienceInput {
   bullets: [TailoredCvBulletInput!]!
   sourceEntryId: Int
   location: String
+  contentStyle: TailoredCvExperienceContentStyle
+  paragraph: String
 }
 
 input TailoredCvLanguageInput {
@@ -3151,6 +3156,11 @@ enum TailoredCvAnalysisStatus {
   SUCCEEDED
   FAILED
   SKIPPED
+}
+
+enum TailoredCvExperienceContentStyle {
+  BULLETS
+  PARAGRAPH
 }
 
 enum TailoredCvSection {

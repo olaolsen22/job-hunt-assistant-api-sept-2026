@@ -25,7 +25,8 @@ public static class TailoredCvDraftValidation
         var content = new TailoredCvContent(input.Summary?.Trim(),
             input.Experiences?.Select(e => new TailoredCvExperience(CleanRequired(e.Employer), CleanRequired(e.Title), e.StartMonth,
                 e.EndMonth, (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
-                CleanOptional(e.Location))).ToList(),
+                CleanOptional(e.Location), e.ContentStyle ?? TailoredCvExperienceContentStyle.Bullets,
+                CleanOptional(e.Paragraph))).ToList(),
             input.Educations?.Select(e => new TailoredCvEducation(CleanRequired(e.School), CleanOptional(e.Degree), CleanOptional(e.Field),
                 e.StartMonth, e.EndMonth, (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
                 CleanOptional(e.Location))).ToList(),
@@ -168,6 +169,8 @@ public static class TailoredCvDraftValidation
         if (c.Skills?.Any(s => Blank(s.Name) || s.Level is < 1 or > 5) == true)
             throw Invalid("skills", "name is required and level must be 1–5");
         ValidateFields(c.Experiences?.SelectMany(e => new[] { e.Employer, e.Title, e.Location }), "experiences");
+        if (c.Experiences?.Any(e => e.Paragraph?.Length > 10_000) == true)
+            throw Invalid("experiences", "paragraphs must be at most 10000 characters");
         ValidateFields(c.Educations?.SelectMany(e => new[] { e.School, e.Degree, e.Field, e.Location }), "educations");
         ValidateFields(c.Certifications?.SelectMany(e => new[] { e.Name, e.Issuer }), "certifications");
         ValidateFields(c.Projects?.SelectMany(e => new[] { e.Name, e.Location }), "projects");

@@ -75,7 +75,7 @@ public class TailoredCvDraftTests(ApiFactory factory) : IClassFixture<ApiFactory
             mutation ($listingId: Int!, $content: TailoredCvContentInput!) {
               saveTailoredCvDraft(input: { listingId: $listingId, content: $content }) {
                 tailoredCvDraft {
-                  content { experiences { sourceEntryId employer title bullets { sourceBulletId text } } }
+                  content { experiences { sourceEntryId employer title contentStyle paragraph bullets { sourceBulletId text } } }
                 }
                 errors { __typename ... on Error { message } }
               }
@@ -88,6 +88,8 @@ public class TailoredCvDraftTests(ApiFactory factory) : IClassFixture<ApiFactory
                 experiences = new[] { new
                 {
                     sourceEntryId = entryId, employer = "Source Employer", title = "Developer",
+                    contentStyle = "PARAGRAPH",
+                    paragraph = "Rewrote the selected source work as concise prose.",
                     bullets = new[] { new { sourceBulletId = (int?)bulletId, text = "Edited wording for this application" } },
                 } },
             },
@@ -97,6 +99,8 @@ public class TailoredCvDraftTests(ApiFactory factory) : IClassFixture<ApiFactory
         Assert.Equal(JsonValueKind.Null, payload.GetProperty("errors").ValueKind);
         var saved = payload.GetProperty("tailoredCvDraft").GetProperty("content").GetProperty("experiences")[0];
         Assert.Equal(entryId, saved.GetProperty("sourceEntryId").GetInt32());
+        Assert.Equal("PARAGRAPH", saved.GetProperty("contentStyle").GetString());
+        Assert.Equal("Rewrote the selected source work as concise prose.", saved.GetProperty("paragraph").GetString());
         Assert.Equal(bulletId, saved.GetProperty("bullets")[0].GetProperty("sourceBulletId").GetInt32());
         Assert.Equal("Edited wording for this application", saved.GetProperty("bullets")[0].GetProperty("text").GetString());
     }

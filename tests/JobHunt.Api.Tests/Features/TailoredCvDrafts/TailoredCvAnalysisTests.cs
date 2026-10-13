@@ -15,7 +15,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
     private const string Analyze = """
         mutation ($listingId: Int!, $section: TailoredCvSection!, $sourceEntryId: Int) {
           analyzeTailoredCvSection(input: { listingId: $listingId, section: $section, sourceEntryId: $sourceEntryId }) {
-            result { status section sourceEntryId selectedBulletIds selectedSkillIds summary error }
+            result { status section sourceEntryId selectedBulletIds selectedSkillIds summary paragraph error }
             errors { __typename ... on Error { message } }
           }
         }
@@ -23,7 +23,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
     private const string AnalyzeAll = """
         mutation ($listingId: Int!) {
           analyzeAllTailoredCv(input: { listingId: $listingId }) {
-            analysis { results { status section sourceEntryId selectedBulletIds selectedSkillIds summary error } }
+            analysis { results { status section sourceEntryId selectedBulletIds selectedSkillIds summary paragraph error } }
             errors { __typename ... on Error { message } }
           }
         }
@@ -54,13 +54,14 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         await AddPrivateProfileDetailsAsync(client);
         var listingId = await CreateListingAsync(client, "React platform", "Build React services", ["React"]);
         factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant,
-            $$"""{"selectedBulletIds":[{{bulletId}}]}"""));
+            $$"""{"selectedBulletIds":[{{bulletId}}],"paragraph":"Built the React service and improved reliability."}"""));
 
         var payload = await AnalyzeAsync(client, listingId, "EXPERIENCE", entryId);
 
         var result = payload.GetProperty("result");
         Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
         Assert.Equal(new[] { bulletId }, result.GetProperty("selectedBulletIds").EnumerateArray().Select(v => v.GetInt32()));
+        Assert.Equal("Built the React service and improved reliability.", result.GetProperty("paragraph").GetString());
         var prompt = string.Join("\n", factory.Llm.LastMessages.Select(m => m.Text));
         Assert.Contains("Allowed Employer", prompt);
         Assert.Contains("Build React services", prompt);

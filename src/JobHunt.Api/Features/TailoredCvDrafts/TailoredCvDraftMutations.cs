@@ -9,7 +9,8 @@ namespace JobHunt.Api.Features.TailoredCvDrafts;
 
 public record TailoredCvBulletInput(string Text, int? SourceBulletId = null);
 public record TailoredCvExperienceInput(string Employer, string Title, DateOnly? StartMonth, DateOnly? EndMonth,
-    List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null, string? Location = null);
+    List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null, string? Location = null,
+    TailoredCvExperienceContentStyle? ContentStyle = null, string? Paragraph = null);
 public record TailoredCvEducationInput(string School, string? Degree, string? Field, DateOnly? StartMonth,
     DateOnly? EndMonth, List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null, string? Location = null);
 public record TailoredCvCertificationInput(string Name, string? Issuer, DateOnly? IssuedMonth, DateOnly? ExpiresMonth,
