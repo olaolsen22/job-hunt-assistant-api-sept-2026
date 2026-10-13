@@ -87,131 +87,110 @@ public static class TailoredCvPdfRenderer
     private static string JoinPlace(params string?[] parts) =>
         string.Join(", ", parts.Where(p => !string.IsNullOrWhiteSpace(p)));
 
+    // Heading (~35 pt) plus two body lines (~28 pt): less room than this left on the page starts the section on the next one.
+    private const float MinTextSectionStart = 64;
+
     private static void AddTextSection(ColumnDescriptor column, string heading, string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
             return;
-        AddHeading(column, heading);
-        column.Item().Text(text);
+        column.Item().EnsureSpace(MinTextSectionStart).Column(section =>
+        {
+            AddHeading(section, heading);
+            section.Item().Text(text);
+        });
     }
 
-    private static void AddExperienceSection(ColumnDescriptor column, List<TailoredCvExperience>? experiences, CvText t)
+    // Each entry is kept whole, and the heading shares the first entry's block, so a section heading
+    // never ends a page on its own and an entry never splits across pages.
+    private static void AddEntrySection<T>(ColumnDescriptor column, string heading, List<T>? items,
+        Action<ColumnDescriptor, T> addEntry, float entrySpacing = 6)
     {
-        if (experiences is not { Count: > 0 })
+        if (items is not { Count: > 0 })
             return;
-        // Keep the section label and enough room for the first role header together.
-        column.Item().EnsureSpace(72).PaddingTop(12).PaddingBottom(6).Text(t.Experience).FontSize(13).Bold();
-        foreach (var experience in experiences)
+        for (var i = 0; i < items.Count; i++)
         {
-            column.Item().PreventPageBreak().PaddingBottom(6).Column(entry =>
+            var item = items[i];
+            var isFirst = i == 0;
+            column.Item().PreventPageBreak().PaddingBottom(entrySpacing).Column(entry =>
             {
-                AddEntryHeader(entry, experience.Title, JoinPlace(experience.Employer, experience.Location),
-                    t.FormatRange(experience.StartMonth, experience.EndMonth));
-                if (experience.ContentStyle == TailoredCvExperienceContentStyle.Paragraph)
-                    entry.Item().Text(experience.Paragraph ?? string.Join(" ", experience.Bullets.Select(b => b.Text)));
-                else
-                    AddBullets(entry, experience.Bullets);
+                if (isFirst)
+                    AddHeading(entry, heading);
+                addEntry(entry, item);
             });
         }
     }
 
-    private static void AddEducationSection(ColumnDescriptor column, List<TailoredCvEducation>? educations, CvText t)
-    {
-        if (educations is not { Count: > 0 })
-            return;
-        AddHeading(column, t.Education);
-        foreach (var education in educations)
+    private static void AddExperienceSection(ColumnDescriptor column, List<TailoredCvExperience>? experiences, CvText t) =>
+        AddEntrySection(column, t.Experience, experiences, (entry, experience) =>
         {
-            column.Item().PreventPageBreak().PaddingBottom(6).Column(entry =>
-            {
-                var degreeField = JoinPlace(education.Degree, education.Field);
-                var dates = t.FormatRange(education.StartMonth, education.EndMonth);
-                if (string.IsNullOrWhiteSpace(degreeField))
-                    AddEntryHeader(entry, education.School, education.Location, dates);
-                else
-                    AddEntryHeader(entry, degreeField, JoinPlace(education.School, education.Location), dates);
-                AddBullets(entry, education.Bullets);
-            });
-        }
-    }
+            AddEntryHeader(entry, experience.Title, JoinPlace(experience.Employer, experience.Location),
+                t.FormatRange(experience.StartMonth, experience.EndMonth));
+            if (experience.ContentStyle == TailoredCvExperienceContentStyle.Paragraph)
+                entry.Item().Text(experience.Paragraph ?? string.Join(" ", experience.Bullets.Select(b => b.Text)));
+            else
+                AddBullets(entry, experience.Bullets);
+        });
 
-    private static void AddCertificationSection(ColumnDescriptor column, List<TailoredCvCertification>? certifications, CvText t)
-    {
-        if (certifications is not { Count: > 0 })
-            return;
-        AddHeading(column, t.Certifications);
-        foreach (var certification in certifications)
+    private static void AddEducationSection(ColumnDescriptor column, List<TailoredCvEducation>? educations, CvText t) =>
+        AddEntrySection(column, t.Education, educations, (entry, education) =>
         {
-            column.Item().PreventPageBreak().PaddingBottom(6).Column(entry =>
-            {
-                var dates = (certification.IssuedMonth, certification.ExpiresMonth) switch
-                {
-                    ({ } issued, { } expires) => $"{t.FormatMonth(issued)} - {t.FormatMonth(expires)}",
-                    ({ } issued, null) => t.FormatMonth(issued),
-                    (null, { } expiry) => $"{t.Expires} {t.FormatMonth(expiry)}",
-                    _ => null,
-                };
-                AddEntryHeader(entry, certification.Name, certification.Issuer, dates);
-                if (!string.IsNullOrWhiteSpace(certification.Url))
-                    entry.Item().Text(certification.Url);
-                AddBullets(entry, certification.Bullets);
-            });
-        }
-    }
+            var degreeField = JoinPlace(education.Degree, education.Field);
+            var dates = t.FormatRange(education.StartMonth, education.EndMonth);
+            if (string.IsNullOrWhiteSpace(degreeField))
+                AddEntryHeader(entry, education.School, education.Location, dates);
+            else
+                AddEntryHeader(entry, degreeField, JoinPlace(education.School, education.Location), dates);
+            AddBullets(entry, education.Bullets);
+        });
 
-    private static void AddProjectSection(ColumnDescriptor column, List<TailoredCvProject>? projects, CvText t)
-    {
-        if (projects is not { Count: > 0 })
-            return;
-        AddHeading(column, t.Projects);
-        foreach (var project in projects)
+    private static void AddCertificationSection(ColumnDescriptor column, List<TailoredCvCertification>? certifications, CvText t) =>
+        AddEntrySection(column, t.Certifications, certifications, (entry, certification) =>
         {
-            column.Item().PreventPageBreak().PaddingBottom(6).Column(entry =>
+            var dates = (certification.IssuedMonth, certification.ExpiresMonth) switch
             {
-                AddEntryHeader(entry, project.Name, project.Location, t.FormatRange(project.StartMonth, project.EndMonth));
-                if (!string.IsNullOrWhiteSpace(project.Url))
-                    entry.Item().Text(project.Url);
-                AddBullets(entry, project.Bullets);
-            });
-        }
-    }
+                ({ } issued, { } expires) => $"{t.FormatMonth(issued)} - {t.FormatMonth(expires)}",
+                ({ } issued, null) => t.FormatMonth(issued),
+                (null, { } expiry) => $"{t.Expires} {t.FormatMonth(expiry)}",
+                _ => null,
+            };
+            AddEntryHeader(entry, certification.Name, certification.Issuer, dates);
+            if (!string.IsNullOrWhiteSpace(certification.Url))
+                entry.Item().Text(certification.Url);
+            AddBullets(entry, certification.Bullets);
+        });
+
+    private static void AddProjectSection(ColumnDescriptor column, List<TailoredCvProject>? projects, CvText t) =>
+        AddEntrySection(column, t.Projects, projects, (entry, project) =>
+        {
+            AddEntryHeader(entry, project.Name, project.Location, t.FormatRange(project.StartMonth, project.EndMonth));
+            if (!string.IsNullOrWhiteSpace(project.Url))
+                entry.Item().Text(project.Url);
+            AddBullets(entry, project.Bullets);
+        });
 
     // NAV's layout: the language name, then written and spoken levels on their own lines.
-    private static void AddLanguagesSection(ColumnDescriptor column, List<TailoredCvLanguage>? languages, CvText t)
-    {
-        if (languages is not { Count: > 0 })
-            return;
-        AddHeading(column, t.Languages);
-        foreach (var language in languages)
+    private static void AddLanguagesSection(ColumnDescriptor column, List<TailoredCvLanguage>? languages, CvText t) =>
+        AddEntrySection(column, t.Languages, languages, (entry, language) =>
         {
-            column.Item().PaddingBottom(6).Column(entry =>
-            {
-                entry.Item().Text(t.LanguageName(language.Name)).Bold();
-                if (language.Written is { } written)
-                    entry.Item().Text($"{t.Written}: {t.Proficiency(written)}");
-                if (language.Spoken is { } spoken)
-                    entry.Item().Text($"{t.Spoken}: {t.Proficiency(spoken)}");
-            });
-        }
-    }
+            entry.Item().Text(t.LanguageName(language.Name)).Bold();
+            if (language.Written is { } written)
+                entry.Item().Text($"{t.Written}: {t.Proficiency(written)}");
+            if (language.Spoken is { } spoken)
+                entry.Item().Text($"{t.Spoken}: {t.Proficiency(spoken)}");
+        });
 
+    // Plain, comma-separated names: no bars/dots for level, which an ATS can't read anyway.
     private static void AddSkillsSection(ColumnDescriptor column, List<TailoredCvSkill>? skills, CvText t)
     {
-        if (skills is not { Count: > 0 })
-            return;
-        AddHeading(column, t.Skills);
-        // Plain, comma-separated names: no bars/dots for level, which an ATS can't read anyway.
-        column.Item().Text(string.Join(", ", skills.Select(s => s.Name)));
+        if (skills is { Count: > 0 })
+            AddTextSection(column, t.Skills, string.Join(", ", skills.Select(s => s.Name)));
     }
 
-    private static void AddLinksSection(ColumnDescriptor column, List<TailoredCvLink>? links, CvText t)
-    {
-        if (links is not { Count: > 0 })
-            return;
-        AddHeading(column, t.Links);
-        foreach (var link in links)
-            column.Item().Text($"{link.Label}: {link.Url}");
-    }
+    // Link lines sit at the column's normal spacing rather than entry spacing.
+    private static void AddLinksSection(ColumnDescriptor column, List<TailoredCvLink>? links, CvText t) =>
+        AddEntrySection(column, t.Links, links, (entry, link) => entry.Item().Text($"{link.Label}: {link.Url}"),
+            entrySpacing: 0);
 
     private static void AddBullets(ColumnDescriptor entry, List<TailoredCvBullet> bullets)
     {

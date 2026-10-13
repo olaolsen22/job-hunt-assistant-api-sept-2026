@@ -134,6 +134,30 @@ public class TailoredCvPdfRendererTests
         Assert.DoesNotContain("•", text);
     }
 
+    [Fact]
+    public void Render_SectionsAtPageBoundary_KeepHeadingWithFirstEntry()
+    {
+        // Growing the summary one line at a time slides every later section across the page break.
+        (string Heading, string FirstEntry)[] sections =
+        [
+            ("Experience", "Senior Dev"), ("Education", "MSc, CS"), ("Courses and certifications", "AWS SA"),
+            ("Projects", "Side Project"), ("Languages", "Spoken: Native"), ("Skills", "C#"),
+            ("Links", "GitHub"), ("References", "Available on request."),
+        ];
+        for (var lines = 1; lines <= 60; lines++)
+        {
+            var content = FullDraft(Language.English) with
+            {
+                Summary = string.Join("\n", Enumerable.Repeat("Summary line", lines)),
+            };
+            using var document = PdfDocument.Open(TailoredCvPdfRenderer.Render(content));
+            foreach (var page in document.GetPages())
+            foreach (var (heading, firstEntry) in sections.Where(s => page.Text.Contains(s.Heading, StringComparison.Ordinal)))
+                Assert.True(page.Text.Contains(firstEntry, StringComparison.Ordinal),
+                    $"\"{heading}\" split from \"{firstEntry}\" with {lines} summary lines");
+        }
+    }
+
     private static void AssertInOrder(string text, params string[] values)
     {
         var indices = values.Select(v => text.IndexOf(v, StringComparison.Ordinal)).ToArray();
