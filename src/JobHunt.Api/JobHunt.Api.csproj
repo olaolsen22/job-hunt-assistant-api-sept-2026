@@ -19,6 +19,10 @@
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />
+    <PackageReference Include="QuestPDF" />
     <PackageReference Include="Scalar.AspNetCore" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Features\TailoredCvDrafts\Fonts\*.ttf" />
   </ItemGroup>
 </Project>

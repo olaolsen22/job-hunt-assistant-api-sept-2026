@@ -86,6 +86,7 @@ builder.Services.AddOptions<LlmPricingOptions>().BindConfiguration(LlmPricingOpt
 builder.Services.AddScoped<ListingParser>();
 builder.Services.AddScoped<ProfileCvParser>();
 builder.Services.AddScoped<TailoredCvAnalyzer>();
+TailoredCvPdfFonts.EnsureRegistered();
 // Browser-like User-Agent: several job boards answer 403 to the default .NET one.
 builder.Services.AddHttpClient<ListingPageFetcher>(client =>
     {

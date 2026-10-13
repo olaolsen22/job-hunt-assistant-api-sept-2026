@@ -301,6 +301,8 @@ type Mutation {
   previewTailoredCvDraft(input: PreviewTailoredCvDraftInput!): PreviewTailoredCvDraftPayload!
     @cost(weight: "10")
 }
+  generateCvDocument(input: GenerateCvDocumentInput!): GenerateCvDocumentPayload!
+    @cost(weight: "10")
 
 type AddContactPayload {
   contact: Contact
@@ -566,6 +568,11 @@ type DuplicateListingError implements Error {
 type ImportProfileCvPayload {
   profile: Profile
   errors: [ImportProfileCvError!]
+type GenerateCvDocumentPayload {
+  document: Document
+  errors: [GenerateCvDocumentError!]
+}
+
 }
 
 "A connection to a list of items."
@@ -1348,6 +1355,10 @@ type TailoredCvExperience {
   sourceEntryId: Int
 }
 
+type TailoredCvDraftNotFoundError implements Error {
+  message: String!
+}
+
 type TailoredCvExternalCandidate {
   schemaVersion: Int!
   content: TailoredCvContent!
@@ -1584,6 +1595,10 @@ union PreviewTailoredCvDraftError =
   | InvalidTailoredCvDraftError
 
 union RecordOutcomeError =
+union GenerateCvDocumentError =
+  | ListingNotFoundError
+  | TailoredCvDraftNotFoundError
+
   | ListingNotFoundError
   | InvalidStatusTransitionError
   | InvalidApplicationError
@@ -1983,6 +1998,10 @@ input InterviewSortInput {
   id: SortEnumType @cost(weight: "10")
   listingId: SortEnumType @cost(weight: "10")
   listing: ListingSortInput @cost(weight: "10")
+input GenerateCvDocumentInput {
+  listingId: Int!
+}
+
   title: SortEnumType @cost(weight: "10")
   scheduledAt: SortEnumType @cost(weight: "10")
   notes: SortEnumType @cost(weight: "10")
@@ -3000,6 +3019,7 @@ directive @cost(
   | SCALAR
   | OBJECT
   | FIELD_DEFINITION
+  EDUCATION
   | ARGUMENT_DEFINITION
   | ENUM
   | INPUT_FIELD_DEFINITION
