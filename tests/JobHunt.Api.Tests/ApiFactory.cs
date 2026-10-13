@@ -37,6 +37,9 @@ public class ApiFactory : WebApplicationFactory<Program>
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        // Every host would otherwise watch appsettings*.json, and the suite's many hosts exhaust the inotify limit
+        // (128 by default on WSL). Tests never edit config at runtime.
+        builder.UseSetting("hostBuilder:reloadConfigOnChange", "false");
         builder.UseSetting("ConnectionStrings:Default", _connectionString);
         builder.UseSetting("Seed:OwnerEmail", OwnerEmail);
         builder.UseSetting("Seed:OwnerPassword", OwnerPassword);
