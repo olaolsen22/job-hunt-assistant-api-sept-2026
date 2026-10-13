@@ -7,82 +7,91 @@ the dashboard can show a usage widget. All users share one provider key, so the 
 ## Requirements
 
 ### Requirement: Usage today
-`llmUsageToday` SHALL return the number of LLM calls and the input and output tokens used by all users with the
-current user's effective default model since the last midnight Pacific time, plus that model id and the time of the next reset. Failed calls SHALL count as requests, and calls without
-reported tokens SHALL add 0 tokens. It SHALL be available to every signed-in user and SHALL return totals only, never
-another user's individual calls.
+`llmUsageToday` SHALL return requests and input/output tokens for the current user's effective selection and credential since midnight Pacific, plus provider, native model, credential ID, key source, and next reset. Shared-key totals SHALL cover all shared-key users; personal totals SHALL cover only the current user's selected credential. Failed attempts SHALL count as requests and missing tokens as zero. Other users' personal activity SHALL be excluded.
 
 #### Scenario: Calls from several users
-- **WHEN** the Owner has made 2 calls and a Guest 1 call today with the same model, and the Guest queries `llmUsageToday`
-- **THEN** `requests` is 3 and the token fields are the sums over all 3 calls
+- **WHEN** the Owner makes 2 shared-key calls and the Guest makes 1 shared-key call with the same model today
+- **THEN** the Guest sees 3 requests and their summed tokens
 
 #### Scenario: Failed call
-- **WHEN** a call failed with no token counts today
-- **THEN** it is included in `requests` and adds 0 to both token totals
+- **WHEN** a selected-credential call failed with no token counts today
+- **THEN** it contributes one request and zero tokens
 
 #### Scenario: Before the daily reset
-- **WHEN** a call was made before the most recent midnight Pacific time
-- **THEN** it is not included in the totals
+- **WHEN** a call predates the latest midnight Pacific
+- **THEN** it is excluded
 
 #### Scenario: Other model
-- **WHEN** a call today used a model other than the current user's effective default
-- **THEN** it is not included in the totals
+- **WHEN** a selected-credential call uses a different native model
+- **THEN** it is excluded from today's effective-selection totals
 
 #### Scenario: Owner with a different default
-- **WHEN** the Owner's effective default is model B and the Guest's is model A
-- **THEN** the Owner's `llmUsageToday` counts model B calls and returns `model` B, and the Guest's counts model A calls
+- **WHEN** the Owner's default is model B and the Guest's is model A
+- **THEN** each receives totals for their own effective model and resolved credential
 
 #### Scenario: Next reset time
 - **WHEN** a user queries `llmUsageToday`
-- **THEN** `resetsAt` is the next midnight Pacific time, as a UTC timestamp
+- **THEN** `resetsAt` is next midnight Pacific as a UTC timestamp
+
+#### Scenario: Personal keys use the same model
+- **WHEN** two Owners and the Guest use Gemini model A with distinct personal/shared credentials
+- **THEN** each Owner's personal total excludes the other Owner and shared calls
+- **AND** the Guest's shared total excludes both personal keys
 
 ### Requirement: Remaining requests
-When the reported model has a configured daily request limit, `llmUsageToday` SHALL return it as `requestsLimit` and
-the requests left as `remainingRequests`, never below 0. When that model has no configured limit, both SHALL be null.
+For a shared Gemini selection with a configured model daily limit, `llmUsageToday` SHALL return that limit and remaining requests floored at zero. Personal selections and shared models without configured limits SHALL return null for both fields. The reporting day SHALL NOT imply a provider's actual billing or quota reset for personal keys.
 
 #### Scenario: Limit configured
-- **WHEN** the limit is 20 and 3 requests were made today
-- **THEN** `requestsLimit` is 20 and `remainingRequests` is 17
+- **WHEN** a shared model's limit is 20 and 3 shared requests were made
+- **THEN** the limit is 20 and remaining requests is 17
 
 #### Scenario: Over the limit
-- **WHEN** the limit is 20 and 25 requests were made today
-- **THEN** `remainingRequests` is 0
+- **WHEN** a shared model's limit is 20 and 25 shared requests were made
+- **THEN** remaining requests is 0
 
 #### Scenario: No limit configured
-- **WHEN** the reported model has no daily limit configured
-- **THEN** `requestsLimit` and `remainingRequests` are null
+- **WHEN** a shared model has no configured limit
+- **THEN** both fields are null
 
 #### Scenario: Per-model limit
-- **WHEN** model A has a limit of 500 and model B a limit of 250, and the Owner's effective default is B
-- **THEN** the Owner's `requestsLimit` is 250
+- **WHEN** shared model A has limit 500 and shared model B has limit 250 and the user's default is B
+- **THEN** the reported limit is 250
+
+#### Scenario: Personal Gemini key
+- **WHEN** the user has a personal Gemini key for a model with a configured shared limit
+- **THEN** the personal result has null limit and remaining requests
 
 ### Requirement: Daily usage history
-`usageDaily(days)` SHALL return one row per Pacific day and model with the requests, input tokens and output tokens of
-all users, for the last `days` days ending today (default 30, minimum 1, maximum 90). Days and models without calls
-SHALL be omitted. Each row SHALL carry an estimated cost, computed from configured per-model input and output prices per
-million tokens, or null when the model has no configured prices. A `days` value outside 1-90 SHALL produce an error. It
-SHALL be available to every signed-in user and SHALL return totals only.
+`usageDaily(days, credentialId)` SHALL return one row per Pacific day, credential, provider, and native model for the last `days` days (default 30, range 1–90). Without a credential filter it SHALL include shared-key aggregates and only the current user's personal history, including retired keys. Empty groups SHALL be omitted. Rows SHALL include attribution and estimated cost from provider/model prices, or null when missing. Foreign credential filters SHALL be rejected.
 
 #### Scenario: Several days and models
-- **WHEN** calls were made on two days, one of them with two models
-- **THEN** the result has three rows, each with that day's and model's request and token totals
+- **WHEN** calls were made on two days and one day has two models on the same credential
+- **THEN** three rows are returned with that day's credential/model totals
 
 #### Scenario: Pacific day boundary
-- **WHEN** a call was made at 23:30 Pacific time and another at 00:30 Pacific time the next day
-- **THEN** they fall in two different days
+- **WHEN** calls occurred at 23:30 and 00:30 Pacific
+- **THEN** they appear on separate reporting days
 
 #### Scenario: Estimated cost
-- **WHEN** a model has an input price of 0.10 and an output price of 0.40 per million tokens, and used 1000000 input and
-  500000 output tokens on a day
-- **THEN** that row's `estimatedCost` is 0.30
+- **WHEN** a provider/model costs 0.10 input and 0.40 output per million tokens and a group uses 1000000 input and 500000 output tokens
+- **THEN** the estimated cost is 0.30
 
 #### Scenario: No prices configured
-- **WHEN** a model has no configured prices
-- **THEN** its rows have a null `estimatedCost`
+- **WHEN** a provider/model has no configured prices
+- **THEN** its estimated cost is null
 
 #### Scenario: Days out of range
 - **WHEN** `days` is 0 or 91
 - **THEN** the query returns an error and no rows
+
+#### Scenario: Retired key history
+- **WHEN** the Owner filters daily history by their retired credential ID
+- **THEN** only that credential's historical groups are returned
+- **AND** the removed secret is not needed to read them
+
+#### Scenario: Foreign key filter
+- **WHEN** one Owner filters by another Owner's credential ID
+- **THEN** a safe unavailable-credential error is returned without that Owner's totals
 
 ### Requirement: Usage dashboard widget
 The dashboard layout SHALL include a usage widget as its tenth widget, after the existing nine, shown by default.
@@ -96,3 +105,14 @@ widgets once each.
 #### Scenario: Save without the usage widget
 - **WHEN** a user saves a layout that omits the usage widget
 - **THEN** the mutation returns `InvalidDashboardLayoutError` and the stored layout is unchanged
+
+### Requirement: Durable call attribution
+Every built-in AI attempt SHALL record the actor, resolved provider/native model, key source, and immutable safe credential ID. Existing usage SHALL retain its counts and be classified as shared Gemini history. Replacing or removing a personal key SHALL NOT reattribute or delete its usage. Model-list key validation SHALL NOT create inference usage rows.
+
+#### Scenario: Upgrade existing history
+- **WHEN** the application upgrades a database containing earlier Gemini usage
+- **THEN** all previous request and token counts remain visible as shared-key history
+
+#### Scenario: Credential replacement
+- **WHEN** an Owner replaces a personal key and makes another call
+- **THEN** previous and new calls belong to different credential groups

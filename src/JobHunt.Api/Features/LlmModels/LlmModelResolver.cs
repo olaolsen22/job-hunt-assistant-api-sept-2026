@@ -11,27 +11,36 @@ public class UnknownLlmModelException() : Exception("That model isn't available.
 
 // The only gate between a client-sent model id and a paid API call, so the allowlist is computed here from the
 // role, never trusted from the UI.
-public class LlmModelResolver(IOptions<GeminiOptions> gemini, IHttpContextAccessor http)
+public class LlmModelResolver(IOptions<GeminiOptions> gemini, IOptions<ProviderCatalogOptions> catalog, IHttpContextAccessor http)
 {
     public const int MaxModelLength = 100;
 
-    // Anyone who isn't the Owner gets only the default (least privilege), so a new role can't reach paid models.
-    public IReadOnlyList<LlmModelOption> AllowedModels() =>
-        http.HttpContext?.User.IsInRole(Roles.Owner) == true ? gemini.Value.Models : [gemini.Value.GetDefault()];
-
-    // The user's stored default when it's still allowed, else the configured one.
-    public async Task<LlmModelOption> GetDefaultAsync(AppDbContext db, CancellationToken ct)
+    public async Task<IReadOnlyList<ResolvedLlmModel>> AllowedModelsAsync(AppDbContext db, CancellationToken ct)
     {
-        var stored = await db.UserLlmSettings.Select(s => s.DefaultModel).FirstOrDefaultAsync(ct);
-        return Find(stored) ?? gemini.Value.GetDefault();
+        var owner = http.HttpContext?.User.IsInRole(Roles.Owner) == true;
+        var keys = owner
+            ? await db.UserProviderKeys.Where(k => k.RetiredAt == null).Select(k => new { k.Id, k.Provider }).ToListAsync(ct)
+            : [];
+        var geminiKey = keys.SingleOrDefault(k => k.Provider == GeminiOptions.Provider)?.Id;
+        var configured = owner ? gemini.Value.Models : [gemini.Value.GetDefault()];
+        List<ResolvedLlmModel> allowed = [.. configured.Select(m =>
+            new ResolvedLlmModel(m.Id, GeminiOptions.Provider, m.Id, m.Label, geminiKey,
+                geminiKey is null ? m.RequestsPerDay : null))];
+        foreach (var key in keys.Where(k => k.Provider != GeminiOptions.Provider))
+            allowed.AddRange(catalog.Value.For(key.Provider).Select(m =>
+                new ResolvedLlmModel($"{key.Provider}:{m.Id}", key.Provider, m.Id, m.Label, key.Id)));
+        return allowed;
     }
 
-    // Requested model, else the user's default. Ids match exactly (ordinal), so an oversized or differently cased
-    // id is simply unknown.
-    public async Task<LlmModelOption> ResolveAsync(string? requested, AppDbContext db, CancellationToken ct) =>
+    public async Task<ResolvedLlmModel> GetDefaultAsync(AppDbContext db, CancellationToken ct)
+    {
+        var allowed = await AllowedModelsAsync(db, ct);
+        var stored = await db.UserLlmSettings.Select(s => s.DefaultModel).FirstOrDefaultAsync(ct);
+        return allowed.FirstOrDefault(m => m.Id == stored) ?? allowed.First(m => m.Id == gemini.Value.DefaultModel);
+    }
+
+    public async Task<ResolvedLlmModel> ResolveAsync(string? requested, AppDbContext db, CancellationToken ct) =>
         requested is null
             ? await GetDefaultAsync(db, ct)
-            : Find(requested) ?? throw new UnknownLlmModelException();
-
-    private LlmModelOption? Find(string? id) => id is null ? null : AllowedModels().FirstOrDefault(m => m.Id == id);
+            : (await AllowedModelsAsync(db, ct)).FirstOrDefault(m => m.Id == requested) ?? throw new UnknownLlmModelException();
 }

@@ -20,28 +20,32 @@ or FAILED with a readable `error`. Blank text or text over 100,000 characters MU
 - **THEN** the ParseJob is FAILED and `result` is null
 
 ### Requirement: Provider failures fail the job
-A provider failure SHALL mark the ParseJob FAILED with a readable error instead of failing the request: rate limit
-("free-tier limit"), unreachable or erroring provider ("couldn't be reached"), and timeout ("took too long").
+A provider failure SHALL mark the ParseJob FAILED with a safe readable error instead of failing the request: authentication/authorization failure, rate limit, unreachable or erroring provider, and timeout. Messages SHALL work for personal paid keys and the shared free key. Personal-key failures SHALL never trigger another credential or provider.
 
 #### Scenario: Rate limited
 - **WHEN** the provider rejects the call with HTTP 429
-- **THEN** the ParseJob is FAILED with an error mentioning the free-tier limit
+- **THEN** the ParseJob is FAILED with an error describing a provider rate limit
+- **AND** no alternative-key call is attempted
 
 #### Scenario: Timeout
 - **WHEN** the provider call times out
-- **THEN** the ParseJob is FAILED with an error saying the AI took too long, and the ParseJob is saved
+- **THEN** the ParseJob is FAILED with an error saying the AI took too long and the ParseJob is saved
+
+#### Scenario: Personal key revoked
+- **WHEN** the provider rejects a configured personal key
+- **THEN** the ParseJob is FAILED with a safe credential error
+- **AND** neither the raw provider response nor key is returned
 
 ### Requirement: Every provider call is logged
-Each provider call SHALL write one usage row with provider, model, operation, latency and success, plus tokens when the
-provider reports them and an error code on failure: `invalid-json`, `rate-limited`, `provider-error` or `timeout`.
+Each attempted provider call SHALL write one usage row with actor, provider, native model, key source, credential ID, operation, latency, success, available tokens, and a safe failure code. Codes SHALL distinguish `invalid-json`, `invalid-key`, `rate-limited`, `provider-error`, and `timeout`. SDK-internal retries SHALL NOT conceal extra inference attempts from this accounting.
 
 #### Scenario: Usage after success
-- **WHEN** a parse succeeds and the provider reports 1200 input and 300 output tokens
-- **THEN** a successful usage row with those token counts is saved
+- **WHEN** a parse succeeds with 1200 input and 300 output tokens
+- **THEN** a successful row records those counts and the actual credential attribution
 
 #### Scenario: Usage after timeout
-- **WHEN** the provider call times out
-- **THEN** a failed usage row with error code `timeout` is saved
+- **WHEN** the provider attempt times out
+- **THEN** a failed row with `timeout` records the attempted credential
 
 ### Requirement: Parse jobs are private
 A ParseJob SHALL be readable only by the user who created it; `parseJob(id)` for another user's job MUST return null.

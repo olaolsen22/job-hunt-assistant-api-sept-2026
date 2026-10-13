@@ -17,6 +17,7 @@ public class ApiFactory : WebApplicationFactory<Program>
     public const string OwnerEmail = "owner@test.local";
     public const string OwnerPassword = "Test-Passw0rd!";
     public const string GuestEmail = "guest@jobhunt.local";
+    public const string SecondOwnerEmail = "second@test.local";
     // The model in appsettings.json, and the extra one added below.
     public const string DefaultModel = "gemini-3.1-flash-lite";
     public const string StrongModel = "test-strong-model";
@@ -25,9 +26,11 @@ public class ApiFactory : WebApplicationFactory<Program>
     private readonly SqliteConnection _keepAlive;
     private HttpClient? _owner;
     private HttpClient? _guest;
+    private HttpClient? _secondOwner;
 
     public FakeChatClient Llm { get; } = new();
     public FakePageHandler Pages { get; } = new();
+    public FakeProviderHandler Providers { get; } = new();
 
     public ApiFactory()
     {
@@ -43,6 +46,9 @@ public class ApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("ConnectionStrings:Default", _connectionString);
         builder.UseSetting("Seed:OwnerEmail", OwnerEmail);
         builder.UseSetting("Seed:OwnerPassword", OwnerPassword);
+        builder.UseSetting("Seed:Users:0:Email", SecondOwnerEmail);
+        builder.UseSetting("Seed:Users:0:Password", OwnerPassword);
+        builder.UseSetting("DataProtection:KeyRingPath", System.IO.Path.Combine(System.IO.Path.GetTempPath(), "jobhunt-test-ring-" + Guid.NewGuid()));
         // CI has no user-secrets; the key is never used because the fake replaces the real client.
         builder.UseSetting("Llm:Gemini:ApiKey", "test-key");
         // A second allowed model next to the appsettings.json default, so the Owner has something to pick.
@@ -55,6 +61,7 @@ public class ApiFactory : WebApplicationFactory<Program>
         builder.ConfigureServices(services =>
         {
             services.AddKeyedSingleton<IChatClient>(GeminiOptions.Provider, Llm);
+            services.AddHttpClient(LlmProviders.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => Providers);
             // The last primary handler registered wins, so listing pages come from the fake, never the network.
             services.AddHttpClient<ListingPageFetcher>().ConfigurePrimaryHttpMessageHandler(() => Pages);
         });
@@ -75,6 +82,14 @@ public class ApiFactory : WebApplicationFactory<Program>
         var client = CreateClient();
         (await client.PostAsync("/api/auth/guest", null)).EnsureSuccessStatusCode();
         return _guest = client;
+    }
+
+    public async Task<HttpClient> GetSecondOwnerClientAsync()
+    {
+        if (_secondOwner is not null) return _secondOwner;
+        var client = CreateClient();
+        (await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(SecondOwnerEmail, OwnerPassword))).EnsureSuccessStatusCode();
+        return _secondOwner = client;
     }
 
     protected override void Dispose(bool disposing)

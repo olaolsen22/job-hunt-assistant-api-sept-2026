@@ -1,13 +1,16 @@
 using System.Threading.RateLimiting;
+using JobHunt.Api.Features.AiSafeguards;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Auth;
 using JobHunt.Api.Features.Documents;
 using JobHunt.Api.Features.LlmModels;
+using JobHunt.Api.Features.LlmProviderKeys;
 using JobHunt.Api.Features.Parsing;
 using JobHunt.Api.Features.Profiles;
 using JobHunt.Api.Features.TailoredCvDrafts;
 using JobHunt.Api.Llm;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
@@ -20,6 +23,17 @@ using Scalar.AspNetCore;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddHttpContextAccessor();
+var keyRingPath = builder.Configuration["DataProtection:KeyRingPath"]
+    ?? System.IO.Path.Combine(builder.Environment.ContentRootPath, ".local", "dp-keys");
+var keyRing = OperatingSystem.IsWindows()
+    ? Directory.CreateDirectory(keyRingPath)
+    : Directory.CreateDirectory(keyRingPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+builder.Services.AddDataProtection().SetApplicationName("JobHunt.Api")
+    .PersistKeysToFileSystem(keyRing);
+builder.Services.AddSingleton<ProviderKeyProtector>();
+builder.Services.AddSingleton<ProviderKeyValidator>();
+builder.Services.AddSingleton<AiRequestDigests>();
+builder.Services.AddScoped<AiOperations>();
 // A factory, so GraphQL resolvers that run in parallel each get their own DbContext.
 // It also registers a scoped AppDbContext, which Identity uses.
 builder.Services.AddDbContextFactory<AppDbContext>(options =>
@@ -77,15 +91,27 @@ builder.Services.AddOptions<GeminiOptions>()
     .BindConfiguration(GeminiOptions.Section)
     .ValidateDataAnnotations()
     .ValidateOnStart();
+builder.Services.AddHttpClient(LlmProviders.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(2))
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
+    .RemoveAllLoggers();
 // Keyed by provider, so Ollama (and later others) can register side by side. The model is picked per call
 // (ChatOptions.ModelId); the default here only applies if a caller doesn't set one.
 builder.Services.AddKeyedSingleton<IChatClient>(GeminiOptions.Provider, (sp, _) =>
 {
     var gemini = sp.GetRequiredService<IOptions<GeminiOptions>>().Value;
-    return new Google.GenAI.Client(apiKey: gemini.ApiKey).AsIChatClient(gemini.DefaultModel);
+    return ProviderClients.Create(GeminiOptions.Provider, gemini.ApiKey, gemini.DefaultModel,
+        sp.GetRequiredService<IHttpClientFactory>());
 });
 builder.Services.AddOptions<LlmPricingOptions>().BindConfiguration(LlmPricingOptions.Section);
+builder.Services.AddOptions<ProviderLlmPricingOptions>().BindConfiguration(ProviderLlmPricingOptions.Section);
+builder.Services.AddOptions<ProviderCatalogOptions>().BindConfiguration(ProviderCatalogOptions.Section)
+    .ValidateDataAnnotations()
+    .Validate(catalog => catalog.HasUniqueSelectionIds(new GeminiOptions
+        { Models = builder.Configuration.GetSection("Llm:Gemini:Models").Get<List<LlmModelOption>>() ?? [] }),
+        "Provider model selection IDs must be unique.")
+    .ValidateOnStart();
 builder.Services.AddScoped<LlmModelResolver>();
+builder.Services.AddScoped<LlmExecution>();
 builder.Services.AddScoped<ListingParser>();
 builder.Services.AddScoped<ProfileCvParser>();
 builder.Services.AddScoped<TailoredCvAnalyzer>();
@@ -122,6 +148,8 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.Migrate();
+    await AiOperations.RecoverAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>(),
+        scope.ServiceProvider.GetRequiredService<TimeProvider>());
     await AuthSeeder.SeedAsync(scope.ServiceProvider);
     await LookupSeeder.SeedAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>());
 }

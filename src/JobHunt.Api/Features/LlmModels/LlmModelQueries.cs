@@ -1,9 +1,10 @@
 using JobHunt.Api.Data;
+using JobHunt.Api.Llm;
 
 namespace JobHunt.Api.Features.LlmModels;
 
-// Only id and label: limits are on llmUsageToday, and nothing provider-side (keys, endpoints) ever leaves the API.
-public record LlmModel(string Id, string Label);
+// Picker metadata carries attribution, never credentials or provider endpoints.
+public record LlmModel(string Id, string Label, string Provider, string ModelId, LlmKeySource KeySource, string CredentialId);
 
 public record LlmModels(List<LlmModel> Models, string DefaultModel);
 
@@ -17,6 +18,6 @@ public static class LlmModelQueries
     internal static async Task<LlmModels> LoadAsync(AppDbContext db, LlmModelResolver models, CancellationToken ct)
     {
         var effective = await models.GetDefaultAsync(db, ct);
-        return new([.. models.AllowedModels().Select(m => new LlmModel(m.Id, m.Label))], effective.Id);
+        return new([.. (await models.AllowedModelsAsync(db, ct)).Select(m => new LlmModel(m.Id, m.Label, m.Provider, m.ModelId, m.KeySource, m.CredentialId))], effective.Id);
     }
 }

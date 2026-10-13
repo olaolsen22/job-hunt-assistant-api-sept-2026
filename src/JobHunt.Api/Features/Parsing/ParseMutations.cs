@@ -1,4 +1,5 @@
 using JobHunt.Api.Data;
+using JobHunt.Api.Features.AiSafeguards;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.LlmModels;
 using JobHunt.Api.Llm;
@@ -20,18 +21,20 @@ public static class ParseMutations
     // so the UI already handles both.
     [Error<InvalidParseRequestException>]
     [Error<UnknownLlmModelException>]
+    [Error<AiSafetyException>]
     public static async Task<ParseJob> ParseListingAsync(
         string text, ParseMode mode, string? model,
-        AppDbContext db, ListingParser parser, LlmModelResolver models, TimeProvider time, CancellationToken ct)
+        AppDbContext db, ListingParser parser, LlmModelResolver models, AiOperations operations, TimeProvider time, CancellationToken ct, Guid? requestId = null)
     {
-        var resolved = await models.ResolveAsync(model, db, ct);
         text = text.Trim();
         if (text.Length == 0)
             throw new InvalidParseRequestException("Paste the job ad text first.");
         if (text.Length > MaxTextLength)
             throw new InvalidParseRequestException($"The text is longer than {MaxTextLength} characters.");
 
-        return await RunJobAsync(text, mode, resolved, db, parser, time, ct);
+        return await operations.RunAsync("parse-listing", new { text, mode, model }, requestId, db,
+            () => models.ResolveAsync(model, db, ct), resolved => RunJobAsync(text, mode, resolved, db, parser, time, ct),
+            Outcome, ct);
     }
 
     // Full mode only: the owner is analyzing one saved listing. The URL comes from the listing, never the client, so
@@ -40,40 +43,55 @@ public static class ParseMutations
     [Error<ListingNotFoundException>]
     [Error<InvalidParseRequestException>]
     [Error<UnknownLlmModelException>]
+    [Error<AiSafetyException>]
     public static async Task<ParseJob> ParseListingFromUrlAsync(
         int listingId, string? model, AppDbContext db, ListingParser parser, LlmModelResolver models,
-        ListingPageFetcher fetcher, TimeProvider time, CancellationToken ct)
+        ListingPageFetcher fetcher, AiOperations operations, TimeProvider time, CancellationToken ct, Guid? requestId = null)
     {
-        // Before the fetch, so a rejected model costs no outbound request either.
-        var resolved = await models.ResolveAsync(model, db, ct);
-        var url = await db.Listings.Where(l => l.Id == listingId).Select(l => l.Url).FirstOrDefaultAsync(ct)
-            ?? throw new ListingNotFoundException(listingId);
-
-        var text = await fetcher.GetListingTextAsync(new Uri(url), ct);
-        return await RunJobAsync(text, ParseMode.Full, resolved, db, parser, time, ct);
+        string? url = null;
+        return await operations.RunAsync("parse-listing-from-url", new { listingId, model }, requestId, db,
+            async () =>
+            {
+                // Model validation retains its precedence; historical receipt replay does not re-fetch sources.
+                var resolved = await models.ResolveAsync(model, db, ct);
+                url = await db.Listings.Where(l => l.Id == listingId).Select(l => l.Url).FirstOrDefaultAsync(ct)
+                    ?? throw new ListingNotFoundException(listingId);
+                return resolved;
+            }, async resolved =>
+            {
+                var text = await fetcher.GetListingTextAsync(new Uri(url!), ct);
+                return await RunJobAsync(text, ParseMode.Full, resolved, db, parser, time, ct);
+            }, Outcome, ct);
     }
 
     // For a listing that isn't saved yet, so the URL has to come from the client. The fetcher's public-address
     // check is what keeps this from reaching internal hosts.
     [Error<InvalidParseRequestException>]
     [Error<UnknownLlmModelException>]
+    [Error<AiSafetyException>]
     public static async Task<ParseJob> ParseUrlAsync(
         string url, string? model, AppDbContext db, ListingParser parser, LlmModelResolver models,
-        ListingPageFetcher fetcher, TimeProvider time, CancellationToken ct)
+        ListingPageFetcher fetcher, AiOperations operations, TimeProvider time, CancellationToken ct, Guid? requestId = null)
     {
-        var resolved = await models.ResolveAsync(model, db, ct);
         url = url.Trim();
         if (url.Length > MaxUrlLength
             || !Uri.TryCreate(url, UriKind.Absolute, out var uri)
             || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
             throw new InvalidParseRequestException("Enter a full http(s) link to the job ad.");
 
-        var text = await fetcher.GetListingTextAsync(uri, ct);
-        return await RunJobAsync(text, ParseMode.Full, resolved, db, parser, time, ct);
+        return await operations.RunAsync("parse-url", new { url, model }, requestId, db,
+            () => models.ResolveAsync(model, db, ct), async resolved =>
+            {
+                var text = await fetcher.GetListingTextAsync(uri, ct);
+                return await RunJobAsync(text, ParseMode.Full, resolved, db, parser, time, ct);
+            }, Outcome, ct);
     }
 
+    private static AiOutcome Outcome(ParseJob job) => new(job.Status == ParseJobStatus.Succeeded,
+        job.Status == ParseJobStatus.Failed ? "parse-failed" : null, job);
+
     private static async Task<ParseJob> RunJobAsync(
-        string text, ParseMode mode, LlmModelOption model, AppDbContext db, ListingParser parser, TimeProvider time,
+        string text, ParseMode mode, ResolvedLlmModel model, AppDbContext db, ListingParser parser, TimeProvider time,
         CancellationToken ct)
     {
         var now = time.GetUtcNow().UtcDateTime;
@@ -83,14 +101,13 @@ public static class ParseMutations
             Mode = mode,
             Status = ParseJobStatus.Running,
             RawText = text,
-            Provider = GeminiOptions.Provider,
-            Model = model.Id,
+            Provider = model.Provider,
+            Model = model.ModelId,
             CreatedAt = now,
             StartedAt = now,
         };
         db.ParseJobs.Add(job);
-        await parser.RunAsync(job, db, ct);
-        await db.SaveChangesAsync(ct);
+        await parser.RunAsync(job, model, db, ct);
         return job;
     }
 }

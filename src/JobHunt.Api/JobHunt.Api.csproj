@@ -3,6 +3,9 @@
     <UserSecretsId>f8c38152-1481-4cb7-b7ab-f1fd27e1036d</UserSecretsId>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Anthropic" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
+    <PackageReference Include="OpenAI" />
     <PackageReference Include="Google.GenAI" />
     <PackageReference Include="HotChocolate.AspNetCore" />
     <PackageReference Include="HotChocolate.Data.EntityFramework" />

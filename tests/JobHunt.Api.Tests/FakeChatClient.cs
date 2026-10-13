@@ -6,15 +6,20 @@ namespace JobHunt.Api.Tests;
 public class FakeChatClient : IChatClient
 {
     public Func<ChatResponse> Respond { get; set; } = () => throw new InvalidOperationException("No fake LLM response set.");
+    public Func<CancellationToken, Task<ChatResponse>>? RespondAsync { get; set; }
     public List<ChatMessage> LastMessages { get; private set; } = [];
     public ChatOptions? LastOptions { get; private set; }
+    public int Calls { get; private set; }
+    public bool Disposed { get; private set; }
 
     public Task<ChatResponse> GetResponseAsync(
         IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        Calls++;
         LastMessages = messages.ToList();
         LastOptions = options;
-        return Task.FromResult(Respond());
+        return RespondAsync?.Invoke(cancellationToken) ?? Task.FromResult(Respond());
     }
 
     public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
@@ -23,5 +28,5 @@ public class FakeChatClient : IChatClient
 
     public object? GetService(Type serviceType, object? serviceKey = null) => null;
 
-    public void Dispose() { }
+    public void Dispose() { Disposed = true; }
 }

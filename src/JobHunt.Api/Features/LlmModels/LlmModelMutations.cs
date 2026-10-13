@@ -13,8 +13,7 @@ public static class LlmModelMutations
     public static async Task<LlmModels> SetDefaultLlmModelAsync(
         string? model, AppDbContext db, LlmModelResolver models, CancellationToken ct)
     {
-        if (model is not null)
-            await models.ResolveAsync(model, db, ct);
+        var resolved = model is not null ? await models.ResolveAsync(model, db, ct) : null;
 
         var setting = await db.UserLlmSettings.FirstOrDefaultAsync(ct);
         if (setting is null)
@@ -23,6 +22,7 @@ public static class LlmModelMutations
             db.UserLlmSettings.Add(setting);
         }
         setting.DefaultModel = model;
+        setting.Provider = resolved?.Provider ?? GeminiOptions.Provider;
         await db.SaveChangesAsync(ct);
         return await LlmModelQueries.LoadAsync(db, models, ct);
     }

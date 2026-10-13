@@ -132,7 +132,7 @@ public class ParseTests(ApiFactory factory) : IClassFixture<ApiFactory>
             .GetProperty("parseListing").GetProperty("parseJob");
 
         Assert.Equal("FAILED", job.GetProperty("status").GetString());
-        Assert.Contains("free-tier limit", job.GetProperty("error").GetString());
+        Assert.Contains("rate limit", job.GetProperty("error").GetString());
     }
 
     [Fact]

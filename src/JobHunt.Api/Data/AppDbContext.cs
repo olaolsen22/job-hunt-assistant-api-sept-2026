@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using JobHunt.Api.Features.AiSafeguards;
 using JobHunt.Api.Features.Applications;
 using JobHunt.Api.Features.Auth;
 using JobHunt.Api.Features.Companies;
@@ -9,6 +10,7 @@ using JobHunt.Api.Features.Industries;
 using JobHunt.Api.Features.JobRoles;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.LlmModels;
+using JobHunt.Api.Features.LlmProviderKeys;
 using JobHunt.Api.Features.Parsing;
 using JobHunt.Api.Features.Profiles;
 using JobHunt.Api.Features.TailoredCvDrafts;
@@ -48,6 +50,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
     public DbSet<ParseJob> ParseJobs => Set<ParseJob>();
     public DbSet<LlmUsage> LlmUsages => Set<LlmUsage>();
     public DbSet<UserLlmSetting> UserLlmSettings => Set<UserLlmSetting>();
+    public DbSet<UserProviderKey> UserProviderKeys => Set<UserProviderKey>();
+    public DbSet<AiOperation> AiOperations => Set<AiOperation>();
+    public DbSet<UserLlmLimit> UserLlmLimits => Set<UserLlmLimit>();
     public DbSet<Profile> Profiles => Set<Profile>();
     public DbSet<ProfileExperience> ProfileExperiences => Set<ProfileExperience>();
     public DbSet<ProfileEducation> ProfileEducations => Set<ProfileEducation>();
@@ -100,6 +105,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
         modelBuilder.Entity<ParseJob>().HasQueryFilter(j => j.UserId == CurrentUserId);
         modelBuilder.Entity<LlmUsage>().HasQueryFilter(u => u.UserId == CurrentUserId);
         modelBuilder.Entity<UserLlmSetting>().HasQueryFilter(s => s.UserId == CurrentUserId);
+        modelBuilder.Entity<UserProviderKey>().HasQueryFilter(k => k.UserId == CurrentUserId);
+        modelBuilder.Entity<AiOperation>().HasQueryFilter(o => o.UserId == CurrentUserId);
+        modelBuilder.Entity<UserLlmLimit>().HasQueryFilter(l => l.UserId == CurrentUserId);
         modelBuilder.Entity<Profile>().HasQueryFilter(p => p.UserId == CurrentUserId);
         modelBuilder.Entity<ProfileWorkMode>().HasQueryFilter(w => w.Profile.UserId == CurrentUserId);
         modelBuilder.Entity<ProfileEmploymentType>().HasQueryFilter(t => t.Profile.UserId == CurrentUserId);
