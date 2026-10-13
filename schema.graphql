@@ -245,6 +245,8 @@ type Mutation {
     @cost(weight: "10")
   deleteProfileBullet(input: DeleteProfileBulletInput!): DeleteProfileBulletPayload!
     @cost(weight: "10")
+  clearProfileSections(input: ClearProfileSectionsInput!): ClearProfileSectionsPayload!
+    @cost(weight: "10")
   importProfileCv(input: ImportProfileCvInput!): ImportProfileCvPayload!
     @cost(weight: "10")
   parseProfileCv(input: ParseProfileCvInput!): ParseProfileCvPayload!
@@ -375,6 +377,11 @@ type AnalyzeTailoredCvSectionPayload {
 type ApplyToListingPayload {
   listing: Listing
   errors: [ApplyToListingError!]
+}
+
+type ClearProfileSectionsPayload {
+  profile: Profile
+  errors: [ClearProfileSectionsError!]
 }
 
 "Information about the offset pagination."
@@ -1641,6 +1648,8 @@ union ApplyToListingError =
   | DocumentNotFoundError
   | InvalidDocumentError
 
+union ClearProfileSectionsError = InvalidProfileError
+
 union CreateCompaniesError = InvalidCompanyError | InvalidLocationError
 
 union CreateJobRoleCategoryError = InvalidJobRoleCategoryError
@@ -1924,6 +1933,10 @@ input ApplyToListingInput {
 input BooleanOperationFilterInput {
   eq: Boolean @cost(weight: "10")
   neq: Boolean @cost(weight: "10")
+}
+
+input ClearProfileSectionsInput {
+  sections: [ProfileSection!]!
 }
 
 input CompanyFilterInput {
@@ -3132,6 +3145,18 @@ enum ProfileEntryKind {
   EDUCATION
   CERTIFICATION
   PROJECT
+}
+
+enum ProfileSection {
+  SUMMARY
+  EXPERIENCES
+  EDUCATIONS
+  CERTIFICATIONS
+  PROJECTS
+  SKILLS
+  LANGUAGES
+  REFERENCES
+  HOBBIES
 }
 
 enum Schedule {
