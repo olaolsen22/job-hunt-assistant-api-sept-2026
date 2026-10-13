@@ -5,7 +5,7 @@ public record ProfileCvParsePrompt(int Version, string Instructions);
 [QueryType]
 public static class ProfileCvPromptQueries
 {
-    public static ProfileCvParsePrompt GetProfileCvParsePrompt() => new(1, Instructions);
+    public static ProfileCvParsePrompt GetProfileCvParsePrompt() => new(2, Instructions);
 
     public const string Instructions = """
         Extract the English CV supplied by the user into a master-profile candidate.
@@ -27,7 +27,7 @@ public static class ProfileCvPromptQueries
           "certifications": [{"name":null,"issuer":null,"issuedMonth":null,"expiresMonth":null,"url":null,"bullets":[]}],
           "projects": [{"name":null,"url":null,"location":null,"startMonth":null,"endMonth":null,"skillNames":[],"bullets":[]}],
           "skills": [{"name":null,"level":null}],
-          "languages": [{"language":"ENGLISH","level":null}],
+          "languages": [{"name":"English","written":null,"spoken":null}],
           "warnings": [{"path":"experiences[0].startMonth","message":"Start month missing; review before saving."}]
         }
 
@@ -45,10 +45,12 @@ public static class ProfileCvPromptQueries
           At most 20 bullets per entry, each nonblank and at most 500 characters. Warn about content that does not fit.
         - Skill tags list skills evidenced in that experience/project only. Names use source spelling.
         - Skill level is 1-5 only if explicitly supplied on that scale; otherwise null and a warning.
-          Language levels are A1, A2, B1, B2, C1, C2 only if explicit; otherwise null and a warning.
-          Supported languages: ENGLISH and NORWEGIAN; warn about other languages instead of inventing enum values.
+          Languages: any language, named in English as in the CV (e.g. "Norwegian", "Filipino/Tagalog").
+          Written and spoken levels are BEGINNER, GOOD, VERY_GOOD, or NATIVE (first language), each only if the CV
+          states it or states one level for both (e.g. "fluent" = VERY_GOOD, "native"/"mother tongue" = NATIVE).
+          Map CEFR when stated: A1-A2 BEGINNER, B1-B2 GOOD, C1-C2 VERY_GOOD. Otherwise null and a warning.
         - Short text limits 200, summary Markdown 10000, hobbies 20 of 100 characters, links 10 with labels 50.
-        - At most 100 entries in each history section, 200 skills, 2 languages, 1000 warnings, 200 skill tags per entry.
+        - At most 100 entries in each history section, 200 skills, 20 languages, 1000 warnings, 200 skill tags per entry.
           If content exceeds limits, warn rather than silently inventing or claiming complete extraction.
         """;
 }

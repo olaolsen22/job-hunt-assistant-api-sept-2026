@@ -17,6 +17,96 @@ namespace JobHunt.Api.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
 
+            modelBuilder.Entity("JobHunt.Api.Features.AiSafeguards.AiOperation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CredentialId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ErrorCode")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ParseJobId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProtectedRequestDigest")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProtectedWorkDigest")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasFilter("\"Status\" = 'Running'");
+
+                    b.HasIndex("ParseJobId", "UserId");
+
+                    b.HasIndex("UserId", "RequestId")
+                        .IsUnique();
+
+                    b.ToTable("AiOperations");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.AiSafeguards.UserLlmLimit", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Provider")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("DailyRequestLimit")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("UserId", "Provider");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("UserLlmLimits", t =>
+                        {
+                            t.HasCheckConstraint("CK_UserLlmLimits_Nonnegative", "\"DailyRequestLimit\" IS NULL OR \"DailyRequestLimit\" >= 0");
+                        });
+                });
+
             modelBuilder.Entity("JobHunt.Api.Features.Applications.Interview", b =>
                 {
                     b.Property<int>("Id")
@@ -651,6 +741,47 @@ namespace JobHunt.Api.Migrations
                     b.ToTable("UserLlmSettings");
                 });
 
+            modelBuilder.Entity("JobHunt.Api.Features.LlmProviderKeys.UserProviderKey", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Last4")
+                        .IsRequired()
+                        .HasMaxLength(4)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProtectedKey")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RetiredAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Provider")
+                        .IsUnique()
+                        .HasFilter("\"RetiredAt\" IS NULL");
+
+                    b.ToTable("UserProviderKeys", t =>
+                        {
+                            t.HasCheckConstraint("CK_UserProviderKeys_SecretLifecycle", "(\"RetiredAt\" IS NULL AND \"ProtectedKey\" IS NOT NULL) OR (\"RetiredAt\" IS NOT NULL AND \"ProtectedKey\" IS NULL)");
+                        });
+                });
+
             modelBuilder.Entity("JobHunt.Api.Features.Locations.Location", b =>
                 {
                     b.Property<int>("Id")
@@ -1024,17 +1155,31 @@ namespace JobHunt.Api.Migrations
 
             modelBuilder.Entity("JobHunt.Api.Features.Profiles.ProfileLanguage", b =>
                 {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT")
+                        .UseCollation("NOCASE");
+
                     b.Property<int>("ProfileId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("Language")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Level")
+                    b.Property<string>("Spoken")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.HasKey("ProfileId", "Language");
+                    b.Property<string>("Written")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProfileId", "Name")
+                        .IsUnique();
 
                     b.ToTable("ProfileLanguages");
                 });
@@ -1262,6 +1407,12 @@ namespace JobHunt.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<Guid?>("AiOperationId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("AttemptOrdinal")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
@@ -1270,6 +1421,12 @@ namespace JobHunt.Api.Migrations
 
                     b.Property<long?>("InputTokens")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("KeySource")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("Shared");
 
                     b.Property<long>("LatencyMs")
                         .HasColumnType("INTEGER");
@@ -1296,11 +1453,32 @@ namespace JobHunt.Api.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("UserProviderKeyId")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("AiOperationId", "AttemptOrdinal")
+                        .IsUnique();
+
+                    b.HasIndex("AiOperationId", "UserId");
 
                     b.HasIndex("UserId", "CreatedAt");
 
-                    b.ToTable("LlmUsages");
+                    b.HasIndex("UserProviderKeyId", "UserId");
+
+                    b.HasIndex("KeySource", "Provider", "Model", "CreatedAt");
+
+                    b.HasIndex("UserId", "Provider", "KeySource", "CreatedAt");
+
+                    b.HasIndex("UserProviderKeyId", "Provider", "Model", "CreatedAt");
+
+                    b.ToTable("LlmUsages", t =>
+                        {
+                            t.HasCheckConstraint("CK_LlmUsages_AttemptIdentity", "(\"AiOperationId\" IS NULL AND \"AttemptOrdinal\" IS NULL) OR (\"AiOperationId\" IS NOT NULL AND \"AttemptOrdinal\" IS NOT NULL AND \"AttemptOrdinal\" >= 0)");
+
+                            t.HasCheckConstraint("CK_LlmUsages_CredentialSource", "(\"KeySource\" = 'Shared' AND \"UserProviderKeyId\" IS NULL) OR (\"KeySource\" = 'User' AND \"UserProviderKeyId\" IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
@@ -1474,6 +1652,30 @@ namespace JobHunt.Api.Migrations
                     b.HasIndex("SkillId");
 
                     b.ToTable("ProfileProjectSkills");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.AiSafeguards.AiOperation", b =>
+                {
+                    b.HasOne("JobHunt.Api.Features.Auth.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("JobHunt.Api.Features.Parsing.ParseJob", null)
+                        .WithMany()
+                        .HasForeignKey("ParseJobId", "UserId")
+                        .HasPrincipalKey("Id", "UserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.AiSafeguards.UserLlmLimit", b =>
+                {
+                    b.HasOne("JobHunt.Api.Features.Auth.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("JobHunt.Api.Features.Applications.Interview", b =>
@@ -1745,6 +1947,15 @@ namespace JobHunt.Api.Migrations
                 });
 
             modelBuilder.Entity("JobHunt.Api.Features.LlmModels.UserLlmSetting", b =>
+                {
+                    b.HasOne("JobHunt.Api.Features.Auth.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.LlmProviderKeys.UserProviderKey", b =>
                 {
                     b.HasOne("JobHunt.Api.Features.Auth.AppUser", null)
                         .WithMany()
@@ -2071,6 +2282,20 @@ namespace JobHunt.Api.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("JobHunt.Api.Features.AiSafeguards.AiOperation", null)
+                        .WithMany()
+                        .HasForeignKey("AiOperationId", "UserId")
+                        .HasPrincipalKey("Id", "UserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("JobHunt.Api.Features.LlmProviderKeys.UserProviderKey", "UserProviderKey")
+                        .WithMany()
+                        .HasForeignKey("UserProviderKeyId", "UserId")
+                        .HasPrincipalKey("Id", "UserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.Navigation("UserProviderKey");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>

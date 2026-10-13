@@ -25,8 +25,9 @@ public static class TailoredCvExternalPreviewMutations
     public static async Task<TailoredCvExternalCandidate> PreviewTailoredCvDraftAsync(
         int listingId, string json, AppDbContext db, CancellationToken ct)
     {
-        if (!await db.Listings.AnyAsync(l => l.Id == listingId, ct))
-            throw new ListingNotFoundException(listingId);
+        var listing = await db.Listings.Where(l => l.Id == listingId)
+            .Select(l => new { l.PostingLanguage }).FirstOrDefaultAsync(ct)
+            ?? throw new ListingNotFoundException(listingId);
         if (string.IsNullOrWhiteSpace(json) || json.Length > TailoredCvDraftValidation.MaxJsonLength)
             throw new InvalidTailoredCvDraftException(
                 $"json: paste a candidate object no longer than {TailoredCvDraftValidation.MaxJsonLength} characters.");
@@ -45,7 +46,7 @@ public static class TailoredCvExternalPreviewMutations
             throw new InvalidTailoredCvDraftException("schemaVersion/content: expected version 1 and a content object.");
 
         TailoredCvDraftValidation.ValidateExternalCandidateItems(parsed.Content);
-        var content = TailoredCvDraftValidation.Normalize(parsed.Content);
+        var content = TailoredCvDraftValidation.Normalize(parsed.Content, listing.PostingLanguage);
         await TailoredCvDraftValidation.ValidateSourceIdsAsync(content, db, ct, requireSourceBulletText: true);
         return new(parsed.SchemaVersion, content);
     }

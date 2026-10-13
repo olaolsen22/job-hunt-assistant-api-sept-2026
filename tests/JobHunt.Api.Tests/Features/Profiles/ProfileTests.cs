@@ -43,7 +43,7 @@ public class ProfileTests(ApiFactory factory) : IClassFixture<ApiFactory>
             jobRoles { name } workModes employmentTypes minSalary salaryCurrency noticePeriodMonths
             targetLocations { city countryCode }
             experiences { id } educations { id } certifications { id } projects { id }
-            skills { level } languages { level }
+            skills { level } languages { name written spoken }
           }
         }
         """;

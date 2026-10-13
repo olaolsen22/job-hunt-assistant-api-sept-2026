@@ -12,7 +12,7 @@ public record TailoredCvExternalPrompt(int Version, string Instructions);
 [QueryType]
 public static class TailoredCvExternalPromptQueries
 {
-    public const int Version = 1;
+    public const int Version = 3;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseUpper, allowIntegerValues: false) },
@@ -30,6 +30,9 @@ public static class TailoredCvExternalPromptQueries
             .FirstOrDefaultAsync(l => l.Id == listingId, ct)
             ?? throw new ListingNotFoundException(listingId);
         var profile = await ProfileQueries.LoadAsync(db, ct);
+        var language = await TailoredCvLanguageText.TargetLanguageAsync(listing, db, ct);
+        string BulletText(ProfileBullet b) => TailoredCvLanguageText.Bullet(b, language);
+        var translation = profile.Translations.FirstOrDefault(t => t.Language == language);
         var context = new
         {
             Listing = new
@@ -41,31 +44,35 @@ public static class TailoredCvExternalPromptQueries
             },
             Profile = new
             {
-                profile.Headline, profile.Summary,
+                Headline = translation?.Headline ?? profile.Headline,
+                Summary = translation?.Summary ?? profile.Summary,
                 Experiences = profile.Experiences.Select(e => new
                 {
                     e.Id, e.Employer, e.Title, e.StartMonth, e.EndMonth,
+                    Location = e.Location is { } l ? new { l.City, l.CountryCode } : null,
                     Skills = e.Skills.Select(s => s.Name),
-                    Bullets = e.Bullets.Select(b => new { b.Id, b.Text }),
+                    Bullets = e.Bullets.Select(b => new { b.Id, Text = BulletText(b) }),
                 }),
                 Educations = profile.Educations.Select(e => new
                 {
                     e.Id, e.School, e.Degree, e.Field, e.StartMonth, e.EndMonth,
-                    Bullets = e.Bullets.Select(b => new { b.Id, b.Text }),
+                    Location = e.Location is { } l ? new { l.City, l.CountryCode } : null,
+                    Bullets = e.Bullets.Select(b => new { b.Id, Text = BulletText(b) }),
                 }),
                 Certifications = profile.Certifications.Select(e => new
                 {
                     e.Id, e.Name, e.Issuer, e.IssuedMonth, e.ExpiresMonth, e.Url,
-                    Bullets = e.Bullets.Select(b => new { b.Id, b.Text }),
+                    Bullets = e.Bullets.Select(b => new { b.Id, Text = BulletText(b) }),
                 }),
                 Projects = profile.Projects.Select(e => new
                 {
                     e.Id, e.Name, e.Url, e.StartMonth, e.EndMonth,
+                    Location = e.Location is { } l ? new { l.City, l.CountryCode } : null,
                     Skills = e.Skills.Select(s => s.Name),
-                    Bullets = e.Bullets.Select(b => new { b.Id, b.Text }),
+                    Bullets = e.Bullets.Select(b => new { b.Id, Text = BulletText(b) }),
                 }),
                 Skills = profile.Skills.Select(s => new { Id = s.SkillId, s.Skill.Name, s.Level }),
-                Languages = profile.Languages.Select(l => new { l.Language, l.Level }),
+                Languages = profile.Languages.Select(l => new { l.Name, l.Written, l.Spoken }),
             },
         };
         var serialized = JsonSerializer.Serialize(context, JsonOptions);
@@ -81,6 +88,14 @@ public static class TailoredCvExternalPromptQueries
             and preserve the exact original bullet text. Omit irrelevant entries and bullets. Select only profile skills
             relevant to the listing using sourceSkillId. Include languages only when present in the profile. Write a
             concise listing-specific summary from supported profile facts, or null when there is not enough evidence.
+            Follow Norwegian CV guidance for an ordinary job application: the CV should fit 1-2 pages, so keep the
+            strongest, most specific bullets and drop near-duplicates or generic duties. Order experiences, educations,
+            certifications, and projects newest first (ongoing entries first). The CV language is {{TailoredCvLanguageText.Name(language)}}:
+            set "language" to "{{(language == Language.Norwegian ? "NORWEGIAN" : "ENGLISH")}}" and write the summary in that language as 2-4 short
+            sentences of plain text without Markdown, reusing the listing's terminology only where the profile supports it.
+            Copy bullet text exactly as supplied even if it is in another language; the user translates it in the UI.
+            For an entry with a location, set "location" to "City, Country" with the country name in the CV language,
+            or just the country when the city is null. Copy language names and written/spoken levels from the profile.
             Do not output full name, contact details, location, links, references, date of birth, nationality, work
             authorization, hobbies, or job-search preferences. The user fills contact fields in the UI.
 
@@ -88,13 +103,14 @@ public static class TailoredCvExternalPromptQueries
             {
               "schemaVersion": 1,
               "content": {
+                "language": "ENGLISH",
                 "summary": null,
-                "experiences": [{"sourceEntryId": 1, "employer": "Example", "title": "Developer", "startMonth": "2024-01-01", "endMonth": null, "bullets": [{"sourceBulletId": 2, "text": "Original profile bullet"}]}],
-                "educations": [{"sourceEntryId": 3, "school": "Example University", "degree": "MSc", "field": "Computer Science", "startMonth": "2020-01-01", "endMonth": "2022-01-01", "bullets": []}],
+                "experiences": [{"sourceEntryId": 1, "employer": "Example", "title": "Developer", "location": "Lagos, Nigeria", "startMonth": "2024-01-01", "endMonth": null, "bullets": [{"sourceBulletId": 2, "text": "Original profile bullet"}]}],
+                "educations": [{"sourceEntryId": 3, "school": "Example University", "degree": "MSc", "field": "Computer Science", "location": null, "startMonth": "2020-01-01", "endMonth": "2022-01-01", "bullets": []}],
                 "certifications": [{"sourceEntryId": 4, "name": "Certification", "issuer": "Issuer", "issuedMonth": "2024-01-01", "expiresMonth": null, "url": null, "bullets": []}],
-                "projects": [{"sourceEntryId": 5, "name": "Project", "url": null, "startMonth": null, "endMonth": null, "bullets": []}],
+                "projects": [{"sourceEntryId": 5, "name": "Project", "url": null, "location": null, "startMonth": null, "endMonth": null, "bullets": []}],
                 "skills": [{"sourceSkillId": 6, "name": "TypeScript", "level": 5}],
-                "languages": [{"language": "ENGLISH", "level": "C1"}]
+                "languages": [{"name": "English", "written": "NATIVE", "spoken": "NATIVE"}]
               }
             }
             Use empty arrays for sections with no selected content. Dates must be copied from the profile unchanged.

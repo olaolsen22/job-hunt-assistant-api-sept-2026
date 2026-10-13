@@ -158,6 +158,75 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
     }
 
     [Fact]
+    public async Task SummaryAnalysis_NorwegianListing_AsksForNorwegianFromTranslatedSummary()
+    {
+        var client = await factory.GetGuestClientAsync();
+        await client.GraphQLAsync("""
+            mutation {
+              updateProfile(input: { headline: "Frontend developer", summary: "Builds Vue applications", hobbies: [], links: [] }) {
+                profile { id }
+              }
+            }
+            """);
+        await client.GraphQLAsync("""
+            mutation { setProfileTranslation(input: { language: NORWEGIAN, summary: "Bygger Vue-applikasjoner" }) { profileTranslation { language } } }
+            """);
+        var listingId = await CreateListingAsync(client, "Vue-utvikler", "Bygg Vue-applikasjoner", ["Vue"], "NORWEGIAN");
+        factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant, "{\"summary\":\"Frontendutvikler.\"}"));
+
+        var result = (await AnalyzeAsync(client, listingId, "SUMMARY", null)).GetProperty("result");
+
+        Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
+        var messages = string.Join("\n", factory.Llm.LastMessages.Select(m => m.Text));
+        Assert.Contains("Write in Norwegian (bokmål)", messages);
+        Assert.Contains("Bygger Vue-applikasjoner", messages);
+        Assert.DoesNotContain("Builds Vue applications", messages);
+    }
+
+    [Fact]
+    public async Task ExternalPreview_NorwegianListing_AcceptsTranslatedBulletText()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var experience = await ProfileEntryTests.AddExperienceAsync(client, employer: "Translated Employer", skills: []);
+        var entryId = experience.GetProperty("id").GetInt32();
+        var bulletId = (await client.GraphQLAsync("""
+            mutation ($entryId: Int!) {
+              addProfileBullet(input: { kind: EXPERIENCE, entryId: $entryId, text: "Built services" }) { profileBullet { id } }
+            }
+            """, new { entryId })).GetProperty("addProfileBullet").GetProperty("profileBullet").GetProperty("id").GetInt32();
+        await client.GraphQLAsync("""
+            mutation ($bulletId: Int!) {
+              setProfileBulletTranslation(input: { bulletId: $bulletId, language: NORWEGIAN, text: "Bygde tjenester" }) {
+                profileBulletTranslation { id }
+              }
+            }
+            """, new { bulletId });
+        var listingId = await CreateListingAsync(client, "Utvikler", "Bygg tjenester", [], "NORWEGIAN");
+
+        var instructions = (await client.GraphQLAsync("""
+            query ($listingId: Int!) { tailoredCvExternalPrompt(listingId: $listingId) { instructions } }
+            """, new { listingId })).GetProperty("tailoredCvExternalPrompt").GetProperty("instructions").GetString()!;
+        Assert.Contains("Bygde tjenester", instructions);
+        Assert.Contains("\"NORWEGIAN\"", instructions);
+
+        var json = JsonSerializer.Serialize(new
+        {
+            schemaVersion = 1,
+            content = new
+            {
+                experiences = new[] { new
+                {
+                    sourceEntryId = entryId, employer = "Translated Employer", title = "Utvikler",
+                    bullets = new[] { new { sourceBulletId = bulletId, text = "Bygde tjenester" } },
+                } },
+            },
+        });
+        var payload = (await client.GraphQLAsync(PreviewExternal, new { listingId, json })).GetProperty("previewTailoredCvDraft");
+
+        Assert.Equal(JsonValueKind.Null, payload.GetProperty("errors").ValueKind);
+    }
+
+    [Fact]
     public async Task ExternalPrompt_ContainsListingAndProfileSourcesButExcludesPrivateFields()
     {
         var client = await factory.GetOwnerClientAsync();
@@ -445,7 +514,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
     }
 
     [Fact]
-    public async Task AnalyzeAll_ContinuesAfterAProviderFailure()
+    public async Task AnalyzeAll_SkipsRemainingSectionsAfterAProviderFailure()
     {
         var client = await factory.GetGuestClientAsync();
         await ProfileEntryTests.AddExperienceAsync(client, employer: $"Analyze failure {Guid.NewGuid()}", skills: []);
@@ -468,7 +537,8 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
 
         Assert.Equal("FAILED", results[0].GetProperty("status").GetString());
         Assert.Contains("couldn't be reached", results[0].GetProperty("error").GetString());
-        Assert.All(results.Skip(1), result => Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString()));
+        Assert.All(results.Skip(1), result => Assert.Equal("SKIPPED", result.GetProperty("status").GetString()));
+        Assert.Equal(1, calls);
     }
 
     private static async Task AddPrivateProfileDetailsAsync(HttpClient client)
@@ -505,14 +575,15 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         return data.GetProperty("analyzeTailoredCvSection");
     }
 
-    private static async Task<int> CreateListingAsync(HttpClient client, string title, string description, string[] skills)
+    private static async Task<int> CreateListingAsync(HttpClient client, string title, string description, string[] skills,
+        string? postingLanguage = null)
     {
         var listing = new
         {
             title, companyName = "Tailored CV analysis company", jobRoleName = "Developer",
             description, url = $"https://tailored-cv-analysis.example/{Guid.NewGuid()}", postedOn = "2026-10-01",
             deadlineType = "UNSPECIFIED", skills = skills.Select(name => (object)new { name, level = 3, isRequired = true }).ToArray(),
-            languages = Array.Empty<object>(), locations = Array.Empty<object>(),
+            languages = Array.Empty<object>(), locations = Array.Empty<object>(), postingLanguage,
         };
         var data = await client.GraphQLAsync("""
             mutation ($listing: ListingInput!) { createListing(input: { listing: $listing }) { listing { id } } }

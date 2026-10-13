@@ -6,6 +6,7 @@ schema {
 type Query {
   listingParsePrompt: ListingParsePrompt! @cost(weight: "10")
   listingQuickParsePrompt: ListingParsePrompt! @cost(weight: "10")
+  llmCallLimits: [LlmCallLimit!]! @cost(weight: "10")
   companyParsePrompt: CompanyParsePrompt! @cost(weight: "10")
   companies(
     search: String
@@ -114,6 +115,8 @@ type Query {
     @cost(weight: "10")
   listingById(id: Int!): Listing @cost(weight: "10")
   llmModels: LlmModels! @cost(weight: "10")
+  providerKeys(includeRetired: Boolean! = false): [ProviderKeyStatus!]!
+    @cost(weight: "10")
   locations(
     search: String
     "Returns the first _n_ elements from the list."
@@ -163,13 +166,16 @@ type Query {
   tailoredCvExternalPrompt(listingId: Int!): TailoredCvExternalPrompt!
     @cost(weight: "10")
   llmUsageToday: UsageToday! @cost(weight: "10")
-  usageDaily(days: Int! = 30): [DailyUsage!]! @cost(weight: "10")
+  usageDaily(days: Int! = 30, credentialId: String): [DailyUsage!]!
+    @cost(weight: "10")
 }
 
 type Mutation {
   uploadDocument(input: UploadDocumentInput!): UploadDocumentPayload!
     @cost(weight: "10")
   deleteDocument(input: DeleteDocumentInput!): DeleteDocumentPayload!
+    @cost(weight: "10")
+  setLlmCallLimit(input: SetLlmCallLimitInput!): SetLlmCallLimitPayload!
     @cost(weight: "10")
   applyToListing(input: ApplyToListingInput!): ApplyToListingPayload!
     @cost(weight: "10")
@@ -219,6 +225,10 @@ type Mutation {
   deleteListing(input: DeleteListingInput!): DeleteListingPayload!
     @cost(weight: "10")
   setDefaultLlmModel(input: SetDefaultLlmModelInput!): SetDefaultLlmModelPayload!
+    @cost(weight: "10")
+  setProviderKey(input: SetProviderKeyInput!): SetProviderKeyPayload!
+    @cost(weight: "10")
+  removeProviderKey(input: RemoveProviderKeyInput!): RemoveProviderKeyPayload!
     @cost(weight: "10")
   saveLocation(input: SaveLocationInput!): SaveLocationPayload!
     @cost(weight: "10")
@@ -347,6 +357,11 @@ type AddProfileReferencePayload {
   errors: [AddProfileReferenceError!]
 }
 
+type AiSafetyError implements Error {
+  message: String!
+  code: String!
+}
+
 type AnalyzeAllTailoredCvPayload {
   analysis: TailoredCvAnalysisReport
   errors: [AnalyzeAllTailoredCvError!]
@@ -465,6 +480,9 @@ type DailyUsage {
   inputTokens: Long!
   outputTokens: Long!
   estimatedCost: Decimal
+  provider: String!
+  keySource: LlmKeySource!
+  credentialId: String!
 }
 
 type DashboardWidgetState {
@@ -837,9 +855,21 @@ type ListingUrlCheckResult {
   shouldProcess: Boolean!
 }
 
+type LlmCallLimit {
+  provider: String!
+  dailyRequestLimit: Int
+  requestsConsumed: Int!
+  remainingRequests: Int
+  resetsAt: DateTime!
+}
+
 type LlmModel {
   id: String!
   label: String!
+  provider: String!
+  modelId: String!
+  keySource: LlmKeySource!
+  credentialId: String!
 }
 
 type LlmModels {
@@ -1051,8 +1081,9 @@ type ProfileCvExperience {
 }
 
 type ProfileCvLanguage {
-  language: Language!
-  level: CefrLevel
+  name: String
+  written: LanguageProficiency
+  spoken: LanguageProficiency
 }
 
 type ProfileCvLink {
@@ -1124,8 +1155,10 @@ type ProfileExperience {
 }
 
 type ProfileLanguage {
-  language: Language!
-  level: CefrLevel!
+  id: Int!
+  name: String!
+  written: LanguageProficiency!
+  spoken: LanguageProficiency!
 }
 
 type ProfileLink {
@@ -1174,19 +1207,38 @@ type ProfileTranslation {
   isSummaryStale: Boolean!
 }
 
+type ProviderKeyError implements Error {
+  message: String!
+  code: String!
+}
+
+type ProviderKeyStatus {
+  provider: String!
+  configured: Boolean!
+  credentialId: String
+  last4: String
+  createdAt: DateTime
+  retiredAt: DateTime
+}
+
 type RecordOutcomePayload {
   listing: Listing
   errors: [RecordOutcomeError!]
 }
 
 type RemoveProfileLanguagePayload {
-  language: Language
+  name: String
   errors: [RemoveProfileLanguageError!]
 }
 
 type RemoveProfileSkillPayload {
   skillId: Int
   errors: [RemoveProfileSkillError!]
+}
+
+type RemoveProviderKeyPayload {
+  providerKey: ProviderKeyStatus
+  errors: [RemoveProviderKeyError!]
 }
 
 type SaveDashboardLayoutPayload {
@@ -1239,6 +1291,11 @@ type SetListingFavoritePayload {
   errors: [SetListingFavoriteError!]
 }
 
+type SetLlmCallLimitPayload {
+  limit: LlmCallLimit
+  errors: [SetLlmCallLimitError!]
+}
+
 type SetProfileBulletTranslationPayload {
   profileBulletTranslation: ProfileBulletTranslation
   errors: [SetProfileBulletTranslationError!]
@@ -1251,6 +1308,7 @@ type SetProfileContentLanguagePayload {
 
 type SetProfileLanguagePayload {
   profileLanguage: ProfileLanguage
+  errors: [SetProfileLanguageError!]
 }
 
 type SetProfileSkillPayload {
@@ -1261,6 +1319,11 @@ type SetProfileSkillPayload {
 type SetProfileTranslationPayload {
   profileTranslation: ProfileTranslation
   errors: [SetProfileTranslationError!]
+}
+
+type SetProviderKeyPayload {
+  providerKey: ProviderKeyStatus
+  errors: [SetProviderKeyError!]
 }
 
 type Skill {
@@ -1315,6 +1378,7 @@ type TailoredCvAnalysisResult {
   selectedSkillIds: [Int!]!
   summary: String
   error: String
+  errorCode: String
 }
 
 type TailoredCvBullet {
@@ -1344,8 +1408,11 @@ type TailoredCvContent {
   headline: String
   email: String
   phone: String
-  location: String
+  address: String
   links: [TailoredCvLink!]
+  language: Language!
+  dateOfBirth: LocalDate
+  referencesOnRequest: Boolean!
 }
 
 type TailoredCvDraft {
@@ -1367,6 +1434,7 @@ type TailoredCvEducation {
   endMonth: LocalDate
   bullets: [TailoredCvBullet!]!
   sourceEntryId: Int
+  location: String
 }
 
 type TailoredCvExperience {
@@ -1376,6 +1444,7 @@ type TailoredCvExperience {
   endMonth: LocalDate
   bullets: [TailoredCvBullet!]!
   sourceEntryId: Int
+  location: String
 }
 
 type TailoredCvExternalCandidate {
@@ -1389,8 +1458,9 @@ type TailoredCvExternalPrompt {
 }
 
 type TailoredCvLanguage {
-  language: Language!
-  level: CefrLevel
+  name: String!
+  written: LanguageProficiency
+  spoken: LanguageProficiency
 }
 
 type TailoredCvLink {
@@ -1405,6 +1475,7 @@ type TailoredCvProject {
   endMonth: LocalDate
   bullets: [TailoredCvBullet!]!
   sourceEntryId: Int
+  location: String
 }
 
 type TailoredCvSkill {
@@ -1516,6 +1587,9 @@ type UsageToday {
   requestsLimit: Int
   remainingRequests: Int
   resetsAt: DateTime!
+  provider: String!
+  keySource: LlmKeySource!
+  credentialId: String!
 }
 
 interface Error {
@@ -1548,12 +1622,14 @@ union AnalyzeAllTailoredCvError =
   | ListingNotFoundError
   | InvalidTailoredCvAnalysisError
   | UnknownLlmModelError
+  | AiSafetyError
 
 union AnalyzeTailoredCvSectionError =
   | ListingNotFoundError
   | ProfileEntryNotFoundError
   | InvalidTailoredCvAnalysisError
   | UnknownLlmModelError
+  | AiSafetyError
 
 union ApplyToListingError =
   | ListingNotFoundError
@@ -1610,16 +1686,26 @@ union MoveProfileReferenceError =
   | ProfileEntryNotFoundError
   | InvalidProfileError
 
-union ParseListingError = InvalidParseRequestError | UnknownLlmModelError
+union ParseListingError =
+  | InvalidParseRequestError
+  | UnknownLlmModelError
+  | AiSafetyError
 
 union ParseListingFromUrlError =
   | ListingNotFoundError
   | InvalidParseRequestError
   | UnknownLlmModelError
+  | AiSafetyError
 
-union ParseProfileCvError = InvalidParseRequestError | UnknownLlmModelError
+union ParseProfileCvError =
+  | InvalidParseRequestError
+  | UnknownLlmModelError
+  | AiSafetyError
 
-union ParseUrlError = InvalidParseRequestError | UnknownLlmModelError
+union ParseUrlError =
+  | InvalidParseRequestError
+  | UnknownLlmModelError
+  | AiSafetyError
 
 union PreviewProfileCvImportError = InvalidProfileImportError
 
@@ -1635,6 +1721,8 @@ union RecordOutcomeError =
 union RemoveProfileLanguageError = ProfileEntryNotFoundError
 
 union RemoveProfileSkillError = ProfileEntryNotFoundError
+
+union RemoveProviderKeyError = ProviderKeyError
 
 union SaveDashboardLayoutError = InvalidDashboardLayoutError
 
@@ -1660,15 +1748,21 @@ union SetListingArchivedError = ListingNotFoundError
 
 union SetListingFavoriteError = ListingNotFoundError
 
+union SetLlmCallLimitError = AiSafetyError
+
 union SetProfileBulletTranslationError =
   | ProfileEntryNotFoundError
   | InvalidProfileError
 
 union SetProfileContentLanguageError = InvalidProfileError
 
+union SetProfileLanguageError = InvalidProfileError
+
 union SetProfileSkillError = InvalidProfileError
 
 union SetProfileTranslationError = InvalidProfileError
+
+union SetProviderKeyError = ProviderKeyError
 
 union UndoStatusChangeError =
   | ListingNotFoundError
@@ -1798,6 +1892,7 @@ input AddProfileReferenceInput {
 input AnalyzeAllTailoredCvInput {
   listingId: Int!
   model: String
+  requestId: UUID
 }
 
 input AnalyzeTailoredCvSectionInput {
@@ -1805,6 +1900,7 @@ input AnalyzeTailoredCvSectionInput {
   section: TailoredCvSection!
   sourceEntryId: Int
   model: String
+  requestId: UUID
 }
 
 input ApplicationStatusOperationFilterInput {
@@ -2407,22 +2503,26 @@ input NullableOfWorkModeOperationFilterInput {
 input ParseListingFromUrlInput {
   listingId: Int!
   model: String
+  requestId: UUID
 }
 
 input ParseListingInput {
   text: String!
   mode: ParseMode!
   model: String
+  requestId: UUID
 }
 
 input ParseProfileCvInput {
   text: String!
   model: String
+  requestId: UUID
 }
 
 input ParseUrlInput {
   url: String!
   model: String
+  requestId: UUID
 }
 
 input PreviewProfileCvImportInput {
@@ -2494,8 +2594,9 @@ input ProfileCvImportSelectionInput {
 }
 
 input ProfileCvLanguageInput {
-  language: Language!
-  level: CefrLevel
+  name: String
+  written: LanguageProficiency
+  spoken: LanguageProficiency
 }
 
 input ProfileCvProjectSelectionInput {
@@ -2528,11 +2629,15 @@ input RecordOutcomeInput {
 }
 
 input RemoveProfileLanguageInput {
-  language: Language!
+  name: String!
 }
 
 input RemoveProfileSkillInput {
   skillId: Int!
+}
+
+input RemoveProviderKeyInput {
+  provider: String!
 }
 
 input SaveDashboardLayoutInput {
@@ -2584,6 +2689,11 @@ input SetListingFavoriteInput {
   isFavorite: Boolean!
 }
 
+input SetLlmCallLimitInput {
+  provider: String!
+  dailyRequestLimit: Int
+}
+
 input SetProfileBulletTranslationInput {
   bulletId: Int!
   language: Language!
@@ -2596,8 +2706,9 @@ input SetProfileContentLanguageInput {
 }
 
 input SetProfileLanguageInput {
-  language: Language!
-  level: CefrLevel!
+  name: String!
+  written: LanguageProficiency!
+  spoken: LanguageProficiency!
 }
 
 input SetProfileSkillInput {
@@ -2610,6 +2721,11 @@ input SetProfileTranslationInput {
   headline: String
   summary: String
   isMachine: Boolean! = false
+}
+
+input SetProviderKeyInput {
+  provider: String!
+  apiKey: String!
 }
 
 input SkillFilterInput {
@@ -2688,8 +2804,11 @@ input TailoredCvContentInput {
   headline: String
   email: String
   phone: String
-  location: String
+  address: String
   links: [TailoredCvLinkInput!]
+  language: Language
+  dateOfBirth: LocalDate
+  referencesOnRequest: Boolean! = false
 }
 
 input TailoredCvEducationInput {
@@ -2700,6 +2819,7 @@ input TailoredCvEducationInput {
   endMonth: LocalDate
   bullets: [TailoredCvBulletInput!]!
   sourceEntryId: Int
+  location: String
 }
 
 input TailoredCvExperienceInput {
@@ -2709,11 +2829,13 @@ input TailoredCvExperienceInput {
   endMonth: LocalDate
   bullets: [TailoredCvBulletInput!]!
   sourceEntryId: Int
+  location: String
 }
 
 input TailoredCvLanguageInput {
-  language: Language!
-  level: CefrLevel
+  name: String!
+  written: LanguageProficiency
+  spoken: LanguageProficiency
 }
 
 input TailoredCvLinkInput {
@@ -2728,6 +2850,7 @@ input TailoredCvProjectInput {
   endMonth: LocalDate
   bullets: [TailoredCvBulletInput!]!
   sourceEntryId: Int
+  location: String
 }
 
 input TailoredCvSkillInput {
@@ -2961,11 +3084,23 @@ enum Language {
   NORWEGIAN
 }
 
+enum LanguageProficiency {
+  BEGINNER
+  GOOD
+  VERY_GOOD
+  NATIVE
+}
+
 enum LinkKind {
   GITHUB
   LINKEDIN
   PORTFOLIO
   OTHER
+}
+
+enum LlmKeySource {
+  SHARED
+  USER
 }
 
 enum ParseJobStatus {
@@ -3015,6 +3150,7 @@ enum SortEnumType {
 enum TailoredCvAnalysisStatus {
   SUCCEEDED
   FAILED
+  SKIPPED
 }
 
 enum TailoredCvSection {

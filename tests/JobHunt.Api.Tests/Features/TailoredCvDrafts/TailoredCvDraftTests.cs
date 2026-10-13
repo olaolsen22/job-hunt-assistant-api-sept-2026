@@ -101,6 +101,82 @@ public class TailoredCvDraftTests(ApiFactory factory) : IClassFixture<ApiFactory
         Assert.Equal("Edited wording for this application", saved.GetProperty("bullets")[0].GetProperty("text").GetString());
     }
 
+    private const string SaveContent = """
+        mutation ($listingId: Int!, $content: TailoredCvContentInput!) {
+          saveTailoredCvDraft(input: { listingId: $listingId, content: $content }) {
+            tailoredCvDraft { content { language address dateOfBirth referencesOnRequest
+              experiences { location } languages { name written spoken } } }
+            errors { __typename ... on Error { message } }
+          }
+        }
+        """;
+
+    [Fact]
+    public async Task Save_DefaultsLanguageToListingPostingLanguage_AndKeepsAnExplicitChoice()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var listingId = await CreateListingAsync(client, postingLanguage: "NORWEGIAN");
+
+        var defaulted = await client.GraphQLAsync(SaveContent, new { listingId, content = new { summary = "x" } });
+        Assert.Equal("NORWEGIAN", defaulted.GetProperty("saveTailoredCvDraft").GetProperty("tailoredCvDraft")
+            .GetProperty("content").GetProperty("language").GetString());
+
+        var chosen = await client.GraphQLAsync(SaveContent, new { listingId, content = new { summary = "x", language = "ENGLISH" } });
+        Assert.Equal("ENGLISH", chosen.GetProperty("saveTailoredCvDraft").GetProperty("tailoredCvDraft")
+            .GetProperty("content").GetProperty("language").GetString());
+
+        var unset = await client.GraphQLAsync(SaveContent, new { listingId = await CreateListingAsync(client), content = new { summary = "x" } });
+        Assert.Equal("ENGLISH", unset.GetProperty("saveTailoredCvDraft").GetProperty("tailoredCvDraft")
+            .GetProperty("content").GetProperty("language").GetString());
+    }
+
+    [Fact]
+    public async Task Save_StoresNavFields()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var listingId = await CreateListingAsync(client);
+
+        var data = await client.GraphQLAsync(SaveContent, new
+        {
+            listingId,
+            content = new
+            {
+                address = " Storgata 1, 0155 Oslo ", dateOfBirth = "1990-06-15", referencesOnRequest = true,
+                experiences = new[] { new { employer = "Acme", title = "Dev", location = "Lagos, Nigeria", bullets = Array.Empty<object>() } },
+                languages = new[] { new { name = "Filipino/Tagalog", written = "VERY_GOOD", spoken = "NATIVE" } },
+            },
+        });
+
+        var content = data.GetProperty("saveTailoredCvDraft").GetProperty("tailoredCvDraft").GetProperty("content");
+        Assert.Equal("Storgata 1, 0155 Oslo", content.GetProperty("address").GetString());
+        Assert.Equal("1990-06-15", content.GetProperty("dateOfBirth").GetString());
+        Assert.True(content.GetProperty("referencesOnRequest").GetBoolean());
+        Assert.Equal("Lagos, Nigeria", content.GetProperty("experiences")[0].GetProperty("location").GetString());
+        var language = content.GetProperty("languages")[0];
+        Assert.Equal("Filipino/Tagalog", language.GetProperty("name").GetString());
+        Assert.Equal("VERY_GOOD", language.GetProperty("written").GetString());
+        Assert.Equal("NATIVE", language.GetProperty("spoken").GetString());
+    }
+
+    [Theory]
+    [InlineData("English", "english")]
+    [InlineData("English", " ")]
+    public async Task Save_RejectsDuplicateOrBlankLanguageNames(string first, string second)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var listingId = await CreateListingAsync(client);
+
+        var data = await client.GraphQLAsync(SaveContent, new
+        {
+            listingId,
+            content = new { languages = new[] { new { name = first, written = "GOOD", spoken = "GOOD" },
+                new { name = second, written = "GOOD", spoken = "GOOD" } } },
+        });
+
+        var payload = data.GetProperty("saveTailoredCvDraft");
+        Assert.Equal("InvalidTailoredCvDraftError", payload.GetProperty("errors")[0].GetProperty("__typename").GetString());
+    }
+
     private async Task<JsonElement> SaveAsync(HttpClient client, int listingId, string summary)
     {
         var data = await client.GraphQLAsync(Save, new
@@ -113,14 +189,14 @@ public class TailoredCvDraftTests(ApiFactory factory) : IClassFixture<ApiFactory
         return data.GetProperty("saveTailoredCvDraft");
     }
 
-    private static async Task<int> CreateListingAsync(HttpClient client)
+    private static async Task<int> CreateListingAsync(HttpClient client, string? postingLanguage = null)
     {
         var listing = new
         {
             title = "Tailored CV test", companyName = "Tailored CV test company", jobRoleName = "Developer",
             url = $"https://tailored-cv-test.example/{Guid.NewGuid()}", postedOn = "2026-10-01",
             deadlineType = "UNSPECIFIED", skills = Array.Empty<object>(), languages = Array.Empty<object>(),
-            locations = Array.Empty<object>(),
+            locations = Array.Empty<object>(), postingLanguage,
         };
         var data = await client.GraphQLAsync("""
             mutation ($listing: ListingInput!) { createListing(input: { listing: $listing }) { listing { id } } }

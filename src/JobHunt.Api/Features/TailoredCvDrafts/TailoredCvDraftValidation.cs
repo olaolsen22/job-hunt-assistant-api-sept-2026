@@ -1,6 +1,8 @@
 using System.Net.Mail;
 using System.Text.Json;
 using JobHunt.Api.Data;
+using JobHunt.Api.Features.Listings;
+using JobHunt.Api.Features.Profiles;
 using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.TailoredCvDrafts;
@@ -13,25 +15,30 @@ public static class TailoredCvDraftValidation
     private const int MaxBulletLength = 500;
     private const int MaxTextLength = 200;
     private const int MaxSkills = 200;
-    private const int MaxLanguages = 2;
+    private const int MaxLanguages = 20;
+    private const int MaxAddressLength = 300;
     private const int MaxLinks = 10;
 
-    public static TailoredCvContent Normalize(TailoredCvContentInput input)
+    public static TailoredCvContent Normalize(TailoredCvContentInput input, Language? postingLanguage)
     {
         if (input is null) throw new InvalidTailoredCvDraftException("content is required.");
         var content = new TailoredCvContent(input.Summary?.Trim(),
             input.Experiences?.Select(e => new TailoredCvExperience(CleanRequired(e.Employer), CleanRequired(e.Title), e.StartMonth,
-                e.EndMonth, (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId)).ToList(),
+                e.EndMonth, (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
+                CleanOptional(e.Location))).ToList(),
             input.Educations?.Select(e => new TailoredCvEducation(CleanRequired(e.School), CleanOptional(e.Degree), CleanOptional(e.Field),
-                e.StartMonth, e.EndMonth, (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId)).ToList(),
+                e.StartMonth, e.EndMonth, (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
+                CleanOptional(e.Location))).ToList(),
             input.Certifications?.Select(e => new TailoredCvCertification(CleanRequired(e.Name), CleanOptional(e.Issuer), e.IssuedMonth,
                 e.ExpiresMonth, CleanOptional(e.Url), (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId)).ToList(),
             input.Projects?.Select(e => new TailoredCvProject(CleanRequired(e.Name), CleanOptional(e.Url), e.StartMonth, e.EndMonth,
-                (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId)).ToList(),
+                (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
+                CleanOptional(e.Location))).ToList(),
             input.Skills?.Select(s => new TailoredCvSkill(CleanRequired(s.Name), s.Level, s.SourceSkillId)).ToList(),
-            input.Languages?.Select(l => new TailoredCvLanguage(l.Language, l.Level)).ToList(),
-            CleanOptional(input.FullName), CleanOptional(input.Headline), CleanOptional(input.Email), CleanOptional(input.Phone), CleanOptional(input.Location),
-            input.Links?.Select(l => new TailoredCvLink(CleanRequired(l.Label), CleanRequired(l.Url))).ToList());
+            input.Languages?.Select(l => new TailoredCvLanguage(CleanRequired(l.Name), l.Written, l.Spoken)).ToList(),
+            CleanOptional(input.FullName), CleanOptional(input.Headline), CleanOptional(input.Email), CleanOptional(input.Phone), CleanOptional(input.Address),
+            input.Links?.Select(l => new TailoredCvLink(CleanRequired(l.Label), CleanRequired(l.Url))).ToList(),
+            input.Language ?? postingLanguage ?? Language.English, input.DateOfBirth, input.ReferencesOnRequest);
 
         Validate(content);
         if (JsonSerializer.Serialize(content, TailoredCvJson.Options).Length > MaxJsonLength)
@@ -124,7 +131,8 @@ public static class TailoredCvDraftValidation
         var bullets = await db.ProfileBullets.Where(b => bulletIds.Contains(b.Id))
             .Select(b => new { b.Id, EntryId = b.ExperienceId ?? b.EducationId ?? b.CertificationId ?? b.ProjectId,
                 Kind = b.ExperienceId != null ? "experience" : b.EducationId != null ? "education"
-                    : b.CertificationId != null ? "certification" : "project", b.Text })
+                    : b.CertificationId != null ? "certification" : "project", b.Text,
+                Translated = b.Translations.Where(t => t.Language == content.Language).Select(t => t.Text).FirstOrDefault() })
             .ToDictionaryAsync(b => b.Id, ct);
         foreach (var reference in bulletReferences)
         {
@@ -132,7 +140,9 @@ public static class TailoredCvDraftValidation
                 throw InvalidSource("bullets.sourceBulletId");
             if (bullet.Kind != reference.Kind || reference.EntryId is { } entryId && entryId != bullet.EntryId)
                 throw InvalidSource("bullets.sourceBulletId");
-            if (requireSourceBulletText && !string.Equals(reference.Text.Trim(), bullet.Text.Trim(), StringComparison.Ordinal))
+            // The external prompt supplies the translation in the draft language when one exists.
+            if (requireSourceBulletText && !string.Equals(reference.Text.Trim(), bullet.Text.Trim(), StringComparison.Ordinal)
+                && !string.Equals(reference.Text.Trim(), bullet.Translated?.Trim(), StringComparison.Ordinal))
                 throw Invalid("bullets.sourceBulletId", "text must match the source bullet");
         }
     }
@@ -141,7 +151,9 @@ public static class TailoredCvDraftValidation
     {
         Text(c.FullName, "fullName", MaxTextLength); Text(c.Headline, "headline", MaxTextLength);
         Text(c.Email, "email", MaxTextLength); Text(c.Phone, "phone", MaxTextLength);
-        Text(c.Location, "location", MaxTextLength);
+        Text(c.Address, "address", MaxAddressLength);
+        if (c.DateOfBirth is { } born && born.Year < 1900)
+            throw Invalid("dateOfBirth", "must be after 1900");
         if (c.Summary?.Length > 10_000) throw Invalid("summary", "must be at most 10000 characters");
         Limit(c.Experiences, MaxEntriesPerSection, "experiences");
         Limit(c.Educations, MaxEntriesPerSection, "educations");
@@ -155,12 +167,14 @@ public static class TailoredCvDraftValidation
         if (c.Projects?.Any(e => Blank(e.Name)) == true) throw Invalid("projects", "name is required");
         if (c.Skills?.Any(s => Blank(s.Name) || s.Level is < 1 or > 5) == true)
             throw Invalid("skills", "name is required and level must be 1–5");
-        ValidateFields(c.Experiences?.SelectMany(e => new[] { e.Employer, e.Title }), "experiences");
-        ValidateFields(c.Educations?.SelectMany(e => new[] { e.School, e.Degree, e.Field }), "educations");
+        ValidateFields(c.Experiences?.SelectMany(e => new[] { e.Employer, e.Title, e.Location }), "experiences");
+        ValidateFields(c.Educations?.SelectMany(e => new[] { e.School, e.Degree, e.Field, e.Location }), "educations");
         ValidateFields(c.Certifications?.SelectMany(e => new[] { e.Name, e.Issuer }), "certifications");
-        ValidateFields(c.Projects?.SelectMany(e => new[] { e.Name }), "projects");
+        ValidateFields(c.Projects?.SelectMany(e => new[] { e.Name, e.Location }), "projects");
         ValidateFields(c.Skills?.Select(s => s.Name), "skills");
-        if (c.Languages?.Select(l => l.Language).Distinct().Count() != c.Languages?.Count)
+        if (c.Languages?.Any(l => Blank(l.Name) || l.Name.Length > ProfileLanguage.MaxNameLength) == true)
+            throw Invalid("languages", $"name is required and at most {ProfileLanguage.MaxNameLength} characters");
+        if (c.Languages?.Select(l => l.Name.ToUpperInvariant()).Distinct().Count() != c.Languages?.Count)
             throw Invalid("languages", "entries must be unique");
         if (c.Links?.Any(l => Blank(l.Label) || l.Label.Length > 50 || l.Url.Length > 2048
                 || !Uri.TryCreate(l.Url, UriKind.Absolute, out var uri)

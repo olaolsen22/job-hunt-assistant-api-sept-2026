@@ -16,13 +16,14 @@ public class ProfileCvCandidateTests
         var candidate = ProfileCvDecoder.Decode("""
             {"schemaVersion":1,"contentLanguage":"ENGLISH",
              "experiences":[{"employer":"Acme","title":"Engineer","startMonth":"2020","bullets":["Built services"]}],
-             "skills":[{"name":"Vue","level":null}], "languages":[{"language":"NORWEGIAN","level":null}]}
+             "skills":[{"name":"Vue","level":null}], "languages":[{"name":"Norwegian","written":null,"spoken":"GOOD"}]}
             """);
         Assert.Equal("2020", candidate.Experiences[0].StartMonth);
         Assert.Null(candidate.Skills[0].Level);
         Assert.Contains(candidate.Warnings, w => w.Path == "experiences[0].startMonth");
         Assert.Contains(candidate.Warnings, w => w.Path == "skills[0].level");
-        Assert.Contains(candidate.Warnings, w => w.Path == "languages[0].level");
+        Assert.Contains(candidate.Warnings, w => w.Path == "languages[0].written");
+        Assert.DoesNotContain(candidate.Warnings, w => w.Path == "languages[0].spoken");
     }
 
     [Theory]
@@ -87,7 +88,7 @@ public class ProfileCvPreviewTests(ApiFactory factory) : IClassFixture<ApiFactor
         var locations = await db.Locations.IgnoreQueryFilters().CountAsync();
         var before = await client.GraphQLAsync("{profile{fullName projects{id}} llmUsageToday{requests}}");
         var prompt = (await client.GraphQLAsync("{profileCvParsePrompt{version instructions}}" )).GetProperty("profileCvParsePrompt");
-        Assert.Equal(1, prompt.GetProperty("version").GetInt32());
+        Assert.Equal(2, prompt.GetProperty("version").GetInt32());
         Assert.Equal(ProfileCvPromptQueries.Instructions, prompt.GetProperty("instructions").GetString());
         Assert.Contains("Do not invent dates or proficiency levels", prompt.GetProperty("instructions").GetString());
         var result = await client.GraphQLAsync("""

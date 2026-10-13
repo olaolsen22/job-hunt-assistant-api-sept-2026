@@ -164,27 +164,36 @@ public static class ProfileMutations
         return skillId;
     }
 
-    // Upsert, like setProfileSkill. The enums are checked by GraphQL, so there's nothing to fail on.
-    public static async Task<ProfileLanguage> SetProfileLanguageAsync(
-        Language language, CefrLevel level, AppDbContext db, CancellationToken ct)
+    // Upsert by name (case-insensitive), like setProfileSkill.
+    [Error<InvalidProfileException>]
+    public static async Task<ProfileLanguage> SetProfileLanguageAsync(string name,
+        LanguageProficiency written, LanguageProficiency spoken, AppDbContext db, CancellationToken ct)
     {
+        var cleaned = LanguageName(name);
         var profile = await db.Profiles.SingleAsync(ct);
-        var profileLanguage = await db.ProfileLanguages.FirstOrDefaultAsync(l => l.Language == language, ct);
+        var profileLanguage = await db.ProfileLanguages.FirstOrDefaultAsync(l => l.Name == cleaned, ct);
         if (profileLanguage is null)
-            db.ProfileLanguages.Add(profileLanguage = new ProfileLanguage { ProfileId = profile.Id, Language = language });
-        profileLanguage.Level = level;
+            db.ProfileLanguages.Add(profileLanguage = new ProfileLanguage { ProfileId = profile.Id, Name = cleaned });
+        profileLanguage.Name = cleaned;
+        profileLanguage.Written = written;
+        profileLanguage.Spoken = spoken;
         await db.SaveChangesAsync(ct);
         return profileLanguage;
     }
 
     [Error<ProfileEntryNotFoundException>]
-    [UseMutationConvention(PayloadFieldName = "language")]
-    public static async Task<Language> RemoveProfileLanguageAsync(Language language, AppDbContext db, CancellationToken ct)
+    [UseMutationConvention(PayloadFieldName = "name")]
+    public static async Task<string> RemoveProfileLanguageAsync(string name, AppDbContext db, CancellationToken ct)
     {
-        if (await db.ProfileLanguages.Where(l => l.Language == language).ExecuteDeleteAsync(ct) == 0)
-            throw new ProfileEntryNotFoundException("Language", language);
-        return language;
+        var cleaned = name.Trim();
+        if (await db.ProfileLanguages.Where(l => l.Name == cleaned).ExecuteDeleteAsync(ct) == 0)
+            throw new ProfileEntryNotFoundException("Language", cleaned);
+        return cleaned;
     }
+
+    internal static string LanguageName(string? name) =>
+        Text(name, "Language name", ProfileLanguage.MaxNameLength)
+        ?? throw new InvalidProfileException("Language name is required.");
 
     internal static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 

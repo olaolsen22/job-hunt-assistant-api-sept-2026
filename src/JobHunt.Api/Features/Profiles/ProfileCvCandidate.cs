@@ -23,7 +23,7 @@ public record ProfileCvCertification(string? Name = null, string? Issuer = null,
 public record ProfileCvProject(string? Name = null, string? Url = null, ProfileCvLocation? Location = null,
     string? StartMonth = null, string? EndMonth = null, List<string>? SkillNames = null, List<string>? Bullets = null);
 public record ProfileCvSkill(string? Name = null, int? Level = null);
-public record ProfileCvLanguage([property: JsonRequired] Language Language, CefrLevel? Level = null);
+public record ProfileCvLanguage(string? Name = null, LanguageProficiency? Written = null, LanguageProficiency? Spoken = null);
 
 public class ProfileCvCandidate
 {
@@ -75,7 +75,7 @@ public static class ProfileCvDecoder
         Limit(candidate.Links, 10, "links"); Limit(candidate.Hobbies, 20, "hobbies");
         Limit(candidate.Experiences, 100, "experiences"); Limit(candidate.Educations, 100, "educations");
         Limit(candidate.Certifications, 100, "certifications"); Limit(candidate.Projects, 100, "projects");
-        Limit(candidate.Skills, 200, "skills"); Limit(candidate.Languages, 2, "languages");
+        Limit(candidate.Skills, 200, "skills"); Limit(candidate.Languages, 20, "languages");
         Limit(candidate.Warnings, 1000, "warnings");
 
         if (candidate.Warnings.Any(w => string.IsNullOrWhiteSpace(w.Path) || string.IsNullOrWhiteSpace(w.Message)))
@@ -163,7 +163,12 @@ public static class ProfileCvDecoder
             if (candidate.Skills[i].Level is not (>= 1 and <= 5)) warnings.Add(new($"skills[{i}].level", "Choose a reviewed level from 1 to 5."));
         }
         for (var i = 0; i < candidate.Languages.Count; i++)
-            if (candidate.Languages[i].Level is null) warnings.Add(new($"languages[{i}].level", "Choose a reviewed CEFR level."));
+        {
+            var l = candidate.Languages[i]; var p = $"languages[{i}]";
+            Required(l.Name, p + ".name"); Text(l.Name, p + ".name", ProfileLanguage.MaxNameLength);
+            if (l.Written is null) warnings.Add(new(p + ".written", "Choose a reviewed written level."));
+            if (l.Spoken is null) warnings.Add(new(p + ".spoken", "Choose a reviewed spoken level."));
+        }
         for (var i = 0; i < candidate.Hobbies.Count; i++) Text(candidate.Hobbies[i], $"hobbies[{i}]", 100);
         Check("links", () => ProfileMutations.ValidateLinks(candidate.Links.Select(l => new ProfileLinkInput(l.Kind, l.Label, l.Url ?? "")).ToList()));
         return candidate;

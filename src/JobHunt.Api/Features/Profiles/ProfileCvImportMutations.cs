@@ -128,10 +128,13 @@ public static class ProfileCvImportMutations
             for (var i = 0; i < (selection.Languages?.Count ?? 0); i++)
             {
                 var input = selection.Languages![i]; path = $"languages[{i}]";
-                if (input.Level is null) throw new InvalidProfileImportException(path + ".level: choose a reviewed CEFR level.");
-                var language = profile.Languages.FirstOrDefault(l => l.Language == input.Language);
-                if (language is null) profile.Languages.Add(language = new ProfileLanguage { ProfileId = profile.Id, Language = input.Language });
-                language.Level = input.Level.Value;
+                if (input.Written is null || input.Spoken is null)
+                    throw new InvalidProfileImportException(path + ": choose reviewed written and spoken levels.");
+                var name = ProfileMutations.LanguageName(input.Name);
+                var language = profile.Languages.FirstOrDefault(l => string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase));
+                if (language is null) profile.Languages.Add(language = new ProfileLanguage { ProfileId = profile.Id, Name = name });
+                language.Written = input.Written.Value;
+                language.Spoken = input.Spoken.Value;
             }
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
@@ -172,7 +175,7 @@ public static class ProfileCvImportMutations
         Check(selection.Certifications, "certifications", e => e.Id);
         Check(selection.Projects, "projects", e => e.Id);
         Check(selection.Skills, "skills", e => e.Name is null ? null : Names.Normalize(e.Name), 200);
-        Check(selection.Languages, "languages", e => e.Language.ToString(), 2);
+        Check(selection.Languages, "languages", e => e.Name?.Trim().ToUpperInvariant(), 20);
         var bullets = (selection.Experiences?.SelectMany(e => e.Bullets ?? []) ?? [])
             .Concat(selection.Educations?.SelectMany(e => e.Bullets ?? []) ?? [])
             .Concat(selection.Certifications?.SelectMany(e => e.Bullets ?? []) ?? [])

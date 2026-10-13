@@ -1,5 +1,9 @@
 # Tailored CV drafts
 
+Built-in analysis accepts optional `requestId` and shares the [AI call safeguards](llm-call-safeguards.md). Generate one UUID per analysis action and reuse it for transport retries. Analysis previews remain transient, so completed retries return `result-unavailable` rather than rerunning or storing suggestions.
+
+`analyzeAllTailoredCv` returns section `status` values `SUCCEEDED`, `FAILED`, or `SKIPPED`, plus a nullable safe `errorCode`. For example, successful skills analysis followed by credential rejection returns the skills suggestions, a failed attempted section with `invalid-key`, and skipped later sections with that code. A pre-dispatch `daily-limit-reached` makes that section and all later sections skipped. Skipped sections have no provider call or usage row. Provider/credential failures stop the batch; a section's `invalid-json` permits later independent sections. Cancellation propagates without further calls. Review completed suggestions and save explicitly as before.
+
 A tailored CV draft belongs to one listing, so each saved copy stays with the application attempt it was prepared for. The draft is editable plain text and is separate from PDF `Document` records. Saving it does not apply to the listing or mark a document as sent.
 
 ## Read the current draft
@@ -15,28 +19,42 @@ query ($listingId: Int!) {
       headline
       email
       phone
-      location
+      address
+      dateOfBirth
+      language
+      referencesOnRequest
       links { label url }
       summary
       experiences {
         sourceEntryId
         employer
         title
+        location
         startMonth
         endMonth
         bullets { sourceBulletId text }
       }
-      educations { sourceEntryId school degree field startMonth endMonth bullets { sourceBulletId text } }
+      educations { sourceEntryId school degree field location startMonth endMonth bullets { sourceBulletId text } }
       certifications { sourceEntryId name issuer issuedMonth expiresMonth url bullets { sourceBulletId text } }
-      projects { sourceEntryId name url startMonth endMonth bullets { sourceBulletId text } }
+      projects { sourceEntryId name url location startMonth endMonth bullets { sourceBulletId text } }
       skills { sourceSkillId name level }
-      languages { language level }
+      languages { name written spoken }
     }
   }
 }
 ```
 
 The query returns `null` when the listing has no draft or is not owned by the signed-in user.
+
+`language` (`ENGLISH`/`NORWEGIAN`) decides the PDF's headings, contact labels, and date words. Saving with
+`language: null` uses the listing's `postingLanguage`, or English when it has none. Norwegian follows NAV's CV:
+E-post / Telefon / Adresse / Fødselsdato, then Sammendrag, Arbeidsforhold, Utdanning, Kurs og sertifiseringer,
+Prosjekter, Språk, Kompetanser, Lenker, Referanser; dates read `Juni 2015 - Nåværende`. Languages use NAV's
+written/spoken scale (`BEGINNER`, `GOOD`, `VERY_GOOD`, `NATIVE`). `referencesOnRequest` adds a closing
+"Referanser: Oppgis ved forespørsel." line. Entry `location` is display text such as `Lagos, Nigeria`.
+The UI fills draft bullets/summary from profile translations in the draft language where they exist; both
+AI paths also write the summary in that language and the external prompt supplies translated bullet text.
+Formatting rationale: [norwegian-cv-formatting.md](norwegian-cv-formatting.md).
 
 ## Analyze a draft with the API key
 
@@ -51,7 +69,9 @@ mutation ($input: AnalyzeTailoredCvSectionInput!) {
 }
 ```
 
-Sections are `EXPERIENCE`, `SKILLS`, and `SUMMARY`. `analyzeAllTailoredCv(input:{listingId})` runs one request per work experience, followed by skills and summary; it returns a result for each section. Each provider call is logged separately. AI analysis does not save the draft.
+Sections are `EXPERIENCE`, `EDUCATION`, `SKILLS`, and `SUMMARY`. `analyzeAllTailoredCv(input:{listingId, model})` runs one request per work experience, then each education entry, followed by skills and summary; it returns a result for each section. Both analysis mutations accept an optional `model` selection ID from `llmModels`; omitted uses the effective default. Each attempted call is logged against its actual provider and credential. AI analysis does not save the draft.
+
+Configure personal keys through the [provider-key API](llm-provider-keys.md). Credential rejection, rate limiting, timeout, and provider errors return readable failed section results; no automatic key/provider fallback occurs. The UI can prompt users to switch models or update/remove the key. Shared Gemini is used only when a Gemini selection has no personal Gemini key.
 
 ## Use an external AI
 

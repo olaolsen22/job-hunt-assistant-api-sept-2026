@@ -1,6 +1,7 @@
 using System.Text.Json;
 using JobHunt.Api.Features.Auth;
 using JobHunt.Api.Features.Listings;
+using JobHunt.Api.Features.Profiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -25,6 +26,7 @@ public class TailoredCvDraft
     }
 }
 
+// Language decides headings, labels, and date words in the PDF; it defaults to the listing's posting language.
 public record TailoredCvContent(
     string? Summary = null,
     List<TailoredCvExperience>? Experiences = null,
@@ -37,20 +39,24 @@ public record TailoredCvContent(
     string? Headline = null,
     string? Email = null,
     string? Phone = null,
-    string? Location = null,
-    List<TailoredCvLink>? Links = null);
+    string? Address = null,
+    List<TailoredCvLink>? Links = null,
+    Language Language = Language.English,
+    DateOnly? DateOfBirth = null,
+    bool ReferencesOnRequest = false);
 
 public record TailoredCvBullet(string Text, int? SourceBulletId = null);
+// Location is display text such as "Lagos, Nigeria"; the guidance favours City, Country for foreign roles.
 public record TailoredCvExperience(string Employer, string Title, DateOnly? StartMonth, DateOnly? EndMonth,
-    List<TailoredCvBullet> Bullets, int? SourceEntryId = null);
+    List<TailoredCvBullet> Bullets, int? SourceEntryId = null, string? Location = null);
 public record TailoredCvEducation(string School, string? Degree, string? Field, DateOnly? StartMonth,
-    DateOnly? EndMonth, List<TailoredCvBullet> Bullets, int? SourceEntryId = null);
+    DateOnly? EndMonth, List<TailoredCvBullet> Bullets, int? SourceEntryId = null, string? Location = null);
 public record TailoredCvCertification(string Name, string? Issuer, DateOnly? IssuedMonth, DateOnly? ExpiresMonth,
     string? Url, List<TailoredCvBullet> Bullets, int? SourceEntryId = null);
 public record TailoredCvProject(string Name, string? Url, DateOnly? StartMonth, DateOnly? EndMonth,
-    List<TailoredCvBullet> Bullets, int? SourceEntryId = null);
+    List<TailoredCvBullet> Bullets, int? SourceEntryId = null, string? Location = null);
 public record TailoredCvSkill(string Name, int? Level, int? SourceSkillId = null);
-public record TailoredCvLanguage(Language Language, CefrLevel? Level);
+public record TailoredCvLanguage(string Name, LanguageProficiency? Written, LanguageProficiency? Spoken);
 public record TailoredCvLink(string Label, string Url);
 
 internal static class TailoredCvJson

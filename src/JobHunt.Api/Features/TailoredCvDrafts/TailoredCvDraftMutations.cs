@@ -2,21 +2,23 @@ using System.Security.Cryptography;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Documents;
 using JobHunt.Api.Features.Listings;
+using JobHunt.Api.Features.Profiles;
 using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.TailoredCvDrafts;
 
 public record TailoredCvBulletInput(string Text, int? SourceBulletId = null);
 public record TailoredCvExperienceInput(string Employer, string Title, DateOnly? StartMonth, DateOnly? EndMonth,
-    List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null);
+    List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null, string? Location = null);
 public record TailoredCvEducationInput(string School, string? Degree, string? Field, DateOnly? StartMonth,
-    DateOnly? EndMonth, List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null);
+    DateOnly? EndMonth, List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null, string? Location = null);
 public record TailoredCvCertificationInput(string Name, string? Issuer, DateOnly? IssuedMonth, DateOnly? ExpiresMonth,
     string? Url, List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null);
 public record TailoredCvProjectInput(string Name, string? Url, DateOnly? StartMonth, DateOnly? EndMonth,
-    List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null);
+    List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null, string? Location = null);
 public record TailoredCvSkillInput(string Name, int? Level, int? SourceSkillId = null);
-public record TailoredCvLanguageInput(Language Language, CefrLevel? Level);
+public record TailoredCvLanguageInput(string Name, LanguageProficiency? Written, LanguageProficiency? Spoken);
+// A null Language means the listing's posting language, or English when the listing has none.
 public record TailoredCvContentInput(string? Summary = null,
     List<TailoredCvExperienceInput>? Experiences = null,
     List<TailoredCvEducationInput>? Educations = null,
@@ -28,8 +30,11 @@ public record TailoredCvContentInput(string? Summary = null,
     string? Headline = null,
     string? Email = null,
     string? Phone = null,
-    string? Location = null,
-    List<TailoredCvLinkInput>? Links = null);
+    string? Address = null,
+    List<TailoredCvLinkInput>? Links = null,
+    Language? Language = null,
+    DateOnly? DateOfBirth = null,
+    bool ReferencesOnRequest = false);
 public record TailoredCvLinkInput(string Label, string Url);
 
 public class InvalidTailoredCvDraftException(string message) : Exception(message);
@@ -54,7 +59,7 @@ public static class TailoredCvDraftMutations
     {
         var listing = await db.Listings.FirstOrDefaultAsync(l => l.Id == listingId, ct)
             ?? throw new ListingNotFoundException(listingId);
-        var normalized = TailoredCvDraftValidation.Normalize(content);
+        var normalized = TailoredCvDraftValidation.Normalize(content, listing.PostingLanguage);
         await TailoredCvDraftValidation.ValidateSourceIdsAsync(normalized, db, ct);
 
         var draft = await db.TailoredCvDrafts.FirstOrDefaultAsync(d => d.ListingId == listingId, ct);

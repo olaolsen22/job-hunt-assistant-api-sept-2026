@@ -15,8 +15,10 @@ public class ProfileSkillTests(ApiFactory factory) : IClassFixture<ApiFactory>
         """;
 
     private const string SetLanguage = """
-        mutation ($language: Language!, $level: CefrLevel!) {
-          setProfileLanguage(input: { language: $language, level: $level }) { profileLanguage { language level } }
+        mutation ($name: String!, $written: LanguageProficiency!, $spoken: LanguageProficiency!) {
+          setProfileLanguage(input: { name: $name, written: $written, spoken: $spoken }) {
+            profileLanguage { name written spoken } errors { __typename }
+          }
         }
         """;
 
@@ -130,20 +132,44 @@ public class ProfileSkillTests(ApiFactory factory) : IClassFixture<ApiFactory>
     public async Task SetLanguage_AddsReplacesAndRemoves()
     {
         var client = await factory.GetOwnerClientAsync();
-        await client.GraphQLAsync(SetLanguage, new { language = "NORWEGIAN", level = "C2" });
-        await client.GraphQLAsync(SetLanguage, new { language = "ENGLISH", level = "C1" });
-        await client.GraphQLAsync(SetLanguage, new { language = "ENGLISH", level = "B2" });
+        await client.GraphQLAsync(SetLanguage, new { name = "Filipino/Tagalog", written = "VERY_GOOD", spoken = "VERY_GOOD" });
+        await client.GraphQLAsync(SetLanguage, new { name = "English", written = "GOOD", spoken = "GOOD" });
+        // Same name in another case updates the row instead of adding one.
+        await client.GraphQLAsync(SetLanguage, new { name = " english ", written = "NATIVE", spoken = "NATIVE" });
 
-        var languages = (await client.GraphQLAsync("{ profile { languages { language level } } }"))
+        var languages = (await client.GraphQLAsync("{ profile { languages { name written spoken } } }"))
             .GetProperty("profile").GetProperty("languages");
-        Assert.Equal(["NORWEGIAN:C2", "ENGLISH:B2"], languages.EnumerateArray()
-            .Select(l => $"{l.GetProperty("language").GetString()}:{l.GetProperty("level").GetString()}"));
+        Assert.Equal(["english:NATIVE/NATIVE", "Filipino/Tagalog:VERY_GOOD/VERY_GOOD"], languages.EnumerateArray()
+            .Select(l => $"{l.GetProperty("name").GetString()}:{l.GetProperty("written").GetString()}/{l.GetProperty("spoken").GetString()}"));
 
         const string Remove = """
-            mutation { removeProfileLanguage(input: { language: ENGLISH }) { language errors { __typename } } }
+            mutation { removeProfileLanguage(input: { name: "ENGLISH" }) { name errors { __typename } } }
             """;
-        Assert.Equal("ENGLISH", (await client.GraphQLAsync(Remove)).GetProperty("removeProfileLanguage").GetProperty("language").GetString());
+        Assert.Equal("ENGLISH", (await client.GraphQLAsync(Remove)).GetProperty("removeProfileLanguage").GetProperty("name").GetString());
         Assert.Equal("ProfileEntryNotFoundError",
             ApplicationTests.ErrorType((await client.GraphQLAsync(Remove)).GetProperty("removeProfileLanguage")));
+    }
+
+    [Theory]
+    [InlineData("  ")]
+    [InlineData("This language name is far too long to be a real language name at all")]
+    public async Task SetLanguage_InvalidName_ReturnsInvalidProfileError(string name)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var payload = (await client.GraphQLAsync(SetLanguage, new { name, written = "GOOD", spoken = "GOOD" }))
+            .GetProperty("setProfileLanguage");
+        Assert.Equal("InvalidProfileError", ApplicationTests.ErrorType(payload));
+    }
+
+    [Fact]
+    public async Task SetLanguage_IsPerUser()
+    {
+        var owner = await factory.GetOwnerClientAsync();
+        var other = await factory.GetSecondOwnerClientAsync();
+        await owner.GraphQLAsync(SetLanguage, new { name = "Svensk", written = "GOOD", spoken = "GOOD" });
+
+        var languages = (await other.GraphQLAsync("{ profile { languages { name } } }"))
+            .GetProperty("profile").GetProperty("languages");
+        Assert.DoesNotContain(languages.EnumerateArray(), l => l.GetProperty("name").GetString() == "Svensk");
     }
 }

@@ -47,7 +47,7 @@ public static class ProfileQueries
         profile.Certifications = [.. profile.Certifications
             .OrderBy(c => c.IssuedMonth is null).ThenByDescending(c => c.IssuedMonth)];
         profile.Skills = [.. profile.Skills.OrderByDescending(s => s.Level).ThenBy(s => s.Skill.Name)];
-        profile.Languages = [.. profile.Languages.OrderByDescending(l => l.Level)];
+        profile.Languages = [.. profile.Languages.OrderByDescending(l => l.Spoken).ThenByDescending(l => l.Written).ThenBy(l => l.Name)];
         profile.References = [.. profile.References.OrderBy(r => r.Position).ThenBy(r => r.Id)];
         profile.JobRoles = [.. profile.JobRoles.OrderBy(r => r.Name)];
         foreach (var bullets in profile.Experiences.Select(e => e.Bullets)

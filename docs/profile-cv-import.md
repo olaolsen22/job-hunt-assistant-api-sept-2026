@@ -4,7 +4,7 @@ The API supports imports into empty or populated English-primary profiles. Parsi
 
 ## Built-in AI
 
-Paste English plain text or Markdown (1–100,000 characters). Markdown is optional. The complete accepted text is sent to the configured Gemini client with the same instructions as the external prompt. No upload or API-key selector is needed. Raw text and unreviewed results are not saved as parse jobs; only AI usage metadata is stored under `parse-profile-cv`.
+Paste English plain text or Markdown (1–100,000 characters). Markdown is optional. The complete accepted text is sent to the selected configured provider with the same instructions as the external prompt. Pass an optional `model` selection ID from `llmModels`; omitted uses the effective default. Keys are configured separately through the [provider-key API](llm-provider-keys.md). Raw text and unreviewed results are not saved as parse jobs; only AI usage metadata is stored under `parse-profile-cv`.
 
 ```graphql
 mutation Parse($text: String!) {
@@ -24,7 +24,7 @@ mutation Parse($text: String!) {
 }
 ```
 
-`SUCCEEDED` includes a candidate for review; incomplete values appear as warnings. `FAILED` has no candidate and a readable error (invalid output, provider failure, rate limit, or timeout). Blank/oversized input returns typed `InvalidParseRequestError` without a provider call or usage record. Large output that cannot be decoded fails without partial profile changes: retry with a smaller CV section.
+`SUCCEEDED` includes a candidate for review; incomplete values appear as warnings. `FAILED` has no candidate and a readable error (invalid output, invalid/unavailable credential, provider failure, rate limit, or timeout). Blank/oversized input returns typed `InvalidParseRequestError` without a provider call or usage record. Large output that cannot be decoded fails without partial profile changes: retry with a smaller CV section.
 
 ## External AI
 
@@ -65,7 +65,7 @@ The candidate supports basics (name, headline, summary, email, phone, location),
 
 Incomplete candidates are valid previews: warnings identify missing required dates/levels and invalid field values. Dates use `YYYY-MM-01`; year-only dates must be corrected by the user, not guessed by AI. Null end months mean current/ongoing when saved, so confirm them during review. Standalone skill levels need a reviewed 1–5 value; language proficiency needs a reviewed CEFR value. Entry skill tags have the existing profile behavior: a missing profile skill is added at level 1, existing levels stay unchanged.
 
-Malformed shapes/types, unsupported versions/properties, null collection items, duplicate JSON properties, non-English contentLanguage, and JSON over 200,000 characters fail with `InvalidProfileImportError`. Candidate collections allow 100 entries per history section, 20 bullets per entry, 200 skills/tags, 2 languages, 20 hobbies, 10 links, and 1000 supplied warnings.
+Malformed shapes/types, unsupported versions/properties, null collection items, duplicate JSON properties, non-English contentLanguage, and JSON over 200,000 characters fail with `InvalidProfileImportError`. Candidate collections allow 100 entries per history section, 20 bullets per entry, 200 skills/tags, 20 languages, 20 hobbies, 10 links, and 1000 supplied warnings.
 
 ## Save reviewed selections
 
@@ -105,7 +105,7 @@ Example variables adding a project:
 - Selected entry updates require their complete structural fields, including values to retain. For example an experience needs `id`, `employer`, `title`, `startMonth`, and its reviewed optional `endMonth`, `location`, `skillNames`. Omitted optional structural fields clear that entry's corresponding values. Required startMonth on experience/education cannot be null.
 - A selected entry without `id` is added. With `id`, it updates that entry and preserves its identity. Omitted entries remain unchanged.
 - Bullet selections `{id, text}` update only that existing bullet on its parent; `{text}` appends. Omitted bullets stay unchanged. Existing bullet ids/positions and translations survive; changed sources make translations stale. Import cannot delete or reorder bullets.
-- Standalone selected skills/languages upsert reviewed levels; omitted ones stay unchanged. The contentLanguage marker refers to the imported prose, not the language proficiency section.
+- Standalone selected skills/languages upsert reviewed levels (languages by case-insensitive name, with written and spoken levels); omitted ones stay unchanged. The contentLanguage marker refers to the imported prose, not the language proficiency section.
 - Import requires an English-primary profile. It never switches an existing Norwegian-primary profile or deletes translations; use the existing language mutation explicitly when permitted. Norwegian translations on an English profile do not block import.
 - Invalid selections roll back the whole request including new lookups. Errors include `InvalidProfileImportError` with a selection path, `InvalidLocationError`, and `ProfileEntryNotFoundError` for foreign/unknown/wrong-parent ids.
 - Disable double-submit in the UI. Repeating an add can create duplicates; explicit updates preserve ids but do not provide optimistic concurrency control. Refresh profile data before constructing reviewed updates.

@@ -1,4 +1,5 @@
 using JobHunt.Api.Features.Listings;
+using JobHunt.Api.Features.Profiles;
 using JobHunt.Api.Features.TailoredCvDrafts;
 using UglyToad.PdfPig;
 
@@ -6,80 +7,90 @@ namespace JobHunt.Api.Tests.Features.TailoredCvDrafts;
 
 public class TailoredCvPdfRendererTests
 {
+    private static TailoredCvContent FullDraft(Language language) => new(
+        Summary: "Søknadsbehandler with efficient office skills.",
+        Experiences:
+        [
+            new TailoredCvExperience("Acme AS", "Senior Dev",
+                new DateOnly(2021, 3, 1), null,
+                [new TailoredCvBullet("Led the migration"), new TailoredCvBullet("Mentored juniors")],
+                Location: "Lagos, Nigeria"),
+            new TailoredCvExperience("Old Co", "Dev",
+                new DateOnly(2018, 1, 1), new DateOnly(2021, 2, 1),
+                [new TailoredCvBullet("Shipped features")]),
+        ],
+        Educations: [new TailoredCvEducation("NTNU", "MSc", "CS",
+            new DateOnly(2014, 8, 1), new DateOnly(2018, 6, 1), [new TailoredCvBullet("Completed thesis")])],
+        Certifications: [new TailoredCvCertification("AWS SA", "Amazon",
+            new DateOnly(2022, 5, 1), new DateOnly(2025, 5, 1), "https://cert.example/1", [new TailoredCvBullet("Passed assessment")])],
+        Projects: [new TailoredCvProject("Side Project", "https://side.example",
+            new DateOnly(2020, 1, 1), new DateOnly(2020, 6, 1), [new TailoredCvBullet("Built prototype")])],
+        Skills: [new TailoredCvSkill("C#", null), new TailoredCvSkill("GraphQL", null)],
+        Languages:
+        [
+            new TailoredCvLanguage("English", LanguageProficiency.Native, LanguageProficiency.Native),
+            new TailoredCvLanguage("Filipino/Tagalog", LanguageProficiency.VeryGood, LanguageProficiency.Good),
+        ],
+        FullName: "Ola Nordmann",
+        Headline: "Backend Developer",
+        Email: "ola@example.com",
+        Phone: "+47 123 45 678",
+        Address: "Storgata 1, 0155 Oslo",
+        Links: [new TailoredCvLink("GitHub", "https://github.com/ola")],
+        Language: language,
+        DateOfBirth: new DateOnly(1990, 6, 15),
+        ReferencesOnRequest: true);
+
     [Fact]
-    public void Render_FullDraft_KeepsSectionAndEntryOrder()
+    public void Render_NorwegianDraft_UsesNavHeadingsLabelsAndDates()
     {
-        var content = new TailoredCvContent(
-            Summary: "Søknadsbehandler with efficient office skills.",
-            Experiences:
-            [
-                new TailoredCvExperience("Acme AS", "Senior Dev",
-                    new DateOnly(2021, 3, 1), null,
-                    [new TailoredCvBullet("Led the migration"), new TailoredCvBullet("Mentored juniors")]),
-                new TailoredCvExperience("Old Co", "Dev",
-                    new DateOnly(2018, 1, 1), new DateOnly(2021, 2, 1),
-                    [new TailoredCvBullet("Shipped features")]),
-            ],
-            Educations: [new TailoredCvEducation("NTNU", "MSc", "CS",
-                new DateOnly(2014, 8, 1), new DateOnly(2018, 6, 1), [new TailoredCvBullet("Completed thesis")])],
-            Certifications: [new TailoredCvCertification("AWS SA", "Amazon",
-                new DateOnly(2022, 5, 1), new DateOnly(2025, 5, 1), "https://cert.example/1", [new TailoredCvBullet("Passed assessment")])],
-            Projects: [new TailoredCvProject("Side Project", "https://side.example",
-                new DateOnly(2020, 1, 1), new DateOnly(2020, 6, 1), [new TailoredCvBullet("Built prototype")])],
-            Skills: [new TailoredCvSkill("C#", null), new TailoredCvSkill("GraphQL", null)],
-            Languages: [new TailoredCvLanguage(Language.Norwegian, CefrLevel.C2)],
-            FullName: "Ola Nordmann",
-            Headline: "Backend Developer",
-            Email: "ola@example.com",
-            Phone: "+47 123 45 678",
-            Location: "Oslo",
-            Links: [new TailoredCvLink("GitHub", "https://github.com/ola")]);
+        var text = ExtractText(FullDraft(Language.Norwegian));
 
-        var text = ExtractText(content);
-
-        // Section order.
-        var indices = new[] { "SUMMARY", "EXPERIENCE", "EDUCATION", "CERTIFICATIONS", "PROJECTS", "SKILLS", "LANGUAGES", "LINKS" }
-            .Select(heading => text.IndexOf(heading)).ToArray();
-        Assert.True(indices.All(i => i >= 0), "every heading should be present");
-        Assert.True(indices.SequenceEqual(indices.OrderBy(i => i)), "headings should appear in order");
-
-        // Entries and bullets keep draft order.
-        Assert.True(text.IndexOf("Senior Dev") < text.IndexOf("Dev, Old Co") || text.IndexOf("Senior Dev") < text.IndexOf("Old Co"));
-        Assert.True(text.IndexOf("Led the migration") < text.IndexOf("Mentored juniors"));
-        Assert.True(text.IndexOf("Mentored juniors") < text.IndexOf("Shipped features"));
-
-        // Field presence.
-        Assert.Contains("Ola Nordmann", text);
-        Assert.Contains("Backend Developer", text);
-        Assert.Contains("Oslo", text);
-        Assert.Contains("NTNU", text);
-        Assert.Contains("AWS SA", text);
-        Assert.Contains("Side Project", text);
-        Assert.Contains("C#", text);
-        Assert.Contains("GitHub", text);
-        Assert.Contains("https://github.com/ola", text);
-        foreach (var value in new[] { "Søknadsbehandler with efficient office skills.", "ola@example.com",
-                     "+47 123 45 678", "Acme AS", "Old Co", "03/2021 – Present", "01/2018 – 02/2021",
-                     "MSc", "CS", "08/2014 – 06/2018", "Completed thesis", "Amazon",
-                     "05/2022 – 05/2025", "https://cert.example/1", "Passed assessment",
-                     "https://side.example", "01/2020 – 06/2020", "Built prototype", "GraphQL", "Norwegian (C2)" })
+        // NAV headings, experience before education, references last.
+        AssertInOrder(text, "Sammendrag", "Arbeidsforhold", "Utdanning", "Kurs og sertifiseringer", "Prosjekter",
+            "Språk", "Kompetanser", "Lenker", "Referanser");
+        AssertInOrder(text, "E-post: ola@example.com", "Telefon: +47 123 45 678",
+            "Adresse: Storgata 1, 0155 Oslo", "Fødselsdato: 15.06.1990", "Sammendrag");
+        foreach (var value in new[] { "Mars 2021 - Nåværende", "Januar 2018 - Februar 2021", "August 2014 - Juni 2018",
+                     "Mai 2022 - Mai 2025", "Januar 2020 - Juni 2020", "Acme AS, Lagos, Nigeria", "MSc, CS",
+                     "Oppgis ved forespørsel." })
             Assert.Contains(value, text);
+
+        // NAV's language block: name, then written and spoken on their own lines.
+        AssertInOrder(text, "Engelsk", "Skriftlig: Førstespråk (morsmål)", "Muntlig: Førstespråk (morsmål)",
+            "Filipino/Tagalog", "Skriftlig: Veldig godt", "Muntlig: Godt");
+        Assert.DoesNotContain("–", text);
+        Assert.DoesNotContain("|", text);
+    }
+
+    [Fact]
+    public void Render_EnglishDraft_UsesEnglishWording()
+    {
+        var text = ExtractText(FullDraft(Language.English));
+
+        AssertInOrder(text, "Summary", "Experience", "Education", "Courses and certifications", "Projects",
+            "Languages", "Skills", "Links", "References");
+        AssertInOrder(text, "Email: ola@example.com", "Phone: +47 123 45 678",
+            "Address: Storgata 1, 0155 Oslo", "Date of birth: 15 June 1990");
+        foreach (var value in new[] { "March 2021 - Present", "January 2018 - February 2021",
+                     "Written: Native (first language)", "Spoken: Good", "Available on request." })
+            Assert.Contains(value, text);
+        // Entries and bullets keep draft order.
+        AssertInOrder(text, "Senior Dev", "Led the migration", "Mentored juniors", "Old Co", "Shipped features");
     }
 
     [Fact]
     public void Render_EmptySections_OmitsTheirHeadings()
     {
-        var content = new TailoredCvContent(FullName: "Minimal Person",
+        var content = new TailoredCvContent(FullName: "Minimal Person", Language: Language.Norwegian,
             Experiences: [new TailoredCvExperience("Acme", "Dev", new DateOnly(2021, 1, 1), null, [])]);
 
         var text = ExtractText(content);
 
-        Assert.DoesNotContain("PROJECTS", text);
-        Assert.DoesNotContain("CERTIFICATIONS", text);
-        Assert.DoesNotContain("EDUCATION", text);
-        Assert.DoesNotContain("SKILLS", text);
-        Assert.DoesNotContain("LANGUAGES", text);
-        Assert.DoesNotContain("LINKS", text);
+        Assert.Contains("Arbeidsforhold", text);
+        foreach (var heading in new[] { "Prosjekter", "Kurs og sertifiseringer", "Utdanning", "Kompetanser",
+                     "Språk", "Lenker", "Referanser", "Fødselsdato" })
+            Assert.DoesNotContain(heading, text);
     }
 
     [Fact]
@@ -96,44 +107,20 @@ public class TailoredCvPdfRendererTests
     }
 
     [Fact]
-    public void Render_ContactDetails_AppearBeforeFirstSectionHeading()
-    {
-        var content = new TailoredCvContent(
-            FullName: "Ola Nordmann",
-            Email: "ola@example.com",
-            Phone: "+47 123 45 678",
-            Location: "Oslo",
-            Summary: "A short summary.");
-
-        var text = ExtractText(content);
-        var firstHeadingIndex = text.IndexOf("SUMMARY");
-
-        Assert.True(firstHeadingIndex >= 0);
-        Assert.True(text.IndexOf("Ola Nordmann") < firstHeadingIndex);
-        Assert.True(text.IndexOf("ola@example.com") < firstHeadingIndex);
-        Assert.True(text.IndexOf("+47 123 45 678") < firstHeadingIndex);
-        Assert.True(text.IndexOf("Oslo") < firstHeadingIndex);
-    }
-
-    [Fact]
-    public void Render_OpenEndedExperience_FormatsDateRangeWithPresent()
-    {
-        var content = new TailoredCvContent(
-            FullName: "Ola Nordmann",
-            Experiences: [new TailoredCvExperience("Acme", "Dev", new DateOnly(2021, 3, 1), null, [])]);
-
-        var text = ExtractText(content);
-
-        Assert.Contains("03/2021 – Present", text);
-    }
-
-    [Fact]
     public void Render_CertificationWithOnlyExpiry_IncludesDate()
     {
-        var content = new TailoredCvContent(Certifications:
+        var content = new TailoredCvContent(Language: Language.Norwegian, Certifications:
             [new TailoredCvCertification("Certificate", null, null, new DateOnly(2027, 4, 1), null, [])]);
 
-        Assert.Contains("Expires 04/2027", ExtractText(content));
+        Assert.Contains("Utløper April 2027", ExtractText(content));
+    }
+
+    private static void AssertInOrder(string text, params string[] values)
+    {
+        var indices = values.Select(v => text.IndexOf(v, StringComparison.Ordinal)).ToArray();
+        for (var i = 0; i < values.Length; i++)
+            Assert.True(indices[i] >= 0, $"missing \"{values[i]}\"");
+        Assert.True(indices.SequenceEqual(indices.OrderBy(i => i)), $"out of order: {string.Join(", ", values)}");
     }
 
     private static string ExtractText(TailoredCvContent content)

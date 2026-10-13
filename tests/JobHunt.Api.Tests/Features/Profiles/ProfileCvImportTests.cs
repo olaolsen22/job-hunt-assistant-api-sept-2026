@@ -15,7 +15,7 @@ public class ProfileCvImportTests(ApiFactory factory) : IClassFixture<ApiFactory
             educations{id school startMonth bullets{id text position}}
             certifications{id name bullets{id text position}}
             projects{id name url location{id} skills{name} bullets{id text position translations{isStale text}}}
-            skills{skill{name} level} languages{language level}
+            skills{skill{name} level} languages{name written spoken}
             translations{language summary isSummaryStale}
           }
           errors{__typename ... on Error{message}}
@@ -38,7 +38,7 @@ public class ProfileCvImportTests(ApiFactory factory) : IClassFixture<ApiFactory
             certifications = new[] { new { name = suffix, bullets = new[] { new { text = "Passed certification" } } } },
             projects = new[] { new { name = suffix, location, skillNames = new[] { skill }, bullets = new[] { new { text = "Built project" } } } },
             skills = new[] { new { name = skill.ToLowerInvariant(), level = 4 } },
-            languages = new[] { new { language = "ENGLISH", level = "C1" } },
+            languages = new[] { new { name = "Filipino/Tagalog", written = "VERY_GOOD", spoken = "GOOD" } },
         });
         Assert.Equal(JsonValueKind.Null, payload.GetProperty("errors").ValueKind);
         var profile = payload.GetProperty("profile");
@@ -185,7 +185,7 @@ public class ProfileCvImportTests(ApiFactory factory) : IClassFixture<ApiFactory
 
     [Theory]
     [InlineData("{\"contentLanguage\":\"ENGLISH\",\"experiences\":[{\"employer\":\"X\",\"title\":\"Y\",\"startMonth\":null}]}")]
-    [InlineData("{\"contentLanguage\":\"ENGLISH\",\"languages\":[{\"language\":\"ENGLISH\",\"level\":null}]}")]
+    [InlineData("{\"contentLanguage\":\"ENGLISH\",\"languages\":[{\"name\":\"English\",\"written\":null,\"spoken\":\"GOOD\"}]}")]
     [InlineData("{\"contentLanguage\":\"ENGLISH\",\"basics\":{\"email\":\"invalid\"}}")]
     [InlineData("{\"contentLanguage\":\"ENGLISH\",\"projects\":[{\"name\":\"p\",\"url\":\"ftp://example.com\"}]}")]
     [InlineData("{\"contentLanguage\":\"ENGLISH\",\"links\":[{\"kind\":\"LINKEDIN\",\"url\":\"https://example.com\"}]}")]
