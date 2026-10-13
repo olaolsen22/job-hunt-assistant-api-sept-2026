@@ -104,6 +104,8 @@ builder.AddGraphQL()
     .AddFiltering()
     .AddSorting()
     .ModifyPagingOptions(options => options.IncludeTotalCount = true)
+    // The 30 s default cancels LLM mutations mid-call: a full CV parse or analyze-all runs well past it.
+    .ModifyRequestOptions(options => options.ExecutionTimeout = TimeSpan.FromMinutes(5))
     // Quick add sends one aliased createListing per row in a single document (~20 field cost each).
     .ModifyCostOptions(options =>
     {
