@@ -624,6 +624,33 @@ namespace JobHunt.Api.Migrations
                     b.ToTable("TrainingPrograms");
                 });
 
+            modelBuilder.Entity("JobHunt.Api.Features.LlmModels.UserLlmSetting", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DefaultModel")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("UserLlmSettings");
+                });
+
             modelBuilder.Entity("JobHunt.Api.Features.Locations.Location", b =>
                 {
                     b.Property<int>("Id")
@@ -673,6 +700,9 @@ namespace JobHunt.Api.Migrations
 
                     b.Property<string>("Mode")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Model")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Provider")
@@ -1712,6 +1742,15 @@ namespace JobHunt.Api.Migrations
                     b.Navigation("EndCompany");
 
                     b.Navigation("Listing");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.LlmModels.UserLlmSetting", b =>
+                {
+                    b.HasOne("JobHunt.Api.Features.Auth.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("JobHunt.Api.Features.Locations.Location", b =>

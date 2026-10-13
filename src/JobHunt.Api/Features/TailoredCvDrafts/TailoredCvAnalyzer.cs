@@ -4,11 +4,11 @@ using System.Text.Json.Serialization;
 using Google.GenAI;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Listings;
+using JobHunt.Api.Features.LlmModels;
 using JobHunt.Api.Features.Profiles;
 using JobHunt.Api.Llm;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Options;
 
 namespace JobHunt.Api.Features.TailoredCvDrafts;
 
@@ -23,7 +23,7 @@ public class InvalidTailoredCvAnalysisException(string message) : Exception(mess
 // Calls are deliberately bounded to one profile section so the current Flash model has a small task.
 public class TailoredCvAnalyzer(
     [FromKeyedServices(GeminiOptions.Provider)] IChatClient chat,
-    IOptions<GeminiOptions> gemini,
+    LlmModelResolver models,
     TimeProvider time,
     ILogger<TailoredCvAnalyzer> logger)
 {
@@ -40,7 +40,14 @@ public class TailoredCvAnalyzer(
     };
 
     public async Task<TailoredCvAnalysisResult> AnalyzeAsync(int listingId, TailoredCvSection section,
-        int? sourceEntryId, AppDbContext db, CancellationToken ct)
+        int? sourceEntryId, string? model, AppDbContext db, CancellationToken ct)
+    {
+        var resolved = await models.ResolveAsync(model, db, ct);
+        return await AnalyzeSectionAsync(listingId, section, sourceEntryId, resolved.Id, db, ct);
+    }
+
+    private async Task<TailoredCvAnalysisResult> AnalyzeSectionAsync(int listingId, TailoredCvSection section,
+        int? sourceEntryId, string model, AppDbContext db, CancellationToken ct)
     {
         var listing = await db.Listings.AsNoTracking()
             .Include(l => l.Company).Include(l => l.JobRole)
@@ -56,7 +63,7 @@ public class TailoredCvAnalyzer(
 
         var usage = new LlmUsage
         {
-            UserId = db.CurrentUserId!, Provider = GeminiOptions.Provider, Model = gemini.Value.Model,
+            UserId = db.CurrentUserId!, Provider = GeminiOptions.Provider, Model = model,
             Operation = Operation, CreatedAt = time.GetUtcNow().UtcDateTime,
         };
         db.LlmUsages.Add(usage);
@@ -66,7 +73,7 @@ public class TailoredCvAnalyzer(
         {
             var response = await chat.GetResponseAsync(
                 [new(ChatRole.System, Instructions(section)), new(ChatRole.User, $"<cv_context>\n{input}\n</cv_context>")],
-                new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0, MaxOutputTokens = 4096 }, ct);
+                new ChatOptions { ModelId = model, ResponseFormat = ChatResponseFormat.Json, Temperature = 0, MaxOutputTokens = 4096 }, ct);
             usage.InputTokens = response.Usage?.InputTokenCount;
             usage.OutputTokens = response.Usage?.OutputTokenCount is { } output
                 ? output + (response.Usage.ReasoningTokenCount ?? 0) : null;
@@ -93,8 +100,10 @@ public class TailoredCvAnalyzer(
         return result;
     }
 
-    public async Task<TailoredCvAnalysisReport> AnalyzeAllAsync(int listingId, AppDbContext db, CancellationToken ct)
+    public async Task<TailoredCvAnalysisReport> AnalyzeAllAsync(int listingId, string? model, AppDbContext db, CancellationToken ct)
     {
+        // Resolved once, so every section of one run uses the same model.
+        var resolved = (await models.ResolveAsync(model, db, ct)).Id;
         // One request per experience keeps each Gemini prompt focused on a small, verifiable source section.
         var experienceIds = await db.ProfileExperiences.AsNoTracking()
             .OrderBy(e => e.Id).Select(e => e.Id).ToListAsync(ct);
@@ -108,11 +117,11 @@ public class TailoredCvAnalyzer(
                 $"Analyze all supports at most {MaxEducationSectionsPerAnalyzeAll} education entries. Analyze sections individually.");
         var results = new List<TailoredCvAnalysisResult>(experienceIds.Count + educationIds.Count + 2);
         foreach (var experienceId in experienceIds)
-            results.Add(await AnalyzeAsync(listingId, TailoredCvSection.Experience, experienceId, db, ct));
+            results.Add(await AnalyzeSectionAsync(listingId, TailoredCvSection.Experience, experienceId, resolved, db, ct));
         foreach (var educationId in educationIds)
-            results.Add(await AnalyzeAsync(listingId, TailoredCvSection.Education, educationId, db, ct));
-        results.Add(await AnalyzeAsync(listingId, TailoredCvSection.Skills, null, db, ct));
-        results.Add(await AnalyzeAsync(listingId, TailoredCvSection.Summary, null, db, ct));
+            results.Add(await AnalyzeSectionAsync(listingId, TailoredCvSection.Education, educationId, resolved, db, ct));
+        results.Add(await AnalyzeSectionAsync(listingId, TailoredCvSection.Skills, null, resolved, db, ct));
+        results.Add(await AnalyzeSectionAsync(listingId, TailoredCvSection.Summary, null, resolved, db, ct));
         return new(results);
     }
 

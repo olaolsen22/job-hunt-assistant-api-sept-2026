@@ -17,6 +17,9 @@ public class ApiFactory : WebApplicationFactory<Program>
     public const string OwnerEmail = "owner@test.local";
     public const string OwnerPassword = "Test-Passw0rd!";
     public const string GuestEmail = "guest@jobhunt.local";
+    // The model in appsettings.json, and the extra one added below.
+    public const string DefaultModel = "gemini-3.1-flash-lite";
+    public const string StrongModel = "test-strong-model";
 
     private readonly string _connectionString = $"Data Source=test-{Guid.NewGuid()};Mode=Memory;Cache=Shared";
     private readonly SqliteConnection _keepAlive;
@@ -39,6 +42,10 @@ public class ApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Seed:OwnerPassword", OwnerPassword);
         // CI has no user-secrets; the key is never used because the fake replaces the real client.
         builder.UseSetting("Llm:Gemini:ApiKey", "test-key");
+        // A second allowed model next to the appsettings.json default, so the Owner has something to pick.
+        builder.UseSetting("Llm:Gemini:Models:1:Id", StrongModel);
+        builder.UseSetting("Llm:Gemini:Models:1:Label", "Strong");
+        builder.UseSetting("Llm:Gemini:Models:1:RequestsPerDay", "250");
         // A model with prices, so usageDaily's estimated cost has something to compute; the configured model has none.
         builder.UseSetting("Llm:Pricing:priced-model:InputPerMTok", "0.10");
         builder.UseSetting("Llm:Pricing:priced-model:OutputPerMTok", "0.40");

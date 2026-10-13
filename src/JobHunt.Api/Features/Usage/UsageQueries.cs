@@ -1,4 +1,5 @@
 using JobHunt.Api.Data;
+using JobHunt.Api.Features.LlmModels;
 using JobHunt.Api.Llm;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -6,7 +7,7 @@ using Microsoft.Extensions.Options;
 namespace JobHunt.Api.Features.Usage;
 
 public record UsageToday(
-    int Requests, long InputTokens, long OutputTokens, int? RequestsLimit, int? RemainingRequests, DateTime ResetsAt);
+    string Model, int Requests, long InputTokens, long OutputTokens, int? RequestsLimit, int? RemainingRequests, DateTime ResetsAt);
 
 public record DailyUsage(
     DateOnly Day, string Model, int Requests, long InputTokens, long OutputTokens, decimal? EstimatedCost);
@@ -32,11 +33,13 @@ public static class UsageQueries
     private const int MaxDays = 90;
 
     public static async Task<UsageToday> GetLlmUsageTodayAsync(
-        AppDbContext db, TimeProvider time, IOptions<GeminiOptions> gemini, CancellationToken ct)
+        AppDbContext db, TimeProvider time, LlmModelResolver models, CancellationToken ct)
     {
         var today = PacificDay.Of(time.GetUtcNow().UtcDateTime);
         var start = PacificDay.StartUtc(today);
-        var model = gemini.Value.Model;
+        // The caller's effective default: the model their next AI call uses unless they pick another.
+        var reported = await models.GetDefaultAsync(db, ct);
+        var model = reported.Id;
 
         // Limits are per model, so another model's calls don't use up this one's.
         var totals = await db.LlmUsages.IgnoreQueryFilters()
@@ -51,9 +54,9 @@ public static class UsageQueries
             .FirstOrDefaultAsync(ct);
 
         var requests = totals?.Requests ?? 0;
-        var limit = gemini.Value.RequestsPerDay;
+        var limit = reported.RequestsPerDay;
         return new UsageToday(
-            requests, totals?.Input ?? 0, totals?.Output ?? 0, limit,
+            model, requests, totals?.Input ?? 0, totals?.Output ?? 0, limit,
             limit is { } l ? Math.Max(0, l - requests) : null,
             PacificDay.StartUtc(today.AddDays(1)));
     }

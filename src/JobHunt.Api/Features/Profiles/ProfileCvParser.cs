@@ -1,9 +1,9 @@
 using Google.GenAI;
 using JobHunt.Api.Data;
+using JobHunt.Api.Features.LlmModels;
 using JobHunt.Api.Features.Parsing;
 using JobHunt.Api.Llm;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Options;
 
 namespace JobHunt.Api.Features.Profiles;
 
@@ -13,19 +13,20 @@ public record ProfileCvParseResult(ProfileCvParseStatus Status, ProfileCvCandida
 // CV input and unreviewed output are transient. Only usage metadata is saved.
 public class ProfileCvParser(
     [FromKeyedServices(GeminiOptions.Provider)] IChatClient chat,
-    IOptions<GeminiOptions> gemini, TimeProvider time)
+    LlmModelResolver models, TimeProvider time)
 {
     public const string Operation = "parse-profile-cv";
     public const int MaxTextLength = 100_000;
 
-    public async Task<ProfileCvParseResult> ParseAsync(string text, AppDbContext db, CancellationToken ct)
+    public async Task<ProfileCvParseResult> ParseAsync(string text, string? model, AppDbContext db, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(text) || text.Length > MaxTextLength)
             throw new InvalidParseRequestException($"Paste English CV text (1–{MaxTextLength} characters).");
+        var resolved = (await models.ResolveAsync(model, db, ct)).Id;
 
         var usage = new LlmUsage
         {
-            UserId = db.CurrentUserId!, Provider = GeminiOptions.Provider, Model = gemini.Value.Model,
+            UserId = db.CurrentUserId!, Provider = GeminiOptions.Provider, Model = resolved,
             Operation = Operation, CreatedAt = time.GetUtcNow().UtcDateTime,
         };
         db.LlmUsages.Add(usage);
@@ -35,7 +36,7 @@ public class ProfileCvParser(
         {
             var response = await chat.GetResponseAsync(
                 [new(ChatRole.System, ProfileCvPromptQueries.Instructions), new(ChatRole.User, $"<cv>\n{text}\n</cv>")],
-                new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0, MaxOutputTokens = 32_768 }, ct);
+                new ChatOptions { ModelId = resolved, ResponseFormat = ChatResponseFormat.Json, Temperature = 0, MaxOutputTokens = 32_768 }, ct);
             usage.InputTokens = response.Usage?.InputTokenCount;
             usage.OutputTokens = response.Usage?.OutputTokenCount is { } output
                 ? output + (response.Usage.ReasoningTokenCount ?? 0) : null;
@@ -71,7 +72,9 @@ public class ProfileCvParser(
 public static class ProfileCvParseMutations
 {
     [Error<InvalidParseRequestException>]
+    [Error<UnknownLlmModelException>]
     [UseMutationConvention(PayloadFieldName = "result")]
     public static Task<ProfileCvParseResult> ParseProfileCvAsync(
-        string text, AppDbContext db, ProfileCvParser parser, CancellationToken ct) => parser.ParseAsync(text, db, ct);
+        string text, string? model, AppDbContext db, ProfileCvParser parser, CancellationToken ct) =>
+        parser.ParseAsync(text, model, db, ct);
 }

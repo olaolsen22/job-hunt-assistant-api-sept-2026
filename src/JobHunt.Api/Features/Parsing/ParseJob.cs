@@ -25,6 +25,9 @@ public class ParseJob
     // Shown to the user as is.
     public string? Error { get; set; }
     public string Provider { get; set; } = null!;
+    // Resolved when the job is created, so a queued job keeps the model the user chose. Null on jobs from before
+    // model selection existed.
+    public string? Model { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }

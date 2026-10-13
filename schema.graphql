@@ -113,6 +113,7 @@ type Query {
     )
     @cost(weight: "10")
   listingById(id: Int!): Listing @cost(weight: "10")
+  llmModels: LlmModels! @cost(weight: "10")
   locations(
     search: String
     "Returns the first _n_ elements from the list."
@@ -217,6 +218,8 @@ type Mutation {
     @cost(weight: "10")
   deleteListing(input: DeleteListingInput!): DeleteListingPayload!
     @cost(weight: "10")
+  setDefaultLlmModel(input: SetDefaultLlmModelInput!): SetDefaultLlmModelPayload!
+    @cost(weight: "10")
   saveLocation(input: SaveLocationInput!): SaveLocationPayload!
     @cost(weight: "10")
   parseListing(input: ParseListingInput!): ParseListingPayload!
@@ -298,11 +301,11 @@ type Mutation {
     @cost(weight: "10")
   saveTailoredCvDraft(input: SaveTailoredCvDraftInput!): SaveTailoredCvDraftPayload!
     @cost(weight: "10")
+  generateCvDocument(input: GenerateCvDocumentInput!): GenerateCvDocumentPayload!
+    @cost(weight: "10")
   previewTailoredCvDraft(input: PreviewTailoredCvDraftInput!): PreviewTailoredCvDraftPayload!
     @cost(weight: "10")
 }
-  generateCvDocument(input: GenerateCvDocumentInput!): GenerateCvDocumentPayload!
-    @cost(weight: "10")
 
 type AddContactPayload {
   contact: Contact
@@ -565,14 +568,14 @@ type DuplicateListingError implements Error {
   existingListingId: Int!
 }
 
-type ImportProfileCvPayload {
-  profile: Profile
-  errors: [ImportProfileCvError!]
 type GenerateCvDocumentPayload {
   document: Document
   errors: [GenerateCvDocumentError!]
 }
 
+type ImportProfileCvPayload {
+  profile: Profile
+  errors: [ImportProfileCvError!]
 }
 
 "A connection to a list of items."
@@ -834,6 +837,16 @@ type ListingUrlCheckResult {
   shouldProcess: Boolean!
 }
 
+type LlmModel {
+  id: String!
+  label: String!
+}
+
+type LlmModels {
+  models: [LlmModel!]!
+  defaultModel: String!
+}
+
 type Location {
   listingCount: Int! @cost(weight: "10")
   id: Int!
@@ -891,6 +904,7 @@ type ParseJob {
   result: String
   error: String
   provider: String!
+  model: String
   createdAt: DateTime!
   startedAt: DateTime
   completedAt: DateTime
@@ -1205,6 +1219,11 @@ type SetCompanyNotesPayload {
   errors: [SetCompanyNotesError!]
 }
 
+type SetDefaultLlmModelPayload {
+  llmModels: LlmModels
+  errors: [SetDefaultLlmModelError!]
+}
+
 type SetJobRoleCategoryPayload {
   jobRole: JobRole
   errors: [SetJobRoleCategoryError!]
@@ -1336,6 +1355,10 @@ type TailoredCvDraft {
   content: TailoredCvContent!
 }
 
+type TailoredCvDraftNotFoundError implements Error {
+  message: String!
+}
+
 type TailoredCvEducation {
   school: String!
   degree: String
@@ -1353,10 +1376,6 @@ type TailoredCvExperience {
   endMonth: LocalDate
   bullets: [TailoredCvBullet!]!
   sourceEntryId: Int
-}
-
-type TailoredCvDraftNotFoundError implements Error {
-  message: String!
 }
 
 type TailoredCvExternalCandidate {
@@ -1408,6 +1427,10 @@ type TrainingProgram {
 type UndoStatusChangePayload {
   listing: Listing
   errors: [UndoStatusChangeError!]
+}
+
+type UnknownLlmModelError implements Error {
+  message: String!
 }
 
 type UpdateCompanyPayload {
@@ -1486,6 +1509,7 @@ type UploadDocumentPayload {
 }
 
 type UsageToday {
+  model: String!
   requests: Int!
   inputTokens: Long!
   outputTokens: Long!
@@ -1523,11 +1547,13 @@ union AddProfileReferenceError = InvalidProfileError
 union AnalyzeAllTailoredCvError =
   | ListingNotFoundError
   | InvalidTailoredCvAnalysisError
+  | UnknownLlmModelError
 
 union AnalyzeTailoredCvSectionError =
   | ListingNotFoundError
   | ProfileEntryNotFoundError
   | InvalidTailoredCvAnalysisError
+  | UnknownLlmModelError
 
 union ApplyToListingError =
   | ListingNotFoundError
@@ -1569,6 +1595,10 @@ union DeleteProfileReferenceError = ProfileEntryNotFoundError
 
 union DeleteProfileTranslationError = ProfileEntryNotFoundError
 
+union GenerateCvDocumentError =
+  | ListingNotFoundError
+  | TailoredCvDraftNotFoundError
+
 union ImportProfileCvError =
   | InvalidProfileImportError
   | ProfileEntryNotFoundError
@@ -1580,13 +1610,16 @@ union MoveProfileReferenceError =
   | ProfileEntryNotFoundError
   | InvalidProfileError
 
-union ParseListingError = InvalidParseRequestError
+union ParseListingError = InvalidParseRequestError | UnknownLlmModelError
 
-union ParseListingFromUrlError = ListingNotFoundError | InvalidParseRequestError
+union ParseListingFromUrlError =
+  | ListingNotFoundError
+  | InvalidParseRequestError
+  | UnknownLlmModelError
 
-union ParseProfileCvError = InvalidParseRequestError
+union ParseProfileCvError = InvalidParseRequestError | UnknownLlmModelError
 
-union ParseUrlError = InvalidParseRequestError
+union ParseUrlError = InvalidParseRequestError | UnknownLlmModelError
 
 union PreviewProfileCvImportError = InvalidProfileImportError
 
@@ -1595,10 +1628,6 @@ union PreviewTailoredCvDraftError =
   | InvalidTailoredCvDraftError
 
 union RecordOutcomeError =
-union GenerateCvDocumentError =
-  | ListingNotFoundError
-  | TailoredCvDraftNotFoundError
-
   | ListingNotFoundError
   | InvalidStatusTransitionError
   | InvalidApplicationError
@@ -1620,6 +1649,8 @@ union SetCompanyAvoidedError = CompanyNotFoundError
 union SetCompanyFavoriteError = CompanyNotFoundError
 
 union SetCompanyNotesError = CompanyNotFoundError | InvalidCompanyError
+
+union SetDefaultLlmModelError = UnknownLlmModelError
 
 union SetJobRoleCategoryError =
   | JobRoleNotFoundError
@@ -1766,12 +1797,14 @@ input AddProfileReferenceInput {
 
 input AnalyzeAllTailoredCvInput {
   listingId: Int!
+  model: String
 }
 
 input AnalyzeTailoredCvSectionInput {
   listingId: Int!
   section: TailoredCvSection!
   sourceEntryId: Int
+  model: String
 }
 
 input ApplicationStatusOperationFilterInput {
@@ -1965,6 +1998,10 @@ input DocumentKindOperationFilterInput {
   nin: [DocumentKind!] @cost(weight: "10")
 }
 
+input GenerateCvDocumentInput {
+  listingId: Int!
+}
+
 input ImportProfileCvInput {
   selection: ProfileCvImportSelectionInput!
 }
@@ -1998,10 +2035,6 @@ input InterviewSortInput {
   id: SortEnumType @cost(weight: "10")
   listingId: SortEnumType @cost(weight: "10")
   listing: ListingSortInput @cost(weight: "10")
-input GenerateCvDocumentInput {
-  listingId: Int!
-}
-
   title: SortEnumType @cost(weight: "10")
   scheduledAt: SortEnumType @cost(weight: "10")
   notes: SortEnumType @cost(weight: "10")
@@ -2373,19 +2406,23 @@ input NullableOfWorkModeOperationFilterInput {
 
 input ParseListingFromUrlInput {
   listingId: Int!
+  model: String
 }
 
 input ParseListingInput {
   text: String!
   mode: ParseMode!
+  model: String
 }
 
 input ParseProfileCvInput {
   text: String!
+  model: String
 }
 
 input ParseUrlInput {
   url: String!
+  model: String
 }
 
 input PreviewProfileCvImportInput {
@@ -2526,6 +2563,10 @@ input SetCompanyFavoriteInput {
 input SetCompanyNotesInput {
   id: Int!
   notes: String
+}
+
+input SetDefaultLlmModelInput {
+  model: String
 }
 
 input SetJobRoleCategoryInput {
@@ -2978,6 +3019,7 @@ enum TailoredCvAnalysisStatus {
 
 enum TailoredCvSection {
   EXPERIENCE
+  EDUCATION
   SKILLS
   SUMMARY
 }
@@ -3019,7 +3061,6 @@ directive @cost(
   | SCALAR
   | OBJECT
   | FIELD_DEFINITION
-  EDUCATION
   | ARGUMENT_DEFINITION
   | ENUM
   | INPUT_FIELD_DEFINITION

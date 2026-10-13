@@ -2,6 +2,7 @@ using System.Threading.RateLimiting;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Auth;
 using JobHunt.Api.Features.Documents;
+using JobHunt.Api.Features.LlmModels;
 using JobHunt.Api.Features.Parsing;
 using JobHunt.Api.Features.Profiles;
 using JobHunt.Api.Features.TailoredCvDrafts;
@@ -76,13 +77,15 @@ builder.Services.AddOptions<GeminiOptions>()
     .BindConfiguration(GeminiOptions.Section)
     .ValidateDataAnnotations()
     .ValidateOnStart();
-// Keyed by provider, so Ollama (and later others) can register side by side and a user setting picks one.
+// Keyed by provider, so Ollama (and later others) can register side by side. The model is picked per call
+// (ChatOptions.ModelId); the default here only applies if a caller doesn't set one.
 builder.Services.AddKeyedSingleton<IChatClient>(GeminiOptions.Provider, (sp, _) =>
 {
     var gemini = sp.GetRequiredService<IOptions<GeminiOptions>>().Value;
-    return new Google.GenAI.Client(apiKey: gemini.ApiKey).AsIChatClient(gemini.Model);
+    return new Google.GenAI.Client(apiKey: gemini.ApiKey).AsIChatClient(gemini.DefaultModel);
 });
 builder.Services.AddOptions<LlmPricingOptions>().BindConfiguration(LlmPricingOptions.Section);
+builder.Services.AddScoped<LlmModelResolver>();
 builder.Services.AddScoped<ListingParser>();
 builder.Services.AddScoped<ProfileCvParser>();
 builder.Services.AddScoped<TailoredCvAnalyzer>();

@@ -5,14 +5,12 @@ using JobHunt.Api.Features.Companies;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Llm;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Options;
 
 namespace JobHunt.Api.Features.Parsing;
 
 // Runs one parse job. parseListing calls it inline for now; the background queue will call it later.
 public class ListingParser(
     [FromKeyedServices(GeminiOptions.Provider)] IChatClient chat,
-    IOptions<GeminiOptions> gemini,
     TimeProvider time,
     ILogger<ListingParser> logger)
 {
@@ -49,6 +47,7 @@ public class ListingParser(
         ];
         var options = new ChatOptions
         {
+            ModelId = job.Model,
             // JSON mode: the model can't wrap the answer in prose or code fences.
             ResponseFormat = ChatResponseFormat.Json,
             Temperature = 0,
@@ -62,7 +61,7 @@ public class ListingParser(
         {
             UserId = job.UserId,
             Provider = job.Provider,
-            Model = gemini.Value.Model,
+            Model = job.Model!,
             Operation = job.Mode == ParseMode.Companies ? CompaniesOperation : Operation,
             CreatedAt = time.GetUtcNow().UtcDateTime,
         };

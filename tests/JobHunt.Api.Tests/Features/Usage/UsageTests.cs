@@ -10,10 +10,10 @@ namespace JobHunt.Api.Tests.Features.Usage;
 
 public class UsageTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
-    // The model from appsettings.json; llmUsageToday only counts this one.
-    private const string Configured = "gemini-3.1-flash-lite";
+    // The configured default; llmUsageToday counts only the caller's effective default model.
+    private const string Configured = ApiFactory.DefaultModel;
 
-    private const string Today = "{ llmUsageToday { requests inputTokens outputTokens requestsLimit remainingRequests resetsAt } }";
+    private const string Today = "{ llmUsageToday { model requests inputTokens outputTokens requestsLimit remainingRequests resetsAt } }";
     private const string Daily = "query($days: Int) { usageDaily(days: $days) { day model requests inputTokens outputTokens estimatedCost } }";
 
     // Rows are dated relative to the real clock, so a run within seconds of midnight Pacific time could flip a day.
@@ -93,7 +93,7 @@ public class UsageTests(ApiFactory factory) : IClassFixture<ApiFactory>
     [Fact]
     public async Task Today_WithNoLimitConfigured_HasNoLimitOrRemaining()
     {
-        using var unlimited = factory.WithWebHostBuilder(b => b.UseSetting("Llm:Gemini:RequestsPerDay", ""));
+        using var unlimited = factory.WithWebHostBuilder(b => b.UseSetting("Llm:Gemini:Models:0:RequestsPerDay", ""));
         var client = unlimited.CreateClient();
         (await client.PostAsJsonAsync("/api/auth/login",
             new JobHunt.Api.Features.Auth.LoginRequest(ApiFactory.OwnerEmail, ApiFactory.OwnerPassword))).EnsureSuccessStatusCode();
@@ -102,6 +102,37 @@ public class UsageTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
         Assert.Equal(JsonValueKind.Null, usage.GetProperty("requestsLimit").ValueKind);
         Assert.Equal(JsonValueKind.Null, usage.GetProperty("remainingRequests").ValueKind);
+    }
+
+    [Fact]
+    public async Task Today_FollowsEachUsersDefaultModel_AndItsLimit()
+    {
+        var owner = await factory.GetOwnerClientAsync();
+        var guest = await factory.GetGuestClientAsync();
+        var ownerId = await UserIdAsync(owner);
+        await ResetAsync(
+            Row(ownerId, ApiFactory.StrongModel, DateTime.UtcNow, 1, 1),
+            Row(ownerId, ApiFactory.StrongModel, DateTime.UtcNow, 1, 1),
+            Row(ownerId, Configured, DateTime.UtcNow, 1, 1));
+        await owner.GraphQLAsync("mutation ($m: String) { setDefaultLlmModel(input: { model: $m }) { errors { __typename } } }",
+            new { m = ApiFactory.StrongModel });
+        try
+        {
+            var ownerUsage = (await owner.GraphQLAsync(Today)).GetProperty("llmUsageToday");
+            var guestUsage = (await guest.GraphQLAsync(Today)).GetProperty("llmUsageToday");
+
+            Assert.Equal(ApiFactory.StrongModel, ownerUsage.GetProperty("model").GetString());
+            Assert.Equal(2, ownerUsage.GetProperty("requests").GetInt32());
+            // 250 is the test model's limit (ApiFactory); the default keeps its 500.
+            Assert.Equal(250, ownerUsage.GetProperty("requestsLimit").GetInt32());
+            Assert.Equal(Configured, guestUsage.GetProperty("model").GetString());
+            Assert.Equal(1, guestUsage.GetProperty("requests").GetInt32());
+            Assert.Equal(500, guestUsage.GetProperty("requestsLimit").GetInt32());
+        }
+        finally
+        {
+            await owner.GraphQLAsync("mutation { setDefaultLlmModel(input: { model: null }) { errors { __typename } } }");
+        }
     }
 
     [Fact]
