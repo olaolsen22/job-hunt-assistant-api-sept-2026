@@ -43,24 +43,30 @@ public record TailoredCvContent(
     List<TailoredCvLink>? Links = null,
     Language Language = Language.English,
     DateOnly? DateOfBirth = null,
-    bool ReferencesOnRequest = false);
+    bool ReferencesOnRequest = false,
+    TailoredCvSectionOrder SectionOrder = TailoredCvSectionOrder.Standard,
+    TailoredCvContentStyle ContentStyle = TailoredCvContentStyle.Bullets);
+
+// Standard follows NAV's order. Developer puts links with the contact lines and skills/projects earlier,
+// as Norwegian developer recruiters ask for visible technical evidence (docs/norwegian-cv-formatting.md §10).
+public enum TailoredCvSectionOrder { Standard, Developer }
 
 public record TailoredCvBullet(string Text, int? SourceBulletId = null);
-// Each entry chooses how its selected points print: as bullets or as one paragraph.
+// One style for the whole CV, so entries print consistently: as bullets or as one paragraph each.
 public enum TailoredCvContentStyle { Bullets, Paragraph }
 // Location is display text such as "Lagos, Nigeria"; the guidance favours City, Country for foreign roles.
 public record TailoredCvExperience(string Employer, string Title, DateOnly? StartMonth, DateOnly? EndMonth,
     List<TailoredCvBullet> Bullets, int? SourceEntryId = null, string? Location = null,
-    TailoredCvContentStyle ContentStyle = TailoredCvContentStyle.Bullets, string? Paragraph = null);
+    string? Paragraph = null);
 public record TailoredCvEducation(string School, string? Degree, string? Field, DateOnly? StartMonth,
     DateOnly? EndMonth, List<TailoredCvBullet> Bullets, int? SourceEntryId = null, string? Location = null,
-    TailoredCvContentStyle ContentStyle = TailoredCvContentStyle.Bullets, string? Paragraph = null);
+    string? Paragraph = null);
 public record TailoredCvCertification(string Name, string? Issuer, DateOnly? IssuedMonth, DateOnly? ExpiresMonth,
     string? Url, List<TailoredCvBullet> Bullets, int? SourceEntryId = null,
-    TailoredCvContentStyle ContentStyle = TailoredCvContentStyle.Bullets, string? Paragraph = null);
+    string? Paragraph = null);
 public record TailoredCvProject(string Name, string? Url, DateOnly? StartMonth, DateOnly? EndMonth,
     List<TailoredCvBullet> Bullets, int? SourceEntryId = null, string? Location = null,
-    TailoredCvContentStyle ContentStyle = TailoredCvContentStyle.Bullets, string? Paragraph = null);
+    string? Paragraph = null);
 public record TailoredCvSkill(string Name, int? Level, int? SourceSkillId = null);
 public record TailoredCvLanguage(string Name, LanguageProficiency? Written, LanguageProficiency? Spoken);
 public record TailoredCvLink(string Label, string Url);

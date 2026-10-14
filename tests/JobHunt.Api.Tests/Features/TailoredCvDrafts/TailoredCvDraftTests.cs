@@ -75,7 +75,7 @@ public class TailoredCvDraftTests(ApiFactory factory) : IClassFixture<ApiFactory
             mutation ($listingId: Int!, $content: TailoredCvContentInput!) {
               saveTailoredCvDraft(input: { listingId: $listingId, content: $content }) {
                 tailoredCvDraft {
-                  content { experiences { sourceEntryId employer title contentStyle paragraph bullets { sourceBulletId text } } }
+                  content { contentStyle experiences { sourceEntryId employer title paragraph bullets { sourceBulletId text } } }
                 }
                 errors { __typename ... on Error { message } }
               }
@@ -85,10 +85,10 @@ public class TailoredCvDraftTests(ApiFactory factory) : IClassFixture<ApiFactory
             listingId,
             content = new
             {
+                contentStyle = "PARAGRAPH",
                 experiences = new[] { new
                 {
                     sourceEntryId = entryId, employer = "Source Employer", title = "Developer",
-                    contentStyle = "PARAGRAPH",
                     paragraph = "Rewrote the selected source work as concise prose.",
                     bullets = new[] { new { sourceBulletId = (int?)bulletId, text = "Edited wording for this application" } },
                 } },
@@ -97,16 +97,17 @@ public class TailoredCvDraftTests(ApiFactory factory) : IClassFixture<ApiFactory
 
         var payload = data.GetProperty("saveTailoredCvDraft");
         Assert.Equal(JsonValueKind.Null, payload.GetProperty("errors").ValueKind);
-        var saved = payload.GetProperty("tailoredCvDraft").GetProperty("content").GetProperty("experiences")[0];
+        var savedContent = payload.GetProperty("tailoredCvDraft").GetProperty("content");
+        Assert.Equal("PARAGRAPH", savedContent.GetProperty("contentStyle").GetString());
+        var saved = savedContent.GetProperty("experiences")[0];
         Assert.Equal(entryId, saved.GetProperty("sourceEntryId").GetInt32());
-        Assert.Equal("PARAGRAPH", saved.GetProperty("contentStyle").GetString());
         Assert.Equal("Rewrote the selected source work as concise prose.", saved.GetProperty("paragraph").GetString());
         Assert.Equal(bulletId, saved.GetProperty("bullets")[0].GetProperty("sourceBulletId").GetInt32());
         Assert.Equal("Edited wording for this application", saved.GetProperty("bullets")[0].GetProperty("text").GetString());
     }
 
     [Fact]
-    public async Task SaveDraft_EducationCertificationAndProjectKeepContentStyleAndParagraph()
+    public async Task SaveDraft_EducationCertificationAndProjectKeepParagraph()
     {
         var client = await factory.GetOwnerClientAsync();
         var listingId = await CreateListingAsync(client);
@@ -116,9 +117,10 @@ public class TailoredCvDraftTests(ApiFactory factory) : IClassFixture<ApiFactory
               saveTailoredCvDraft(input: { listingId: $listingId, content: $content }) {
                 tailoredCvDraft {
                   content {
-                    educations { contentStyle paragraph }
-                    certifications { contentStyle paragraph }
-                    projects { contentStyle paragraph }
+                    contentStyle
+                    educations { paragraph }
+                    certifications { paragraph }
+                    projects { paragraph }
                   }
                 }
                 errors { __typename ... on Error { message } }
@@ -129,18 +131,18 @@ public class TailoredCvDraftTests(ApiFactory factory) : IClassFixture<ApiFactory
             listingId,
             content = new
             {
-                educations = new[] { new { school = "State University", contentStyle = "PARAGRAPH", paragraph = " Studied systems. ", bullets = Array.Empty<object>() } },
+                contentStyle = "PARAGRAPH",
+                educations = new[] { new { school = "State University", paragraph = " Studied systems. ", bullets = Array.Empty<object>() } },
                 certifications = new[] { new { name = "AWS SA", bullets = Array.Empty<object>() } },
-                projects = new[] { new { name = "Side Project", contentStyle = "PARAGRAPH", paragraph = "Shipped a CLI.", bullets = Array.Empty<object>() } },
+                projects = new[] { new { name = "Side Project", paragraph = "Shipped a CLI.", bullets = Array.Empty<object>() } },
             },
         });
 
         var payload = data.GetProperty("saveTailoredCvDraft");
         Assert.Equal(JsonValueKind.Null, payload.GetProperty("errors").ValueKind);
         var content = payload.GetProperty("tailoredCvDraft").GetProperty("content");
-        Assert.Equal("PARAGRAPH", content.GetProperty("educations")[0].GetProperty("contentStyle").GetString());
+        Assert.Equal("PARAGRAPH", content.GetProperty("contentStyle").GetString());
         Assert.Equal("Studied systems.", content.GetProperty("educations")[0].GetProperty("paragraph").GetString());
-        Assert.Equal("BULLETS", content.GetProperty("certifications")[0].GetProperty("contentStyle").GetString());
         Assert.Equal(JsonValueKind.Null, content.GetProperty("certifications")[0].GetProperty("paragraph").ValueKind);
         Assert.Equal("Shipped a CLI.", content.GetProperty("projects")[0].GetProperty("paragraph").GetString());
     }
@@ -148,7 +150,7 @@ public class TailoredCvDraftTests(ApiFactory factory) : IClassFixture<ApiFactory
     private const string SaveContent = """
         mutation ($listingId: Int!, $content: TailoredCvContentInput!) {
           saveTailoredCvDraft(input: { listingId: $listingId, content: $content }) {
-            tailoredCvDraft { content { language address dateOfBirth referencesOnRequest
+            tailoredCvDraft { content { language address dateOfBirth referencesOnRequest sectionOrder
               experiences { location } languages { name written spoken } } }
             errors { __typename ... on Error { message } }
           }
@@ -172,6 +174,21 @@ public class TailoredCvDraftTests(ApiFactory factory) : IClassFixture<ApiFactory
         var unset = await client.GraphQLAsync(SaveContent, new { listingId = await CreateListingAsync(client), content = new { summary = "x" } });
         Assert.Equal("ENGLISH", unset.GetProperty("saveTailoredCvDraft").GetProperty("tailoredCvDraft")
             .GetProperty("content").GetProperty("language").GetString());
+    }
+
+    [Fact]
+    public async Task Save_SectionOrderDefaultsToStandard_AndKeepsDeveloper()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var listingId = await CreateListingAsync(client);
+
+        var defaulted = await client.GraphQLAsync(SaveContent, new { listingId, content = new { summary = "x" } });
+        Assert.Equal("STANDARD", defaulted.GetProperty("saveTailoredCvDraft").GetProperty("tailoredCvDraft")
+            .GetProperty("content").GetProperty("sectionOrder").GetString());
+
+        var developer = await client.GraphQLAsync(SaveContent, new { listingId, content = new { summary = "x", sectionOrder = "DEVELOPER" } });
+        Assert.Equal("DEVELOPER", developer.GetProperty("saveTailoredCvDraft").GetProperty("tailoredCvDraft")
+            .GetProperty("content").GetProperty("sectionOrder").GetString());
     }
 
     [Fact]
@@ -202,6 +219,40 @@ public class TailoredCvDraftTests(ApiFactory factory) : IClassFixture<ApiFactory
         Assert.Equal("NATIVE", language.GetProperty("spoken").GetString());
     }
 
+    [Fact]
+    public async Task Save_FillsMissingLocationFromSourceProfileEntry()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var created = await client.GraphQLAsync("""
+            mutation {
+              addProfileExperience(input: { employer: "Lagos Co", title: "Dev", startMonth: "2020-01-01", skillNames: [],
+                                            location: { city: "Lagos", countryCode: "NG" } }) {
+                profileExperience { id }
+              }
+            }
+            """);
+        var entryId = created.GetProperty("addProfileExperience").GetProperty("profileExperience").GetProperty("id").GetInt32();
+        var listingId = await CreateListingAsync(client);
+
+        var data = await client.GraphQLAsync(SaveContent, new
+        {
+            listingId,
+            content = new
+            {
+                experiences = new object[]
+                {
+                    new { sourceEntryId = entryId, employer = "Lagos Co", title = "Dev", bullets = Array.Empty<object>() },
+                    new { sourceEntryId = entryId, employer = "Lagos Co", title = "Dev", location = "Remote", bullets = Array.Empty<object>() },
+                },
+            },
+        });
+
+        var experiences = data.GetProperty("saveTailoredCvDraft").GetProperty("tailoredCvDraft")
+            .GetProperty("content").GetProperty("experiences");
+        Assert.Equal("Lagos, Nigeria", experiences[0].GetProperty("location").GetString());
+        Assert.Equal("Remote", experiences[1].GetProperty("location").GetString());
+    }
+
     [Theory]
     [InlineData("English", "english")]
     [InlineData("English", " ")]
@@ -219,6 +270,56 @@ public class TailoredCvDraftTests(ApiFactory factory) : IClassFixture<ApiFactory
 
         var payload = data.GetProperty("saveTailoredCvDraft");
         Assert.Equal("InvalidTailoredCvDraftError", payload.GetProperty("errors")[0].GetProperty("__typename").GetString());
+    }
+
+    private const string FromProfile = """
+        query ($listingId: Int!) {
+          tailoredCvDraftFromProfile(listingId: $listingId) {
+            language experiences { sourceEntryId employer bullets { sourceBulletId text } }
+          }
+        }
+        """;
+
+    [Fact]
+    public async Task FromProfile_PrefillsProfileEntriesWithSourceIdsAndSavesNothing()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var employer = $"Prefill {Guid.NewGuid():N}";
+        var experience = await ProfileEntryTests.AddExperienceAsync(client, employer: employer, skills: []);
+        var entryId = experience.GetProperty("id").GetInt32();
+        var bulletData = await client.GraphQLAsync("""
+            mutation ($entryId: Int!) {
+              addProfileBullet(input: { kind: EXPERIENCE, entryId: $entryId, text: "Profile bullet" }) { profileBullet { id } }
+            }
+            """, new { entryId });
+        var bulletId = bulletData.GetProperty("addProfileBullet").GetProperty("profileBullet").GetProperty("id").GetInt32();
+        var listingId = await CreateListingAsync(client, "NORWEGIAN");
+
+        var data = await client.GraphQLAsync(FromProfile, new { listingId });
+
+        var content = data.GetProperty("tailoredCvDraftFromProfile");
+        Assert.Equal("NORWEGIAN", content.GetProperty("language").GetString());
+        var prefilled = content.GetProperty("experiences").EnumerateArray()
+            .Single(e => e.GetProperty("employer").GetString() == employer);
+        Assert.Equal(entryId, prefilled.GetProperty("sourceEntryId").GetInt32());
+        Assert.Equal(bulletId, prefilled.GetProperty("bullets")[0].GetProperty("sourceBulletId").GetInt32());
+        Assert.Equal("Profile bullet", prefilled.GetProperty("bullets")[0].GetProperty("text").GetString());
+
+        var saved = await client.GraphQLAsync(
+            "query ($listingId: Int!) { tailoredCvDraft(listingId: $listingId) { id } }", new { listingId });
+        Assert.Equal(JsonValueKind.Null, saved.GetProperty("tailoredCvDraft").ValueKind);
+    }
+
+    [Fact]
+    public async Task FromProfile_RejectsAnotherUsersListing()
+    {
+        var owner = await factory.GetOwnerClientAsync();
+        var listingId = await CreateListingAsync(owner);
+
+        var guest = await factory.GetGuestClientAsync();
+        var data = await guest.GraphQLAsync(FromProfile, new { listingId });
+
+        Assert.Equal(JsonValueKind.Null, data.GetProperty("tailoredCvDraftFromProfile").ValueKind);
     }
 
     private async Task<JsonElement> SaveAsync(HttpClient client, int listingId, string summary)

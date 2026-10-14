@@ -1,10 +1,12 @@
-# Norwegian CV formatting — comparison of official Norwegian guidance
+# Norwegian CV formatting — official guidance and Norwegian developer perspectives
 
 Research date: **12 October 2026**. Language: English, retaining Norwegian section names where useful.
 
+Developer/IT research added: **14 October 2026**. The original filename is retained. Sections 1–9 cover the original official-source research and explicitly labeled implementation choices. Section 10 expands the scope, as requested, to Norwegian industry voices, Kode24 interviews, professional associations and employer advice.
+
 ## Scope and evidence
 
-This report compares public Norwegian CV guidance from national services, public universities, and public county career centres. It covers ordinary job applications; academic and project-funding formats are identified separately. Only official Norwegian websites support the findings. Commercial CV services, recruitment blogs, Reddit, and private professional associations are excluded, including commercial sites linked by public services.
+The original research compares public Norwegian CV guidance from national services, public universities, and public county career centres. It covers ordinary job applications; academic and project-funding formats are identified separately. Only official Norwegian websites support the original source findings. Commercial CV services, recruitment blogs, Reddit, and private professional associations were excluded from that research. The new developer supplement has its own source register and includes the industry sources the user subsequently requested.
 
 This is a broad review of relevant, publicly accessible guidance, **not an exhaustive inventory of every official Norwegian website**. Several sites share institutional owners: NAV and Arbeidsplassen are one source family, while Utdanning.no and Karriereveiledning.no are HK-dir services. Agreement between their pages should not be counted as wholly independent institutional evidence. HK-dir documents its services [here](https://hkdir.no/om-oss/tenester); ung.no identifies Bufdir as its operator [here](https://www.ung.no/om/403_Kontakt_ung.no.html).
 
@@ -101,6 +103,8 @@ A profile is not universally compulsory. UiB suggests a brief introductory parag
 
 NMBU encourages including international study/work experience, but its guidance does not prescribe whether an employment location should contain the city, country, or both. No general city-versus-country rule was established by the sources reviewed for this report. [NMBU][S6]
 
+Update from the industry supplement: Tekna explicitly includes **optional city/country** in employment entries, alongside period, title and employer. It does not require both or prescribe separate lines. This is professional-association advice rather than government guidance. [Tekna][D3]
+
 **Suggested implementation, not an official Norwegian requirement:** use **City, Country** for foreign experience so the location is unambiguous. Keep the same entry structure across roles. For example, using fictional information:
 
 **Project Coordinator**  
@@ -108,6 +112,30 @@ Example Company, Lagos, Nigeria
 01.2021–06.2023
 
 This location choice is intended for reader clarity; no ATS compatibility claim is made. Follow a recruitment portal's separate city/country fields when those are provided.
+
+### Company, title, location, and dates
+
+The reviewed official examples consistently identify the role, employer/institution, and employment period. NAV says to include the job title and period; NMBU specifies month and year for employment dates; NTNU's examples use a date range with the title and workplace. [NAV/Arbeidsplassen][S1], [NMBU][S6], [NTNU][S5]
+
+**Recommended plain-text pattern for an ordinary CV:**
+
+**Job title**  
+Employer name, City, Country  
+MM.YYYY–MM.YYYY (or `MM.YYYY–d.d.` for a current role)
+
+Example:
+
+**Project Coordinator**  
+Example Company, Lagos, Nigeria  
+01.2021–06.2023
+
+For a Norwegian role:
+
+**Logistikkkoordinator**  
+Nordvik Vareflyt AS, Trondheim, Norway  
+08.2023–d.d.
+
+This three-line pattern is a practical ATS/readability choice. The official sources do not require these exact line breaks, punctuation, or date notation. Use the same order and date style throughout the document, and enter the values into separate portal fields when the recruitment system provides them.
 
 ### Skills, language, and references
 
@@ -129,8 +157,11 @@ ATS means applicant tracking system. The official sources reviewed discuss recru
 4. **Use accurate vacancy terminology.** Karriereveiledning recommends relevant words from the advertisement; this supports recognizable descriptions, not claims about an ATS score. [S3]
 5. **Use descriptive sections and short bullets.** UiB recommends recognizable headings and bullet lists for readability. Its advice does not certify any particular parser. [S10]
 6. **Use PDF where appropriate.** Telemark explicitly recommends sending CVs as PDF. Employer/portal instructions still determine the accepted format for a specific application. [S9, S4]
-7. **Keep contact details as ordinary, labeled text.** The sample uses separate lines such as `Telefon:`, `E-post:` and `Bosted:`. This avoids relying on icons, dot separators, graphics, text boxes, or document-header fields. It is a practical parsing precaution, not an official Norwegian ATS rule.
-8. **Write foreign locations as `City, Country`.** For example, `Example Company, Lagos, Nigeria`. This keeps the location explicit in extracted text. NMBU supports including international experience but does not prescribe a city/country format, so this is a practical convention rather than official ATS guidance. [S6]
+
+### Practical implementation choices discussed with the user
+
+- **Keep contact details as ordinary, labeled text.** The sample uses separate lines such as `Telefon:`, `E-post:` and `Bosted:`. This avoids relying on icons, dot separators, graphics, text boxes, or document-header fields. It is a practical parsing precaution, not an official Norwegian ATS rule.
+- **Write foreign locations as `City, Country`.** For example, `Example Company, Lagos, Nigeria`. This keeps the location explicit in extracted text. NMBU supports including international experience but does not prescribe a city/country format, so this is a practical convention rather than official ATS guidance. [S6]
 
 ### What this research does not establish
 
@@ -219,6 +250,99 @@ The sample uses the following **implementation choices, not additional official 
 | Layout | One column, left aligned, dark text on white; no photo |
 
 The body size falls within Østfold's published 10–12 range. The larger headings, exact spacing, page margins and choice of Arial illustrate a readable design; they are not prescribed by the reviewed general CV guidance. The cited range does not separately identify sizes for body text, headings or the name.
+
+## 10. IT and software developer CVs — Norwegian industry perspectives
+
+Researched 14 October 2026. These sources represent named people working in Norway's technology/recruitment sector and Norwegian organizations. Their citizenship was not independently verified. Kode24 is industry journalism, Tekna and NITO are professional associations, and KPMG is an employer. None is a national CV standards authority. Kode24's interviewees speak directly about developer hiring; the other sources provide broader advice applicable to technology candidates.
+
+Finished example: [Fictional Norwegian software developer CV (PDF)](Sample_Norwegian_Software_Developer_CV.pdf), created 14 October 2026. One A4 page with separate contact lines and title/company/location/date lines, technical skills, Norwegian and foreign employment, and a personal project. Uses Arial 11 pt body, 13 pt headings and 22 pt name. All personal details, experience and results are fictional; the portfolio URL is a placeholder. Visually reviewed and checked for extractable text; not tested against a particular ATS.
+
+### What Norwegian developer recruiters emphasize
+
+| Finding | Source and context |
+|---|---|
+| Make development projects and demonstrable skills visible; a GitHub account or equivalent can help. | Magnus Kongshem and Julie Hojem, Sopra Steria, interviewed by Kode24 in December 2023. [D1] |
+| Describe what you learned and your own contribution, using active language. Translate less directly relevant experience into useful skills. | Stine Ovidia Saksen-Sydow, NTNU career adviser, in the same interview. [D1] |
+| Hobby projects, summer jobs and student responsibilities can strengthen a junior candidate's application. Problem-solving matters beyond syntax knowledge. | Jørn Skaaraas, Sopra Steria, interviewed by Kode24 in October 2022. [D2] |
+| Relevant practical experience also matters when consultants are proposed for customer assignments. | Skaaraas in the 2022 interview. [D2] |
+| Keep work periods precise, latest first; describe responsibilities, methods and results. | Tekna's own CV guide. [D3] |
+| A CV need not be visually elaborate. Concrete evidence and an obvious connection to the role help recruiters assess it. | Kristin Vestre and Katrine Løtveit, KPMG Norway recruitment advisers, June 2026. Broader graduate hiring advice, not developer-only guidance. [D6] |
+
+The shared message is to make relevant competence easy to understand. The distinctive developer emphasis is **evidence of building and solving problems**, rather than a longer list of technology names. This is a synthesis of the interviews, not a survey of all Norwegian employers.
+
+### Technical skills and project presentation
+
+Tekna says programming languages, platforms and tools may appear in a skills section or under the employment where they were used; ordinary Office knowledge is generally unnecessary. It advises avoiding unexplained internal abbreviations. [D3]
+
+Suggested implementation for a developer CV:
+
+- Group a short skills list into recognizable categories, such as languages, frameworks, databases and delivery tools. These categories are our layout choice.
+- Repeat relevant technologies in the role/project where you used them, so the reader sees the context.
+- Give selected projects a problem, personal contribution and result. Distinguish employment, school projects and personal work accurately.
+- Add a labeled GitHub or portfolio URL when it provides useful supporting evidence. The interviews support this as an option; they do not make public code mandatory. [D1]
+
+Do not infer that a candidate needs a specific stack from an older interview. Technology preferences expressed in 2022/2023 are historical employer examples; the current vacancy determines relevance. Likewise, degree preferences expressed by Sopra Steria are employer-specific, not a national requirement. [D1, D2]
+
+### A concrete developer entry
+
+The following information is fictional. The exact three-line layout, technology line and bullet count are design choices; they are not dictated by a source or certified by an ATS.
+
+**Software Developer**  
+Example Software AS, Oslo, Norge  
+08.2023–d.d.
+
+Technologies: C#, .NET, PostgreSQL, Docker, Azure DevOps
+
+- Developed an order-processing API and automated integration tests for checkout workflows.
+- Reduced median API response time from 420 ms to 180 ms by improving queries and indexes.
+- Reviewed pull requests and worked with designers and product owners to deliver releases.
+
+**Selected personal project: Expense tracker**  
+01.2026–03.2026  
+Technologies: TypeScript, React, Node.js, PostgreSQL
+
+- Built authentication, transaction import and monthly spending summaries; added automated tests.
+- Personal project developed independently; repository: `https://github.com/example/expense-tracker` (illustrative placeholder, not a verified repository).
+
+Only use measurements you can substantiate. Concrete descriptions without invented metrics are preferable to unsupported claims. The 2023 interview warns against overstating technology knowledge. [D1]
+
+### Suggested section order
+
+For an experienced developer: contact details and relevant links → brief profile → technical skills → employment → selected projects if they add evidence → education → relevant certifications/languages → references.
+
+For a junior or career changer: move relevant education and selected projects earlier when they provide stronger evidence than employment. Tekna supports placing education first for students. [D3]
+
+These are adaptable layouts, not a compulsory sequence. Avoid duplicating the same project in full under both employment and a projects section. Retain the consistent title/employer/location/date pattern discussed above. For consulting assignments, an optional project sub-entry can identify the assignment and your role beneath your actual employer; this is our implementation suggestion, informed by the customer-assignment context in D2.
+
+### Fonts, spacing, language, and ATS — what changes for developers?
+
+No developer-specific body/header font sizes, margin measurements or line-spacing rules were established by these sources. The earlier sample's 11 pt body, 13 pt headings and 22 pt name remain illustrative choices. The sources favor readability and relevant evidence over elaborate visuals. [D1, D6]
+
+Tekna's job-search course recommends using the vacancy's terminology and says employers may use AI in initial screening. This supports truthful use of relevant technical terms; it does not establish the prevalence of screening or a keyword score, parser guarantee, or universal ban on columns/tables. [D4]
+
+NITO career adviser Kim Sørensen emphasizes accurate, relevant CV information and consistency between CV and application. She also warns that unedited AI wording can sound unlike normal Norwegian usage. [D5]
+
+We found no industry-wide rule requiring every developer CV to be in English. Continue using the vacancy/employer's language instructions. A Norwegian CV can retain technology names and recognized technical terminology. Keep GitHub/LinkedIn links as labeled text as a practical layout choice, and complete required portal fields as discussed in section 5.
+
+### Industry source register
+
+| ID | Source | Evidence type and date |
+|---|---|---|
+| D1 | [Kode24: CV, søknad, intervju: Sånn får du jobben du søker på][D1] | Interview by Mattis Vaaland; named Sopra Steria leaders and NTNU adviser. Published 14 December 2023. |
+| D2 | [Kode24: Nyutdanna utvikler? Sånn fikser du drømmejobben][D2] | Interview by Mattis Vaaland; Jørn Skaaraas, Sopra Steria, and Anne Kristine Lund, Boitano. Published 24 October 2022. |
+| D3 | [Tekna: Hvordan skrive en god CV][D3] | Association's own guidance; reviewed 14 October 2026. |
+| D4 | [Tekna: Jeg skal skrive CV og søknad][D4] | Association's own course advice, including screening terminology; reviewed 14 October 2026. |
+| D5 | [NITO: Kan KI sikre meg drømmejobben?][D5] | Named career adviser Kim Sørensen; publicly accessible article, reviewed 14 October 2026. Member-only CV guidance was not relied on. |
+| D6 | [KPMG Norway: Slik lykkes du med søknaden][D6] | Employer's own recruitment advice from Kristin Vestre and Katrine Løtveit; dated 10 June 2026. |
+
+The Kode24 interviews provide identifiable Norwegian industry voices but are older and weighted toward junior/consulting recruitment. They establish useful practices and employer opinions, not current hiring conditions or universal preferences. Anonymous forum comments, commercial CV scoring claims and personal CVs found online were not treated as authoritative evidence.
+
+[D1]: https://www.kode24.no/artikkel/cv-soknad-intervju-sann-far-du-jobben-du-soker-pa/190354
+[D2]: https://www.kode24.no/artikkel/nyutdanna-utvikler-sann-fikser-du-drommejobben-gode-karakterer-er-ikke-avgjorende/156279
+[D3]: https://www.tekna.no/karriere/soknad-og-cv/hvordan-skrive-en-god-cv/
+[D4]: https://www.tekna.no/karriere/digitalt-jobbsokerkurs/soknadogcv/
+[D5]: https://www.nito.no/aktuelt/medlemslivet-i-nito/kan-ki-sikre-meg-drommejobben/
+[D6]: https://kpmg.com/no/nb/karriere/rekruttering-nyutdannet/slik-lykkes-studenter-i-rekrutteringsprosessen.html
 
 [S1]: https://arbeidsplassen.nav.no/slik-skriver-du-en-god-cv
 [S2]: https://utdanning.no/yrkesfag/fullfort-yrkesfag-hva-na/jobb-etter-yrkesfag/soke-ny-jobb-slik-er-prosessen/slik-skriver-du-cv

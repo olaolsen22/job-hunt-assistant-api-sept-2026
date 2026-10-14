@@ -10,6 +10,7 @@ namespace JobHunt.Api.Features.TailoredCvDrafts;
 // Pure function, no DB/DI, so the layout can be tested by rendering a TailoredCvContent directly.
 // Follows docs/norwegian-cv-formatting.md and NAV's CV headings: one column, left aligned, black on white,
 // 11 pt body, labelled contact lines, and title / organization / date lines per entry so extracted text stays clear.
+// The draft's SectionOrder picks NAV's standard order or the developer order.
 public static class TailoredCvPdfRenderer
 {
     private const string Bullet = "•";
@@ -18,6 +19,8 @@ public static class TailoredCvPdfRenderer
     {
         TailoredCvPdfFonts.EnsureRegistered();
         var t = CvText.For(content.Language);
+
+        var name = content.FullName?.Trim();
 
         return QuestPDF.Fluent.Document.Create(doc =>
         {
@@ -39,20 +42,43 @@ public static class TailoredCvPdfRenderer
                 {
                     column.Spacing(4);
                     AddContact(column, content, t);
-                    AddTextSection(column, t.Summary, content.Summary);
-                    AddExperienceSection(column, content.Experiences, t);
-                    AddEducationSection(column, content.Educations, t);
-                    AddCertificationSection(column, content.Certifications, t);
-                    AddProjectSection(column, content.Projects, t);
-                    AddLanguagesSection(column, content.Languages, t);
-                    AddSkillsSection(column, content.Skills, t);
-                    AddLinksSection(column, content.Links, t);
+                    if (content.SectionOrder == TailoredCvSectionOrder.Developer)
+                    {
+                        // Profile links read as labelled contact lines, like E-post and Telefon.
+                        foreach (var link in content.Links ?? [])
+                            AddLabelledLine(column, link.Label, link.Url);
+                        AddTextSection(column, t.Summary, content.Summary);
+                        AddSkillsSection(column, content.Skills, t);
+                        AddExperienceSection(column, content.ContentStyle, content.Experiences, t);
+                        AddProjectSection(column, content.ContentStyle, content.Projects, t);
+                        AddEducationSection(column, content.ContentStyle, content.Educations, t);
+                        AddCertificationSection(column, content.ContentStyle, content.Certifications, t);
+                        AddLanguagesSection(column, content.Languages, t);
+                    }
+                    else
+                    {
+                        AddTextSection(column, t.Summary, content.Summary);
+                        AddExperienceSection(column, content.ContentStyle, content.Experiences, t);
+                        AddEducationSection(column, content.ContentStyle, content.Educations, t);
+                        AddCertificationSection(column, content.ContentStyle, content.Certifications, t);
+                        AddProjectSection(column, content.ContentStyle, content.Projects, t);
+                        AddLanguagesSection(column, content.Languages, t);
+                        AddSkillsSection(column, content.Skills, t);
+                        AddLinksSection(column, content.Links, t);
+                    }
                     // References belong last.
                     if (content.ReferencesOnRequest)
                         AddTextSection(column, t.References, t.ReferencesOnRequest);
                 });
             });
-        }).GeneratePdf();
+        })
+        // Document properties are read by some parsers/viewers; no subject/keywords, they don't help ATS matching.
+        .WithMetadata(new DocumentMetadata
+        {
+            Title = string.IsNullOrEmpty(name) ? "CV" : $"{name} – CV",
+            Author = name,
+        })
+        .GeneratePdf();
     }
 
     private static void AddContact(ColumnDescriptor column, TailoredCvContent content, CvText t)
@@ -61,6 +87,8 @@ public static class TailoredCvPdfRenderer
             column.Item().Text(content.FullName).FontSize(22).Bold();
         if (!string.IsNullOrWhiteSpace(content.Headline))
             column.Item().Text(content.Headline).Bold();
+        // Small gap between the name/headline block and the contact lines.
+        column.Item().Height(4);
 
         // Plain labelled lines rather than icons or separators, so each value extracts unambiguously.
         AddLabelledLine(column, t.Email, content.Email);
@@ -77,15 +105,24 @@ public static class TailoredCvPdfRenderer
 
     private static void AddEntryHeader(ColumnDescriptor entry, string title, string? organization, string? dates)
     {
-        entry.Item().Text(title).Bold();
+        // Dates share the title's baseline at the right edge; a long title wraps in its own cell, never under the dates.
+        entry.Item().Row(row =>
+        {
+            row.RelativeItem().Text(title).Bold();
+            if (!string.IsNullOrWhiteSpace(dates))
+                row.AutoItem().PaddingLeft(12).Text(dates);
+        });
         if (!string.IsNullOrWhiteSpace(organization))
             entry.Item().Text(organization);
-        if (!string.IsNullOrWhiteSpace(dates))
-            entry.Item().Text(dates);
+        // Small gap between an entry's title lines and its content.
+        entry.Item().Height(3);
     }
 
-    private static string JoinPlace(params string?[] parts) =>
-        string.Join(", ", parts.Where(p => !string.IsNullOrWhiteSpace(p)));
+    // " | " between organization and location: locations hold commas themselves ("Lagos, Nigeria").
+    private static string JoinPlace(params string?[] parts) => Join(" | ", parts);
+
+    private static string Join(string separator, string?[] parts) =>
+        string.Join(separator, parts.Where(p => !string.IsNullOrWhiteSpace(p)));
 
     // Heading (~35 pt) plus two body lines (~28 pt): less room than this left on the page starts the section on the next one.
     private const float MinTextSectionStart = 64;
@@ -121,27 +158,27 @@ public static class TailoredCvPdfRenderer
         }
     }
 
-    private static void AddExperienceSection(ColumnDescriptor column, List<TailoredCvExperience>? experiences, CvText t) =>
+    private static void AddExperienceSection(ColumnDescriptor column, TailoredCvContentStyle style, List<TailoredCvExperience>? experiences, CvText t) =>
         AddEntrySection(column, t.Experience, experiences, (entry, experience) =>
         {
             AddEntryHeader(entry, experience.Title, JoinPlace(experience.Employer, experience.Location),
                 t.FormatRange(experience.StartMonth, experience.EndMonth));
-            AddContent(entry, experience.ContentStyle, experience.Paragraph, experience.Bullets);
+            AddContent(entry, style, experience.Paragraph, experience.Bullets);
         });
 
-    private static void AddEducationSection(ColumnDescriptor column, List<TailoredCvEducation>? educations, CvText t) =>
+    private static void AddEducationSection(ColumnDescriptor column, TailoredCvContentStyle style, List<TailoredCvEducation>? educations, CvText t) =>
         AddEntrySection(column, t.Education, educations, (entry, education) =>
         {
-            var degreeField = JoinPlace(education.Degree, education.Field);
+            var degreeField = Join(", ", [education.Degree, education.Field]);
             var dates = t.FormatRange(education.StartMonth, education.EndMonth);
             if (string.IsNullOrWhiteSpace(degreeField))
                 AddEntryHeader(entry, education.School, education.Location, dates);
             else
                 AddEntryHeader(entry, degreeField, JoinPlace(education.School, education.Location), dates);
-            AddContent(entry, education.ContentStyle, education.Paragraph, education.Bullets);
+            AddContent(entry, style, education.Paragraph, education.Bullets);
         });
 
-    private static void AddCertificationSection(ColumnDescriptor column, List<TailoredCvCertification>? certifications, CvText t) =>
+    private static void AddCertificationSection(ColumnDescriptor column, TailoredCvContentStyle style, List<TailoredCvCertification>? certifications, CvText t) =>
         AddEntrySection(column, t.Certifications, certifications, (entry, certification) =>
         {
             var dates = (certification.IssuedMonth, certification.ExpiresMonth) switch
@@ -154,16 +191,16 @@ public static class TailoredCvPdfRenderer
             AddEntryHeader(entry, certification.Name, certification.Issuer, dates);
             if (!string.IsNullOrWhiteSpace(certification.Url))
                 entry.Item().Text(certification.Url);
-            AddContent(entry, certification.ContentStyle, certification.Paragraph, certification.Bullets);
+            AddContent(entry, style, certification.Paragraph, certification.Bullets);
         });
 
-    private static void AddProjectSection(ColumnDescriptor column, List<TailoredCvProject>? projects, CvText t) =>
+    private static void AddProjectSection(ColumnDescriptor column, TailoredCvContentStyle style, List<TailoredCvProject>? projects, CvText t) =>
         AddEntrySection(column, t.Projects, projects, (entry, project) =>
         {
             AddEntryHeader(entry, project.Name, project.Location, t.FormatRange(project.StartMonth, project.EndMonth));
             if (!string.IsNullOrWhiteSpace(project.Url))
                 entry.Item().Text(project.Url);
-            AddContent(entry, project.ContentStyle, project.Paragraph, project.Bullets);
+            AddContent(entry, style, project.Paragraph, project.Bullets);
         });
 
     // NAV's layout: the language name, then written and spoken levels on their own lines.
@@ -214,7 +251,9 @@ public static class TailoredCvPdfRenderer
     }
 
     private static void AddHeading(ColumnDescriptor column, string text) =>
-        column.Item().PaddingTop(12).PaddingBottom(6).Text(text).FontSize(13).Bold();
+        // The rule is a border, not text: nothing is added to the PDF text layer for an ATS to trip over.
+        column.Item().PaddingTop(12).PaddingBottom(4).BorderBottom(0.75f).BorderColor(Colors.Grey.Darken1)
+            .PaddingBottom(2).Text(text).FontSize(13).Bold();
 }
 
 // Fixed CV wording per language. Norwegian follows NAV: capitalised months ("Juni 2015") and "Nåværende".

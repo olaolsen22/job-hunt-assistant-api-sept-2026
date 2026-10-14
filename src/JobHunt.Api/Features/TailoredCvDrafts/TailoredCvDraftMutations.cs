@@ -10,16 +10,16 @@ namespace JobHunt.Api.Features.TailoredCvDrafts;
 public record TailoredCvBulletInput(string Text, int? SourceBulletId = null);
 public record TailoredCvExperienceInput(string Employer, string Title, DateOnly? StartMonth, DateOnly? EndMonth,
     List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null, string? Location = null,
-    TailoredCvContentStyle? ContentStyle = null, string? Paragraph = null);
+    string? Paragraph = null);
 public record TailoredCvEducationInput(string School, string? Degree, string? Field, DateOnly? StartMonth,
     DateOnly? EndMonth, List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null, string? Location = null,
-    TailoredCvContentStyle? ContentStyle = null, string? Paragraph = null);
+    string? Paragraph = null);
 public record TailoredCvCertificationInput(string Name, string? Issuer, DateOnly? IssuedMonth, DateOnly? ExpiresMonth,
     string? Url, List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null,
-    TailoredCvContentStyle? ContentStyle = null, string? Paragraph = null);
+    string? Paragraph = null);
 public record TailoredCvProjectInput(string Name, string? Url, DateOnly? StartMonth, DateOnly? EndMonth,
     List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null, string? Location = null,
-    TailoredCvContentStyle? ContentStyle = null, string? Paragraph = null);
+    string? Paragraph = null);
 public record TailoredCvSkillInput(string Name, int? Level, int? SourceSkillId = null);
 public record TailoredCvLanguageInput(string Name, LanguageProficiency? Written, LanguageProficiency? Spoken);
 // A null Language means the listing's posting language, or English when the listing has none.
@@ -38,7 +38,9 @@ public record TailoredCvContentInput(string? Summary = null,
     List<TailoredCvLinkInput>? Links = null,
     Language? Language = null,
     DateOnly? DateOfBirth = null,
-    bool ReferencesOnRequest = false);
+    bool ReferencesOnRequest = false,
+    TailoredCvSectionOrder? SectionOrder = null,
+    TailoredCvContentStyle? ContentStyle = null);
 public record TailoredCvLinkInput(string Label, string Url);
 
 public class InvalidTailoredCvDraftException(string message) : Exception(message);
@@ -65,6 +67,7 @@ public static class TailoredCvDraftMutations
             ?? throw new ListingNotFoundException(listingId);
         var normalized = TailoredCvDraftValidation.Normalize(content, listing.PostingLanguage);
         await TailoredCvDraftValidation.ValidateSourceIdsAsync(normalized, db, ct);
+        normalized = await TailoredCvDraftValidation.FillMissingLocationsAsync(normalized, db, ct);
 
         var draft = await db.TailoredCvDrafts.FirstOrDefaultAsync(d => d.ListingId == listingId, ct);
         var now = time.GetUtcNow().UtcDateTime;

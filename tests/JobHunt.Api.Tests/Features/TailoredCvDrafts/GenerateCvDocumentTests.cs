@@ -1,6 +1,7 @@
 using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
+using JobHunt.Api.Features.Documents;
 using JobHunt.Api.Tests.Features.Documents;
 using UglyToad.PdfPig;
 
@@ -28,7 +29,7 @@ public class GenerateCvDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
         var response = await client.GetAsync($"/api/documents/{id}");
         response.EnsureSuccessStatusCode();
         Assert.Equal("application/pdf", response.Content.Headers.ContentType!.MediaType);
-        Assert.Equal(document.GetProperty("fileName").GetString(), response.Content.Headers.ContentDisposition!.FileNameStar);
+        Assert.Equal(DocumentEndpoints.DownloadName(null, document.GetProperty("fileName").GetString()!), response.Content.Headers.ContentDisposition!.FileNameStar);
         var bytes = await response.Content.ReadAsByteArrayAsync();
         Assert.Equal(bytes.Length, document.GetProperty("sizeBytes").GetInt64());
         Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(bytes)), document.GetProperty("contentHash").GetString());

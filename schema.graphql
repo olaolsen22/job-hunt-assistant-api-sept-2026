@@ -162,6 +162,8 @@ type Query {
       requireOneSlicingArgument: false
     )
     @cost(weight: "10")
+  tailoredCvDraftFromProfile(listingId: Int!): TailoredCvContent
+    @cost(weight: "10")
   tailoredCvDraft(listingId: Int!): TailoredCvDraft @cost(weight: "10")
   tailoredCvExternalPrompt(listingId: Int!): TailoredCvExternalPrompt!
     @cost(weight: "10")
@@ -1402,7 +1404,6 @@ type TailoredCvCertification {
   url: String
   bullets: [TailoredCvBullet!]!
   sourceEntryId: Int
-  contentStyle: TailoredCvContentStyle!
   paragraph: String
 }
 
@@ -1423,6 +1424,8 @@ type TailoredCvContent {
   language: Language!
   dateOfBirth: LocalDate
   referencesOnRequest: Boolean!
+  sectionOrder: TailoredCvSectionOrder!
+  contentStyle: TailoredCvContentStyle!
 }
 
 type TailoredCvDraft {
@@ -1445,7 +1448,6 @@ type TailoredCvEducation {
   bullets: [TailoredCvBullet!]!
   sourceEntryId: Int
   location: String
-  contentStyle: TailoredCvContentStyle!
   paragraph: String
 }
 
@@ -1457,7 +1459,6 @@ type TailoredCvExperience {
   bullets: [TailoredCvBullet!]!
   sourceEntryId: Int
   location: String
-  contentStyle: TailoredCvContentStyle!
   paragraph: String
 }
 
@@ -1490,7 +1491,6 @@ type TailoredCvProject {
   bullets: [TailoredCvBullet!]!
   sourceEntryId: Int
   location: String
-  contentStyle: TailoredCvContentStyle!
   paragraph: String
 }
 
@@ -2812,7 +2812,6 @@ input TailoredCvCertificationInput {
   url: String
   bullets: [TailoredCvBulletInput!]!
   sourceEntryId: Int
-  contentStyle: TailoredCvContentStyle
   paragraph: String
 }
 
@@ -2833,6 +2832,8 @@ input TailoredCvContentInput {
   language: Language
   dateOfBirth: LocalDate
   referencesOnRequest: Boolean! = false
+  sectionOrder: TailoredCvSectionOrder
+  contentStyle: TailoredCvContentStyle
 }
 
 input TailoredCvEducationInput {
@@ -2844,7 +2845,6 @@ input TailoredCvEducationInput {
   bullets: [TailoredCvBulletInput!]!
   sourceEntryId: Int
   location: String
-  contentStyle: TailoredCvContentStyle
   paragraph: String
 }
 
@@ -2856,7 +2856,6 @@ input TailoredCvExperienceInput {
   bullets: [TailoredCvBulletInput!]!
   sourceEntryId: Int
   location: String
-  contentStyle: TailoredCvContentStyle
   paragraph: String
 }
 
@@ -2879,7 +2878,6 @@ input TailoredCvProjectInput {
   bullets: [TailoredCvBulletInput!]!
   sourceEntryId: Int
   location: String
-  contentStyle: TailoredCvContentStyle
   paragraph: String
 }
 
@@ -3205,6 +3203,11 @@ enum TailoredCvSection {
   EDUCATION
   SKILLS
   SUMMARY
+}
+
+enum TailoredCvSectionOrder {
+  STANDARD
+  DEVELOPER
 }
 
 enum WorkMode {

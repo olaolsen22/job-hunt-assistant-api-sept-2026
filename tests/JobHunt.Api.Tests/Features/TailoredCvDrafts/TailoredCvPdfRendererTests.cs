@@ -52,7 +52,7 @@ public class TailoredCvPdfRendererTests
         AssertInOrder(text, "E-post: ola@example.com", "Telefon: +47 123 45 678",
             "Adresse: Storgata 1, 0155 Oslo", "Fødselsdato: 15.06.1990", "Sammendrag");
         foreach (var value in new[] { "Mars 2021 - Nåværende", "Januar 2018 - Februar 2021", "August 2014 - Juni 2018",
-                     "Mai 2022 - Mai 2025", "Januar 2020 - Juni 2020", "Acme AS, Lagos, Nigeria", "MSc, CS",
+                     "Mai 2022 - Mai 2025", "Januar 2020 - Juni 2020", "Acme AS | Lagos, Nigeria", "MSc, CS",
                      "Oppgis ved forespørsel." })
             Assert.Contains(value, text);
 
@@ -60,7 +60,6 @@ public class TailoredCvPdfRendererTests
         AssertInOrder(text, "Engelsk", "Skriftlig: Førstespråk (morsmål)", "Muntlig: Førstespråk (morsmål)",
             "Filipino/Tagalog", "Skriftlig: Veldig godt", "Muntlig: Godt");
         Assert.DoesNotContain("–", text);
-        Assert.DoesNotContain("|", text);
     }
 
     [Fact]
@@ -79,6 +78,16 @@ public class TailoredCvPdfRendererTests
         Assert.Contains("Led the migration", text);
         // Entries and bullets keep draft order.
         AssertInOrder(text, "Senior Dev", "Led the migration", "Mentored juniors", "Old Co", "Shipped features");
+    }
+
+    [Fact]
+    public void Render_DeveloperOrder_PutsLinksWithContactAndSkillsBeforeExperience()
+    {
+        var text = ExtractText(FullDraft(Language.Norwegian) with { SectionOrder = TailoredCvSectionOrder.Developer });
+
+        AssertInOrder(text, "E-post: ola@example.com", "GitHub: https://github.com/ola", "Sammendrag", "Kompetanser",
+            "Arbeidsforhold", "Prosjekter", "Utdanning", "Kurs og sertifiseringer", "Språk", "Referanser");
+        Assert.DoesNotContain("Lenker", text);
     }
 
     [Fact]
@@ -124,9 +133,8 @@ public class TailoredCvPdfRendererTests
         [
             new TailoredCvExperience("Acme", "Developer", null, null,
                 [new TailoredCvBullet("Built the service."), new TailoredCvBullet("Cut latency by 30%.")],
-                ContentStyle: TailoredCvContentStyle.Paragraph,
                 Paragraph: "Built the service and cut latency by 30%."),
-        ]);
+        ], ContentStyle: TailoredCvContentStyle.Paragraph);
 
         var text = ExtractText(content);
 
@@ -140,13 +148,13 @@ public class TailoredCvPdfRendererTests
         var content = new TailoredCvContent(
             Educations: [new TailoredCvEducation("State University", "BSc", null, null, null,
                 [new TailoredCvBullet("Thesis on caching.")],
-                ContentStyle: TailoredCvContentStyle.Paragraph, Paragraph: "Wrote a thesis on caching.")],
+                Paragraph: "Wrote a thesis on caching.")],
             Certifications: [new TailoredCvCertification("AWS SA", null, null, null, null,
-                [new TailoredCvBullet("Passed first try."), new TailoredCvBullet("Scored 900.")],
-                ContentStyle: TailoredCvContentStyle.Paragraph)],
+                [new TailoredCvBullet("Passed first try."), new TailoredCvBullet("Scored 900.")])],
             Projects: [new TailoredCvProject("Side Project", null, null, null,
                 [new TailoredCvBullet("Shipped a CLI.")],
-                ContentStyle: TailoredCvContentStyle.Paragraph, Paragraph: "Shipped a small CLI tool.")]);
+                Paragraph: "Shipped a small CLI tool.")],
+            ContentStyle: TailoredCvContentStyle.Paragraph);
 
         var text = ExtractText(content);
 
@@ -178,6 +186,38 @@ public class TailoredCvPdfRendererTests
                 Assert.True(page.Text.Contains(firstEntry, StringComparison.Ordinal),
                     $"\"{heading}\" split from \"{firstEntry}\" with {lines} summary lines");
         }
+    }
+
+    [Fact]
+    public void Render_SetsTitleAndAuthorFromName_WithoutSubjectOrKeywords()
+    {
+        using var document = PdfDocument.Open(TailoredCvPdfRenderer.Render(FullDraft(Language.English)));
+
+        Assert.Equal("Ola Nordmann – CV", document.Information.Title);
+        Assert.Equal("Ola Nordmann", document.Information.Author);
+        Assert.True(string.IsNullOrEmpty(document.Information.Subject));
+        Assert.True(string.IsNullOrEmpty(document.Information.Keywords));
+    }
+
+    [Fact]
+    public void Render_WithoutName_UsesPlainTitleAndNoAuthor()
+    {
+        using var document = PdfDocument.Open(TailoredCvPdfRenderer.Render(FullDraft(Language.English) with { FullName = null }));
+
+        Assert.Equal("CV", document.Information.Title);
+        Assert.True(string.IsNullOrEmpty(document.Information.Author));
+    }
+
+    [Fact]
+    public void Render_PutsDatesOnTheTitleLine_AtTheRightEdge()
+    {
+        using var document = PdfDocument.Open(TailoredCvPdfRenderer.Render(FullDraft(Language.English)));
+        var words = document.GetPages().First().GetWords().ToList();
+        var title = words.First(w => w.Text == "Senior");
+        var dateStart = words.First(w => w.Text == "March");
+
+        Assert.Equal(title.BoundingBox.Bottom, dateStart.BoundingBox.Bottom, 1);
+        Assert.True(dateStart.BoundingBox.Left > title.BoundingBox.Right);
     }
 
     private static void AssertInOrder(string text, params string[] values)

@@ -1,9 +1,11 @@
+using System.Globalization;
 using System.Net.Mail;
 using System.Text.Json;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Profiles;
 using Microsoft.EntityFrameworkCore;
+using Location = JobHunt.Api.Features.Locations.Location;
 
 namespace JobHunt.Api.Features.TailoredCvDrafts;
 
@@ -25,22 +27,23 @@ public static class TailoredCvDraftValidation
         var content = new TailoredCvContent(input.Summary?.Trim(),
             input.Experiences?.Select(e => new TailoredCvExperience(CleanRequired(e.Employer), CleanRequired(e.Title), e.StartMonth,
                 e.EndMonth, (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
-                CleanOptional(e.Location), e.ContentStyle ?? TailoredCvContentStyle.Bullets,
-                CleanOptional(e.Paragraph))).ToList(),
+                CleanOptional(e.Location), CleanOptional(e.Paragraph))).ToList(),
             input.Educations?.Select(e => new TailoredCvEducation(CleanRequired(e.School), CleanOptional(e.Degree), CleanOptional(e.Field),
                 e.StartMonth, e.EndMonth, (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
-                CleanOptional(e.Location), e.ContentStyle ?? TailoredCvContentStyle.Bullets, CleanOptional(e.Paragraph))).ToList(),
+                CleanOptional(e.Location), CleanOptional(e.Paragraph))).ToList(),
             input.Certifications?.Select(e => new TailoredCvCertification(CleanRequired(e.Name), CleanOptional(e.Issuer), e.IssuedMonth,
                 e.ExpiresMonth, CleanOptional(e.Url), (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
-                e.ContentStyle ?? TailoredCvContentStyle.Bullets, CleanOptional(e.Paragraph))).ToList(),
+                CleanOptional(e.Paragraph))).ToList(),
             input.Projects?.Select(e => new TailoredCvProject(CleanRequired(e.Name), CleanOptional(e.Url), e.StartMonth, e.EndMonth,
                 (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
-                CleanOptional(e.Location), e.ContentStyle ?? TailoredCvContentStyle.Bullets, CleanOptional(e.Paragraph))).ToList(),
+                CleanOptional(e.Location), CleanOptional(e.Paragraph))).ToList(),
             input.Skills?.Select(s => new TailoredCvSkill(CleanRequired(s.Name), s.Level, s.SourceSkillId)).ToList(),
             input.Languages?.Select(l => new TailoredCvLanguage(CleanRequired(l.Name), l.Written, l.Spoken)).ToList(),
             CleanOptional(input.FullName), CleanOptional(input.Headline), CleanOptional(input.Email), CleanOptional(input.Phone), CleanOptional(input.Address),
             input.Links?.Select(l => new TailoredCvLink(CleanRequired(l.Label), CleanRequired(l.Url))).ToList(),
-            input.Language ?? postingLanguage ?? Language.English, input.DateOfBirth, input.ReferencesOnRequest);
+            input.Language ?? postingLanguage ?? Language.English, input.DateOfBirth, input.ReferencesOnRequest,
+            input.SectionOrder ?? TailoredCvSectionOrder.Standard,
+            input.ContentStyle ?? TailoredCvContentStyle.Bullets);
 
         Validate(content);
         if (JsonSerializer.Serialize(content, TailoredCvJson.Options).Length > MaxJsonLength)
@@ -147,6 +150,44 @@ public static class TailoredCvDraftValidation
                 && !string.Equals(reference.Text.Trim(), bullet.Translated?.Trim(), StringComparison.Ordinal))
                 throw Invalid("bullets.sourceBulletId", "text must match the source bullet");
         }
+    }
+
+    // The model or UI often leaves "location" out; entries linked to a profile entry fall back to its stored place.
+    public static async Task<TailoredCvContent> FillMissingLocationsAsync(TailoredCvContent content, AppDbContext db,
+        CancellationToken ct)
+    {
+        var experienceIds = (content.Experiences ?? []).Where(e => e.Location is null && e.SourceEntryId is not null)
+            .Select(e => e.SourceEntryId!.Value).ToArray();
+        var educationIds = (content.Educations ?? []).Where(e => e.Location is null && e.SourceEntryId is not null)
+            .Select(e => e.SourceEntryId!.Value).ToArray();
+        var projectIds = (content.Projects ?? []).Where(e => e.Location is null && e.SourceEntryId is not null)
+            .Select(e => e.SourceEntryId!.Value).ToArray();
+
+        var experiences = experienceIds.Length == 0 ? [] : await db.ProfileExperiences.Where(e => experienceIds.Contains(e.Id))
+            .Select(e => new { e.Id, e.Location }).ToDictionaryAsync(e => e.Id, e => e.Location, ct);
+        var educations = educationIds.Length == 0 ? [] : await db.ProfileEducations.Where(e => educationIds.Contains(e.Id))
+            .Select(e => new { e.Id, e.Location }).ToDictionaryAsync(e => e.Id, e => e.Location, ct);
+        var projects = projectIds.Length == 0 ? [] : await db.ProfileProjects.Where(e => projectIds.Contains(e.Id))
+            .Select(e => new { e.Id, e.Location }).ToDictionaryAsync(e => e.Id, e => e.Location, ct);
+
+        string? Place(Dictionary<int, Location?> places, int? id) =>
+            id is { } key && places.GetValueOrDefault(key) is { } l ? FormatPlace(l, content.Language) : null;
+
+        return content with
+        {
+            Experiences = content.Experiences?.Select(e => e.Location is null ? e with { Location = Place(experiences, e.SourceEntryId) } : e).ToList(),
+            Educations = content.Educations?.Select(e => e.Location is null ? e with { Location = Place(educations, e.SourceEntryId) } : e).ToList(),
+            Projects = content.Projects?.Select(e => e.Location is null ? e with { Location = Place(projects, e.SourceEntryId) } : e).ToList(),
+        };
+    }
+
+    // "City, Country" per the CV guidance (docs/norwegian-cv-formatting.md).
+    internal static string FormatPlace(Location location, Language language)
+    {
+        var country = location.CountryCode == "NO" && language == Language.Norwegian
+            ? "Norge"
+            : new RegionInfo(location.CountryCode).EnglishName;
+        return string.IsNullOrWhiteSpace(location.City) ? country : $"{location.City}, {country}";
     }
 
     private static void Validate(TailoredCvContent c)

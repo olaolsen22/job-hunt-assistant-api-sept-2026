@@ -256,6 +256,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Contains("Prompt Employer", instructions);
         Assert.Contains($"\"id\":{bulletId}", instructions);
         Assert.Contains("schemaVersion", instructions);
+        Assert.Contains("candidate's own voice", instructions);
         Assert.Contains("sourceBulletId", instructions);
         Assert.DoesNotContain("PRIVATE_", instructions, StringComparison.Ordinal);
     }

@@ -48,6 +48,7 @@ public static class TailoredCvExternalPreviewMutations
         TailoredCvDraftValidation.ValidateExternalCandidateItems(parsed.Content);
         var content = TailoredCvDraftValidation.Normalize(parsed.Content, listing.PostingLanguage);
         await TailoredCvDraftValidation.ValidateSourceIdsAsync(content, db, ct, requireSourceBulletText: true);
+        content = await TailoredCvDraftValidation.FillMissingLocationsAsync(content, db, ct);
         return new(parsed.SchemaVersion, content);
     }
 }

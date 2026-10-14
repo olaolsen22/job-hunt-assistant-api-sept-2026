@@ -23,6 +23,7 @@ query ($listingId: Int!) {
       dateOfBirth
       language
       referencesOnRequest
+      sectionOrder
       links { label url }
       summary
       experiences {
@@ -54,7 +55,18 @@ written/spoken scale (`BEGINNER`, `GOOD`, `VERY_GOOD`, `NATIVE`). `referencesOnR
 "Referanser: Oppgis ved forespørsel." line. Entry `location` is display text such as `Lagos, Nigeria`.
 The UI fills draft bullets/summary from profile translations in the draft language where they exist; both
 AI paths also write the summary in that language and the external prompt supplies translated bullet text.
-Formatting rationale: [norwegian-cv-formatting.md](norwegian-cv-formatting.md).
+
+`sectionOrder` picks the PDF's section order; saving `null` keeps `STANDARD`. The UI offers it as a per-draft
+toggle (e.g. "Developer layout"); neither AI path sets it.
+
+| Value | Order after the contact lines |
+|---|---|
+| `STANDARD` | Summary, experience, education, courses/certifications, projects, languages, skills, links, references |
+| `DEVELOPER` | Links as labelled contact lines (`GitHub: https://…`, no Links heading), summary, skills, experience, projects, education, courses/certifications, languages, references |
+
+AI suggestions keep the candidate's own wording: summaries start from the profile headline/summary and
+paragraphs match the voice of the selected bullets, with preference for bullets that show contribution and
+results. Formatting rationale: [norwegian-cv-formatting.md](norwegian-cv-formatting.md).
 
 ## Analyze a draft with the API key
 
@@ -94,7 +106,7 @@ The preview validates JSON shape and that source IDs belong to the signed-in use
 
 `saveTailoredCvDraft` creates the listing's draft the first time and updates that same draft on later saves. Source IDs are optional attribution; the saved text is a snapshot and does not change when the profile is edited.
 
-Each experience, education, certification and project can set `contentStyle` to `BULLETS` (the default) or `PARAGRAPH`. Paragraph mode renders the editable `paragraph` text without a bullet. Per-experience and per-education AI analysis returns selected source bullet IDs and, when it can form one from them, a concise paragraph suggestion. The PDF falls back to joining the selected bullet texts if no paragraph is supplied. Review generated wording before saving.
+The draft sets one `contentStyle` (`BULLETS` default or `PARAGRAPH`) for every experience, education, certification and project, so the CV prints consistently. Each entry keeps its own optional `paragraph`. Paragraph mode renders the editable `paragraph` text without a bullet. Per-experience and per-education AI analysis returns selected source bullet IDs and, when it can form one from them, a concise paragraph suggestion. The PDF falls back to joining the selected bullet texts if no paragraph is supplied. Review generated wording before saving.
 
 ```graphql
 mutation ($listingId: Int!, $content: TailoredCvContentInput!) {
