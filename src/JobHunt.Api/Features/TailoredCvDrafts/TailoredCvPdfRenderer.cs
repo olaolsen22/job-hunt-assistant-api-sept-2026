@@ -231,12 +231,16 @@ public static class TailoredCvPdfRenderer
             return;
         var lines = skills.GroupBy(s => s.Category)
             .OrderBy(g => g.Key is { } category ? (int)category : int.MaxValue)
-            .Select(g => $"{t.SkillCategoryLabel(g.Key)}: {string.Join(", ", g.Select(s => s.Name))}");
+            .Select(g => (Label: t.SkillCategoryLabel(g.Key), Names: string.Join(", ", g.Select(s => s.Name))));
         column.Item().EnsureSpace(MinTextSectionStart).Column(section =>
         {
             AddHeading(section, t.Skills);
-            foreach (var line in lines)
-                section.Item().Text(line);
+            foreach (var (label, names) in lines)
+                section.Item().Text(text =>
+                {
+                    text.Span($"{label}: ").Bold();
+                    text.Span(names);
+                });
         });
     }
 
