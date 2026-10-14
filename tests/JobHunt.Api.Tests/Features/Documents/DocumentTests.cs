@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using JobHunt.Api.Features.Documents;
 using JobHunt.Api.Tests.Features.Listings;
 
 namespace JobHunt.Api.Tests.Features.Documents;
@@ -52,9 +53,16 @@ public class DocumentTests(ApiFactory factory) : IClassFixture<ApiFactory>
         response.EnsureSuccessStatusCode();
         Assert.Equal("application/pdf", response.Content.Headers.ContentType!.MediaType);
         Assert.Equal("inline", response.Content.Headers.ContentDisposition!.DispositionType);
-        Assert.Equal(document.GetProperty("fileName").GetString(), response.Content.Headers.ContentDisposition.FileNameStar);
+        Assert.Equal(DocumentEndpoints.DownloadName(null, document.GetProperty("fileName").GetString()!), response.Content.Headers.ContentDisposition.FileNameStar);
         Assert.Equal(Pdf, await response.Content.ReadAsByteArrayAsync());
     }
+
+    [Theory]
+    [InlineData("Jane Doe", "Jane-Doe_Acme_Dev_Cv.pdf")]
+    [InlineData(null, "Acme_Dev_Cv.pdf")]
+    [InlineData("  ", "Acme_Dev_Cv.pdf")]
+    public void DownloadName_DropsDateAndPrefixesProfileName(string? fullName, string expected) =>
+        Assert.Equal(expected, DocumentEndpoints.DownloadName(fullName, "Acme_Dev_Cv_2026-10-14.pdf"));
 
     [Fact]
     public async Task Upload_RejectsNonPdf()

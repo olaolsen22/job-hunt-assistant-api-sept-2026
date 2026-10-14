@@ -75,7 +75,7 @@ public static partial class DocumentMutations
         $"{Slug(company)}_{Slug(jobRole)}_{kind}_{date:yyyy-MM-dd}.pdf";
 
     // Letters and digits only (æøå included), so the name is safe on any OS: "Acme AS" → "Acme-AS".
-    private static string Slug(string name) => NonAlphanumeric().Replace(name, "-").Trim('-');
+    internal static string Slug(string name) => NonAlphanumeric().Replace(name, "-").Trim('-');
 
     [GeneratedRegex(@"[^\p{L}\p{N}]+")]
     private static partial Regex NonAlphanumeric();

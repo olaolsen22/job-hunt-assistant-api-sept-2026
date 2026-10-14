@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Text.RegularExpressions;
 using JobHunt.Api.Data;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
@@ -7,7 +8,7 @@ namespace JobHunt.Api.Features.Documents;
 
 // REST, not GraphQL: GraphQL answers in JSON, and the browser needs a plain URL it can open or download
 // with the auth cookie. Upload, listing and deleting documents stay in GraphQL.
-public static class DocumentEndpoints
+public static partial class DocumentEndpoints
 {
     public static void MapDocumentEndpoints(this IEndpointRouteBuilder app)
     {
@@ -26,11 +27,24 @@ public static class DocumentEndpoints
             .FirstOrDefaultAsync(ct);
         if (file is null)
             return TypedResults.NotFound();
+        var fullName = await db.Profiles.Select(p => p.FullName).FirstOrDefaultAsync(ct);
 
-        // Inline opens the PDF in a browser tab; saving it (or an <a download>) still uses the generated name.
+        // Inline opens the PDF in a browser tab; saving it (or an <a download>) still uses the download name.
         context.Response.Headers.ContentDisposition =
-            new ContentDispositionHeaderValue("inline") { FileNameStar = file.FileName }.ToString();
+            new ContentDispositionHeaderValue("inline") { FileNameStar = DownloadName(fullName, file.FileName) }.ToString();
         context.Response.Headers.XContentTypeOptions = "nosniff";
         return TypedResults.File(file.Bytes, "application/pdf");
     }
+
+    // The name a saved file gets: "Jane-Doe_Acme_Dev_Cv.pdf". The stored name's date helps in the app, but not on
+    // a recruiter's disk. No profile name means no prefix.
+    public static string DownloadName(string? fullName, string fileName)
+    {
+        var withoutDate = TrailingDate().Replace(fileName, ".pdf");
+        var name = DocumentMutations.Slug(fullName ?? "");
+        return name.Length == 0 ? withoutDate : $"{name}_{withoutDate}";
+    }
+
+    [GeneratedRegex(@"_\d{4}-\d{2}-\d{2}\.pdf$")]
+    private static partial Regex TrailingDate();
 }
