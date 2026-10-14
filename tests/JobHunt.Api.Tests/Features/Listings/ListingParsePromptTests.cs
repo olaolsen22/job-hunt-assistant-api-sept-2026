@@ -89,7 +89,9 @@ public class ListingParsePromptTests(ApiFactory factory) : IClassFixture<ApiFact
             .GetProperty("listingQuickParsePrompt");
 
         var instructions = prompt.GetProperty("instructions").GetString()!;
-        Assert.Equal(6, prompt.GetProperty("version").GetInt32());
+        Assert.Equal(7, prompt.GetProperty("version").GetInt32());
+        Assert.Contains("\"postingLanguage\": \"ENGLISH\" | \"NORWEGIAN\" | null", instructions);
+        Assert.Contains("skandinavisk språk", instructions);
         Assert.DoesNotContain("contacts", instructions);
         Assert.DoesNotContain("trainingProgram", instructions);
         Assert.Contains("ONE JSON array", instructions);

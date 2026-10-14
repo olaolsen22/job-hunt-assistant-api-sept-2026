@@ -17,7 +17,7 @@ public static partial class ListingParsePromptQueries
     public const int Version = 11;
 
     // Separate from Version: the quick prompt changes on its own schedule.
-    public const int QuickVersion = 6;
+    public const int QuickVersion = 7;
 
     // Keeps the prompt short (and cheap on the API-key path) for users with many roles/skills.
     private const int MaxNames = 100;
@@ -179,6 +179,8 @@ public static partial class ListingParsePromptQueries
               "postedOn": "YYYY-MM-DD" | null,
               "deadlineType": {{Values<DeadlineType>()}},
               "deadlineOn": "YYYY-MM-DD" | null,
+              "postingLanguage": {{Values<Language>()}} | null,
+              "languages": [{ "language": {{Values<Language>()}}, "level": {{Values<CefrLevel>()}} | null, "isRequired": boolean }],
               "locations": [{ "city": string | null, "countryCode": string }]   // ISO 3166-1 alpha-2, e.g. "NO"
             }]
             Infer from clear signals in the text; use null only when it gives nothing to go on.
@@ -199,6 +201,11 @@ public static partial class ListingParsePromptQueries
               "i dag"/"today" → DATE with today's date, "i morgen"/"tomorrow" → DATE with tomorrow's date.
               "Snarest"/"ASAP"/"straks"/"Løpende"/"fortløpende"/"rolling" → ASAP, never a date: "snarest" means "as soon
               as possible", not today. None given → UNSPECIFIED. deadlineOn only with DATE.
+            postingLanguage: the language the ad itself is written in.
+            languages: requirements for the candidate, not the ad's language.
+              "flytende"/"fluent"/"excellent" → C1. "morsmål"/"native" → C2. "god muntlig og skriftlig"/"good" → B2.
+              "skandinavisk språk" → NORWEGIAN. No level stated → null.
+              If the ad states no language requirement, add its postingLanguage with isRequired true and level null.
             locations: every city the job can be based in. Remote limited to a country → { "city": null, "countryCode": "NO" }.
               Remote anywhere → []. Use the city name as written locally ("Tromsø", not "Tromso").
             """;
