@@ -29,7 +29,7 @@ public static class ProfileQueries
             .Include(p => p.Projects).ThenInclude(p => p.Skills)
             .Include(p => p.Projects).ThenInclude(p => p.Location)
             .Include(p => p.Projects).ThenInclude(p => p.Bullets).ThenInclude(b => b.Translations)
-            .Include(p => p.Skills).ThenInclude(s => s.Skill)
+            .Include(p => p.Skills).ThenInclude(s => s.Skill).ThenInclude(s => s.Translations)
             .Include(p => p.Languages)
             .Include(p => p.References)
             .Include(p => p.Translations)

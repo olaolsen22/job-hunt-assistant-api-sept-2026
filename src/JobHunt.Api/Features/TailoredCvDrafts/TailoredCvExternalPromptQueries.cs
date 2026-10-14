@@ -13,7 +13,7 @@ public record TailoredCvExternalPrompt(int Version, string Instructions);
 [QueryType]
 public static class TailoredCvExternalPromptQueries
 {
-    public const int Version = 7;
+    public const int Version = 8;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseUpper, allowIntegerValues: false) },
@@ -72,7 +72,7 @@ public static class TailoredCvExternalPromptQueries
                     Skills = e.Skills.Select(s => s.Name),
                     Bullets = e.Bullets.Select(b => new { b.Id, Text = BulletText(b) }),
                 }),
-                Skills = profile.Skills.Select(s => new { Id = s.SkillId, s.Skill.Name, s.Level, s.Skill.Category }),
+                Skills = profile.Skills.Select(s => new { Id = s.SkillId, Name = s.Skill.NameIn(language), s.Level, s.Skill.Category }),
                 Languages = profile.Languages.Select(l => new { l.Name, l.Written, l.Spoken }),
             },
         };

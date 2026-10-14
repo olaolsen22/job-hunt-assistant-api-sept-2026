@@ -141,6 +141,7 @@ type Query {
   parseJob(id: UUID!): ParseJob @cost(weight: "10")
   profileCvParsePrompt: ProfileCvParsePrompt! @cost(weight: "10")
   profile: Profile! @cost(weight: "10")
+  profileSkillWordingPrompt: ProfileSkillWordingPrompt! @cost(weight: "10")
   skillCleanupPrompt: SkillCleanupPrompt! @cost(weight: "10")
   skills(
     search: String
@@ -300,6 +301,10 @@ type Mutation {
     @cost(weight: "10")
   deleteProfileReference(input: DeleteProfileReferenceInput!): DeleteProfileReferencePayload!
     @cost(weight: "10")
+  suggestProfileSkillWording(input: SuggestProfileSkillWordingInput!): SuggestProfileSkillWordingPayload!
+    @cost(weight: "10")
+  applyProfileSkillWording(input: ApplyProfileSkillWordingInput!): ApplyProfileSkillWordingPayload!
+    @cost(weight: "10")
   setProfileContentLanguage(input: SetProfileContentLanguageInput!): SetProfileContentLanguagePayload!
     @cost(weight: "10")
   setProfileBulletTranslation(input: SetProfileBulletTranslationInput!): SetProfileBulletTranslationPayload!
@@ -313,6 +318,10 @@ type Mutation {
   suggestSkillCleanup(input: SuggestSkillCleanupInput!): SuggestSkillCleanupPayload!
     @cost(weight: "10")
   setSkillCategory(input: SetSkillCategoryInput!): SetSkillCategoryPayload!
+    @cost(weight: "10")
+  setSkillTranslation(input: SetSkillTranslationInput!): SetSkillTranslationPayload!
+    @cost(weight: "10")
+  deleteSkillTranslation(input: DeleteSkillTranslationInput!): DeleteSkillTranslationPayload!
     @cost(weight: "10")
   cleanUpSkills(input: CleanUpSkillsInput!): CleanUpSkillsPayload!
     @cost(weight: "10")
@@ -381,6 +390,11 @@ type AnalyzeAllTailoredCvPayload {
 type AnalyzeTailoredCvSectionPayload {
   result: TailoredCvAnalysisResult
   errors: [AnalyzeTailoredCvSectionError!]
+}
+
+type ApplyProfileSkillWordingPayload {
+  profile: Profile
+  errors: [ApplyProfileSkillWordingError!]
 }
 
 type ApplyToListingPayload {
@@ -569,6 +583,11 @@ type DeleteProfileReferencePayload {
 type DeleteProfileTranslationPayload {
   language: Language
   errors: [DeleteProfileTranslationError!]
+}
+
+type DeleteSkillTranslationPayload {
+  skill: Skill
+  errors: [DeleteSkillTranslationError!]
 }
 
 type Document {
@@ -1033,6 +1052,11 @@ type ProfileBullet {
   position: Int!
 }
 
+type ProfileBulletText {
+  id: Int!
+  text: String!
+}
+
 type ProfileBulletTranslation {
   id: Int!
   language: Language!
@@ -1221,6 +1245,23 @@ type ProfileSkill {
   level: Int!
 }
 
+type ProfileSkillWording {
+  bullets: [ProfileBulletText!]!
+  headline: String
+  summary: String
+}
+
+type ProfileSkillWordingPrompt {
+  version: Int!
+  instructions: String!
+}
+
+type ProfileSkillWordingSuggestion {
+  status: ProfileSkillWordingStatus!
+  wording: ProfileSkillWording
+  error: String
+}
+
 type ProfileTranslation {
   id: Int!
   language: Language!
@@ -1357,11 +1398,18 @@ type SetSkillCategoryPayload {
   errors: [SetSkillCategoryError!]
 }
 
+type SetSkillTranslationPayload {
+  skill: Skill
+  errors: [SetSkillTranslationError!]
+}
+
 type Skill {
   listingCount: Int! @cost(weight: "10")
   id: Int!
+  nameIn(language: Language!): String!
   name: String!
   category: SkillCategory
+  translations: [SkillTranslation!]!
 }
 
 type SkillCleanupOperation {
@@ -1377,7 +1425,14 @@ type SkillCleanupPrompt {
 type SkillCleanupSuggestion {
   status: SkillCleanupSuggestStatus!
   operations: [SkillCleanupOperation!]
+  translations: [SkillCleanupTranslation!]
   error: String
+}
+
+type SkillCleanupTranslation {
+  skillName: String!
+  language: Language!
+  name: String!
 }
 
 type SkillNotFoundError implements Error {
@@ -1404,6 +1459,13 @@ type SkillsEdge {
   node: Skill!
 }
 
+type SkillTranslation {
+  id: Int!
+  skillId: Int!
+  language: Language!
+  name: String!
+}
+
 type StatusChange {
   id: Int!
   listingId: Int!
@@ -1416,6 +1478,11 @@ type StatusChange {
 
 type StatusChangeNotFoundError implements Error {
   message: String!
+}
+
+type SuggestProfileSkillWordingPayload {
+  result: ProfileSkillWordingSuggestion
+  errors: [SuggestProfileSkillWordingError!]
 }
 
 type SuggestSkillCleanupPayload {
@@ -1696,6 +1763,10 @@ union AnalyzeTailoredCvSectionError =
   | UnknownLlmModelError
   | AiSafetyError
 
+union ApplyProfileSkillWordingError =
+  | ProfileEntryNotFoundError
+  | InvalidProfileError
+
 union ApplyToListingError =
   | ListingNotFoundError
   | InvalidStatusTransitionError
@@ -1739,6 +1810,8 @@ union DeleteProfileProjectError = ProfileEntryNotFoundError
 union DeleteProfileReferenceError = ProfileEntryNotFoundError
 
 union DeleteProfileTranslationError = ProfileEntryNotFoundError
+
+union DeleteSkillTranslationError = SkillNotFoundError
 
 union GenerateCvDocumentError =
   | ListingNotFoundError
@@ -1834,6 +1907,10 @@ union SetProfileTranslationError = InvalidProfileError
 union SetProviderKeyError = ProviderKeyError
 
 union SetSkillCategoryError = SkillNotFoundError
+
+union SetSkillTranslationError = SkillNotFoundError | InvalidSkillCleanupError
+
+union SuggestProfileSkillWordingError = UnknownLlmModelError | AiSafetyError
 
 union SuggestSkillCleanupError = UnknownLlmModelError | AiSafetyError
 
@@ -1983,6 +2060,12 @@ input ApplicationStatusOperationFilterInput {
   nin: [ApplicationStatus!] @cost(weight: "10")
 }
 
+input ApplyProfileSkillWordingInput {
+  bullets: [ProfileBulletTextInput!]!
+  headline: String
+  summary: String
+}
+
 input ApplyToListingInput {
   listingId: Int!
   cvDocumentId: Int
@@ -1998,6 +2081,7 @@ input BooleanOperationFilterInput {
 
 input CleanUpSkillsInput {
   operations: [SkillCleanupOperationInput!]!
+  translations: [SkillCleanupTranslationInput!]
 }
 
 input ClearProfileSectionsInput {
@@ -2150,6 +2234,11 @@ input DeleteProfileReferenceInput {
 }
 
 input DeleteProfileTranslationInput {
+  language: Language!
+}
+
+input DeleteSkillTranslationInput {
+  skillId: Int!
   language: Language!
 }
 
@@ -2329,6 +2418,13 @@ input ListFilterInputTypeOfListingSkillFilterInput {
   all: ListingSkillFilterInput @cost(weight: "10")
   none: ListingSkillFilterInput @cost(weight: "10")
   some: ListingSkillFilterInput @cost(weight: "10")
+  any: Boolean @cost(weight: "10")
+}
+
+input ListFilterInputTypeOfSkillTranslationFilterInput {
+  all: SkillTranslationFilterInput @cost(weight: "10")
+  none: SkillTranslationFilterInput @cost(weight: "10")
+  some: SkillTranslationFilterInput @cost(weight: "10")
   any: Boolean @cost(weight: "10")
 }
 
@@ -2623,6 +2719,11 @@ input PreviewTailoredCvDraftInput {
   json: String!
 }
 
+input ProfileBulletTextInput {
+  id: Int!
+  text: String!
+}
+
 input ProfileCvBasicsSelectionInput {
   fullName: String
   headline: String
@@ -2823,9 +2924,21 @@ input SetSkillCategoryInput {
   category: SkillCategory
 }
 
+input SetSkillTranslationInput {
+  skillId: Int!
+  language: Language!
+  name: String!
+}
+
 input SkillCleanupOperationInput {
   skillIds: [Int!]!
   names: [String!]!
+}
+
+input SkillCleanupTranslationInput {
+  skillName: String!
+  language: Language!
+  name: String!
 }
 
 input SkillFilterInput {
@@ -2834,12 +2947,22 @@ input SkillFilterInput {
   id: IntOperationFilterInput
   name: StringOperationFilterInput
   category: NullableOfSkillCategoryOperationFilterInput
+  translations: ListFilterInputTypeOfSkillTranslationFilterInput
 }
 
 input SkillSortInput {
   id: SortEnumType @cost(weight: "10")
   name: SortEnumType @cost(weight: "10")
   category: SortEnumType @cost(weight: "10")
+}
+
+input SkillTranslationFilterInput {
+  and: [SkillTranslationFilterInput!]
+  or: [SkillTranslationFilterInput!]
+  id: IntOperationFilterInput
+  skillId: IntOperationFilterInput
+  language: LanguageOperationFilterInput
+  name: StringOperationFilterInput
 }
 
 input StatusChangeFilterInput {
@@ -2877,6 +3000,11 @@ input StringOperationFilterInput {
   nstartsWith: String @cost(weight: "20")
   endsWith: String @cost(weight: "20")
   nendsWith: String @cost(weight: "20")
+}
+
+input SuggestProfileSkillWordingInput {
+  model: String
+  requestId: UUID
 }
 
 input SuggestSkillCleanupInput {
@@ -3253,6 +3381,11 @@ enum ProfileSection {
   LANGUAGES
   REFERENCES
   HOBBIES
+}
+
+enum ProfileSkillWordingStatus {
+  SUCCEEDED
+  FAILED
 }
 
 enum Schedule {

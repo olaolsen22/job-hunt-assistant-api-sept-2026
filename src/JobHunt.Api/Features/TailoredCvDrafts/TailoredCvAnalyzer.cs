@@ -147,7 +147,7 @@ public class TailoredCvAnalyzer(
                 {
                     Headline = profile.Translations.FirstOrDefault(t => t.Language == language)?.Headline ?? profile.Headline,
                     Summary = profile.Translations.FirstOrDefault(t => t.Language == language)?.Summary ?? profile.Summary,
-                    Skills = profile.Skills.Select(s => new { s.Skill.Name, s.Level }),
+                    Skills = profile.Skills.Select(s => new { Name = s.Skill.NameIn(language), s.Level }),
                     Experience = profile.Experiences.Select(e => new
                     {
                         e.Title, Skills = e.Skills.Select(s => s.Name),

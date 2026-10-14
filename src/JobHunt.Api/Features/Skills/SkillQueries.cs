@@ -50,3 +50,9 @@ internal static class SkillDataLoaders
             .GroupBy(s => s.SkillId)
             .ToDictionaryAsync(g => g.Key, g => g.Count(), ct);
 }
+
+[ObjectType<SkillTranslation>]
+public static partial class SkillTranslationNode
+{
+    static partial void Configure(IObjectTypeDescriptor<SkillTranslation> descriptor) => descriptor.Ignore(t => t.Skill);
+}

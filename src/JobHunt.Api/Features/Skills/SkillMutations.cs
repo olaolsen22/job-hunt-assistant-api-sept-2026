@@ -13,6 +13,9 @@ public class InvalidSkillCleanupException(string message) : Exception(message);
 // Replaces skillIds with names: one name merges or renames ("Vue", "Vue.js" → "Vue"), several split ("C#/.NET" → "C#", ".NET").
 public record SkillCleanupOperation(List<int> SkillIds, List<string> Names);
 
+// By skill name, so a cleanup can translate a skill it creates; applied after the operations.
+public record SkillCleanupTranslation(string SkillName, Language Language, string Name);
+
 [MutationType]
 public static class SkillMutations
 {
@@ -30,26 +33,73 @@ public static class SkillMutations
         return skill;
     }
 
+    // Upsert. Only for skills that are words; a product name needs none and prints as is.
+    [Error<SkillNotFoundException>]
+    [Error<InvalidSkillCleanupException>]
+    public static async Task<Skill> SetSkillTranslationAsync(
+        int skillId, Language language, string name, AppDbContext db, CancellationToken ct)
+    {
+        var text = name.Trim();
+        if (text.Length is 0 or > SkillTranslation.MaxNameLength)
+            throw new InvalidSkillCleanupException($"A translation needs 1–{SkillTranslation.MaxNameLength} characters.");
+        var skill = await db.Skills.Include(s => s.Translations).FirstOrDefaultAsync(s => s.Id == skillId, ct)
+            ?? throw new SkillNotFoundException(skillId);
+        SetTranslation(skill, language, text);
+        await db.SaveChangesAsync(ct);
+        return skill;
+    }
+
+    // Removing a missing translation is a no-op, so the UI can always call it.
+    [Error<SkillNotFoundException>]
+    public static async Task<Skill> DeleteSkillTranslationAsync(int skillId, Language language, AppDbContext db, CancellationToken ct)
+    {
+        var skill = await db.Skills.Include(s => s.Translations).FirstOrDefaultAsync(s => s.Id == skillId, ct)
+            ?? throw new SkillNotFoundException(skillId);
+        skill.Translations.RemoveAll(t => t.Language == language);
+        await db.SaveChangesAsync(ct);
+        return skill;
+    }
+
+    private static void SetTranslation(Skill skill, Language language, string name)
+    {
+        if (skill.Translations.FirstOrDefault(t => t.Language == language) is { } existing) existing.Name = name;
+        else skill.Translations.Add(new SkillTranslation { Language = language, Name = name });
+    }
+
     // Works on the shared lookup, so the profile, experience/project tags and listings are all cleaned at once.
     // One transaction, so a reviewed plan is applied fully or not at all.
     [Error<SkillNotFoundException>]
     [Error<InvalidSkillCleanupException>]
     [UseMutationConvention(PayloadFieldName = "skills")]
     public static async Task<List<Skill>> CleanUpSkillsAsync(
-        List<SkillCleanupOperation> operations, AppDbContext db, CancellationToken ct)
+        List<SkillCleanupOperation> operations, AppDbContext db, CancellationToken ct,
+        List<SkillCleanupTranslation>? translations = null)
     {
-        Validate(operations);
+        translations ??= [];
+        Validate(operations, translations);
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var result = new List<Skill>();
         foreach (var operation in operations) result.AddRange(await ApplyAsync(operation, db, ct));
+        foreach (var translation in translations)
+        {
+            var normalized = Names.Normalize(translation.SkillName);
+            var skill = await db.Skills.Include(s => s.Translations).FirstOrDefaultAsync(s => s.NormalizedName == normalized, ct)
+                ?? throw new InvalidSkillCleanupException($"There is no skill \"{translation.SkillName.Trim()}\" to translate.");
+            SetTranslation(skill, translation.Language, translation.Name.Trim());
+            await db.SaveChangesAsync(ct);
+            result.Add(skill);
+        }
         await transaction.CommitAsync(ct);
         return [.. result.Distinct().OrderBy(s => s.Name)];
     }
 
-    private static void Validate(List<SkillCleanupOperation> operations)
+    private static void Validate(List<SkillCleanupOperation> operations, List<SkillCleanupTranslation> translations)
     {
-        if (operations.Count is 0 or > MaxOperations)
-            throw new InvalidSkillCleanupException($"Send 1–{MaxOperations} operations.");
+        if (operations.Count + translations.Count == 0 || operations.Count > MaxOperations || translations.Count > MaxOperations)
+            throw new InvalidSkillCleanupException($"Send 1–{MaxOperations} operations or translations.");
+        if (translations.Any(t => string.IsNullOrWhiteSpace(t.SkillName) || string.IsNullOrWhiteSpace(t.Name)
+                || t.Name.Trim().Length > SkillTranslation.MaxNameLength))
+            throw new InvalidSkillCleanupException($"Translations need a skill and a name of at most {SkillTranslation.MaxNameLength} characters.");
         foreach (var operation in operations)
         {
             if (operation.SkillIds.Count == 0) throw new InvalidSkillCleanupException("Each operation needs at least one skill.");
@@ -140,6 +190,15 @@ public static class SkillMutations
                 Skills = [.. content.Skills.Select(s => s.SourceSkillId is { } id && removedIds.Contains(id)
                     ? s with { SourceSkillId = targetIds[0] } : s)],
             };
+        }
+
+        // A merge keeps the sources' translations where the target has none; a split can't divide one translation.
+        if (targets is [var target])
+        {
+            var translations = await db.SkillTranslations
+                .Where(t => removedIds.Contains(t.SkillId) || t.SkillId == target.Id).ToListAsync(ct);
+            foreach (var group in translations.Where(t => t.SkillId != target.Id).GroupBy(t => t.Language))
+                if (!translations.Any(t => t.SkillId == target.Id && t.Language == group.Key)) group.First().SkillId = target.Id;
         }
 
         db.Skills.RemoveRange(removed);

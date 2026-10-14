@@ -1371,6 +1371,32 @@ namespace JobHunt.Api.Migrations
                     b.ToTable("Skills");
                 });
 
+            modelBuilder.Entity("JobHunt.Api.Features.Skills.SkillTranslation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SkillId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SkillId", "Language")
+                        .IsUnique();
+
+                    b.ToTable("SkillTranslations");
+                });
+
             modelBuilder.Entity("JobHunt.Api.Features.TailoredCvDrafts.TailoredCvDraft", b =>
                 {
                     b.Property<int>("Id")
@@ -2261,6 +2287,17 @@ namespace JobHunt.Api.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("JobHunt.Api.Features.Skills.SkillTranslation", b =>
+                {
+                    b.HasOne("JobHunt.Api.Features.Skills.Skill", "Skill")
+                        .WithMany("Translations")
+                        .HasForeignKey("SkillId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Skill");
+                });
+
             modelBuilder.Entity("JobHunt.Api.Features.TailoredCvDrafts.TailoredCvDraft", b =>
                 {
                     b.HasOne("JobHunt.Api.Features.Listings.Listing", "Listing")
@@ -2469,6 +2506,11 @@ namespace JobHunt.Api.Migrations
             modelBuilder.Entity("JobHunt.Api.Features.Profiles.ProfileProject", b =>
                 {
                     b.Navigation("Bullets");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.Skills.Skill", b =>
+                {
+                    b.Navigation("Translations");
                 });
 #pragma warning restore 612, 618
         }
