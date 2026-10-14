@@ -70,6 +70,11 @@ real data are required even for this personal app.
 - Be direct and concise: outcome, meaningful changes, validation, limitations.
   Show snippets only when useful. Explain a new backend/.NET concept in 1–2
   lines for a senior Vue/Nuxt developer learning modern .NET; skip HTTP basics.
+- UI instructions: quick and short. The UI repo reads `schema.graphql` and can
+  generate types when needed, so list only what changed and any non-obvious
+  behavior; never restate the schema. Always output them as Markdown inside a
+  fenced code block (use a longer fence if the content has code fences) so they
+  can be copied as-is.
 - Commit only when asked. One logical change per commit; imperative subject
   ≤50 chars. Body explains why, wrapped at 72 chars. For owner requests, use
   `Owner requested <x>, so <goal>:` with concise change bullets.
