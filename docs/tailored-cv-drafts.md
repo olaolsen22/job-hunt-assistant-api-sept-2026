@@ -94,7 +94,7 @@ The preview validates JSON shape and that source IDs belong to the signed-in use
 
 `saveTailoredCvDraft` creates the listing's draft the first time and updates that same draft on later saves. Source IDs are optional attribution; the saved text is a snapshot and does not change when the profile is edited.
 
-Each experience can set `contentStyle` to `BULLETS` (the default) or `PARAGRAPH`. Paragraph mode renders the editable `paragraph` text without a bullet. Per-experience AI analysis returns selected source bullet IDs and, when it can form one from them, a concise paragraph suggestion. The PDF falls back to joining the selected bullet texts if no paragraph is supplied. Review generated wording before saving.
+Each experience, education, certification and project can set `contentStyle` to `BULLETS` (the default) or `PARAGRAPH`. Paragraph mode renders the editable `paragraph` text without a bullet. Per-experience and per-education AI analysis returns selected source bullet IDs and, when it can form one from them, a concise paragraph suggestion. The PDF falls back to joining the selected bullet texts if no paragraph is supplied. Review generated wording before saving.
 
 ```graphql
 mutation ($listingId: Int!, $content: TailoredCvContentInput!) {

@@ -1402,6 +1402,8 @@ type TailoredCvCertification {
   url: String
   bullets: [TailoredCvBullet!]!
   sourceEntryId: Int
+  contentStyle: TailoredCvContentStyle!
+  paragraph: String
 }
 
 type TailoredCvContent {
@@ -1443,6 +1445,8 @@ type TailoredCvEducation {
   bullets: [TailoredCvBullet!]!
   sourceEntryId: Int
   location: String
+  contentStyle: TailoredCvContentStyle!
+  paragraph: String
 }
 
 type TailoredCvExperience {
@@ -1453,7 +1457,7 @@ type TailoredCvExperience {
   bullets: [TailoredCvBullet!]!
   sourceEntryId: Int
   location: String
-  contentStyle: TailoredCvExperienceContentStyle!
+  contentStyle: TailoredCvContentStyle!
   paragraph: String
 }
 
@@ -1486,6 +1490,8 @@ type TailoredCvProject {
   bullets: [TailoredCvBullet!]!
   sourceEntryId: Int
   location: String
+  contentStyle: TailoredCvContentStyle!
+  paragraph: String
 }
 
 type TailoredCvSkill {
@@ -2806,6 +2812,8 @@ input TailoredCvCertificationInput {
   url: String
   bullets: [TailoredCvBulletInput!]!
   sourceEntryId: Int
+  contentStyle: TailoredCvContentStyle
+  paragraph: String
 }
 
 input TailoredCvContentInput {
@@ -2836,6 +2844,8 @@ input TailoredCvEducationInput {
   bullets: [TailoredCvBulletInput!]!
   sourceEntryId: Int
   location: String
+  contentStyle: TailoredCvContentStyle
+  paragraph: String
 }
 
 input TailoredCvExperienceInput {
@@ -2846,7 +2856,7 @@ input TailoredCvExperienceInput {
   bullets: [TailoredCvBulletInput!]!
   sourceEntryId: Int
   location: String
-  contentStyle: TailoredCvExperienceContentStyle
+  contentStyle: TailoredCvContentStyle
   paragraph: String
 }
 
@@ -2869,6 +2879,8 @@ input TailoredCvProjectInput {
   bullets: [TailoredCvBulletInput!]!
   sourceEntryId: Int
   location: String
+  contentStyle: TailoredCvContentStyle
+  paragraph: String
 }
 
 input TailoredCvSkillInput {
@@ -3183,7 +3195,7 @@ enum TailoredCvAnalysisStatus {
   SKIPPED
 }
 
-enum TailoredCvExperienceContentStyle {
+enum TailoredCvContentStyle {
   BULLETS
   PARAGRAPH
 }

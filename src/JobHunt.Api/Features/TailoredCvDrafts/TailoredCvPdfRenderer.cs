@@ -126,10 +126,7 @@ public static class TailoredCvPdfRenderer
         {
             AddEntryHeader(entry, experience.Title, JoinPlace(experience.Employer, experience.Location),
                 t.FormatRange(experience.StartMonth, experience.EndMonth));
-            if (experience.ContentStyle == TailoredCvExperienceContentStyle.Paragraph)
-                entry.Item().Text(experience.Paragraph ?? string.Join(" ", experience.Bullets.Select(b => b.Text)));
-            else
-                AddBullets(entry, experience.Bullets);
+            AddContent(entry, experience.ContentStyle, experience.Paragraph, experience.Bullets);
         });
 
     private static void AddEducationSection(ColumnDescriptor column, List<TailoredCvEducation>? educations, CvText t) =>
@@ -141,7 +138,7 @@ public static class TailoredCvPdfRenderer
                 AddEntryHeader(entry, education.School, education.Location, dates);
             else
                 AddEntryHeader(entry, degreeField, JoinPlace(education.School, education.Location), dates);
-            AddBullets(entry, education.Bullets);
+            AddContent(entry, education.ContentStyle, education.Paragraph, education.Bullets);
         });
 
     private static void AddCertificationSection(ColumnDescriptor column, List<TailoredCvCertification>? certifications, CvText t) =>
@@ -157,7 +154,7 @@ public static class TailoredCvPdfRenderer
             AddEntryHeader(entry, certification.Name, certification.Issuer, dates);
             if (!string.IsNullOrWhiteSpace(certification.Url))
                 entry.Item().Text(certification.Url);
-            AddBullets(entry, certification.Bullets);
+            AddContent(entry, certification.ContentStyle, certification.Paragraph, certification.Bullets);
         });
 
     private static void AddProjectSection(ColumnDescriptor column, List<TailoredCvProject>? projects, CvText t) =>
@@ -166,7 +163,7 @@ public static class TailoredCvPdfRenderer
             AddEntryHeader(entry, project.Name, project.Location, t.FormatRange(project.StartMonth, project.EndMonth));
             if (!string.IsNullOrWhiteSpace(project.Url))
                 entry.Item().Text(project.Url);
-            AddBullets(entry, project.Bullets);
+            AddContent(entry, project.ContentStyle, project.Paragraph, project.Bullets);
         });
 
     // NAV's layout: the language name, then written and spoken levels on their own lines.
@@ -191,6 +188,20 @@ public static class TailoredCvPdfRenderer
     private static void AddLinksSection(ColumnDescriptor column, List<TailoredCvLink>? links, CvText t) =>
         AddEntrySection(column, t.Links, links, (entry, link) => entry.Item().Text($"{link.Label}: {link.Url}"),
             entrySpacing: 0);
+
+    // A paragraph falls back to the joined bullet texts when none was written.
+    private static void AddContent(ColumnDescriptor entry, TailoredCvContentStyle style, string? paragraph,
+        List<TailoredCvBullet> bullets)
+    {
+        if (style == TailoredCvContentStyle.Paragraph)
+        {
+            var text = paragraph ?? string.Join(" ", bullets.Select(b => b.Text));
+            if (!string.IsNullOrWhiteSpace(text))
+                entry.Item().Text(text);
+        }
+        else
+            AddBullets(entry, bullets);
+    }
 
     private static void AddBullets(ColumnDescriptor entry, List<TailoredCvBullet> bullets)
     {

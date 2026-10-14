@@ -107,12 +107,13 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         var bulletId = bulletData.GetProperty("addProfileBullet").GetProperty("profileBullet").GetProperty("id").GetInt32();
         var listingId = await CreateListingAsync(client, "Developer", "Build software", []);
         factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant,
-            $$"""{"selectedBulletIds":[{{bulletId}}]}"""));
+            $$"""{"selectedBulletIds":[{{bulletId}}],"paragraph":"Graduated with honors."}"""));
 
         var payload = await AnalyzeAsync(client, listingId, "EDUCATION", entryId);
 
         var result = payload.GetProperty("result");
         Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
+        Assert.Equal("Graduated with honors.", result.GetProperty("paragraph").GetString());
         Assert.Equal(new[] { bulletId }, result.GetProperty("selectedBulletIds").EnumerateArray().Select(v => v.GetInt32()));
         Assert.Contains("Allowed School", string.Join("\n", factory.Llm.LastMessages.Select(m => m.Text)));
     }

@@ -105,6 +105,46 @@ public class TailoredCvDraftTests(ApiFactory factory) : IClassFixture<ApiFactory
         Assert.Equal("Edited wording for this application", saved.GetProperty("bullets")[0].GetProperty("text").GetString());
     }
 
+    [Fact]
+    public async Task SaveDraft_EducationCertificationAndProjectKeepContentStyleAndParagraph()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var listingId = await CreateListingAsync(client);
+
+        var data = await client.GraphQLAsync("""
+            mutation ($listingId: Int!, $content: TailoredCvContentInput!) {
+              saveTailoredCvDraft(input: { listingId: $listingId, content: $content }) {
+                tailoredCvDraft {
+                  content {
+                    educations { contentStyle paragraph }
+                    certifications { contentStyle paragraph }
+                    projects { contentStyle paragraph }
+                  }
+                }
+                errors { __typename ... on Error { message } }
+              }
+            }
+            """, new
+        {
+            listingId,
+            content = new
+            {
+                educations = new[] { new { school = "State University", contentStyle = "PARAGRAPH", paragraph = " Studied systems. ", bullets = Array.Empty<object>() } },
+                certifications = new[] { new { name = "AWS SA", bullets = Array.Empty<object>() } },
+                projects = new[] { new { name = "Side Project", contentStyle = "PARAGRAPH", paragraph = "Shipped a CLI.", bullets = Array.Empty<object>() } },
+            },
+        });
+
+        var payload = data.GetProperty("saveTailoredCvDraft");
+        Assert.Equal(JsonValueKind.Null, payload.GetProperty("errors").ValueKind);
+        var content = payload.GetProperty("tailoredCvDraft").GetProperty("content");
+        Assert.Equal("PARAGRAPH", content.GetProperty("educations")[0].GetProperty("contentStyle").GetString());
+        Assert.Equal("Studied systems.", content.GetProperty("educations")[0].GetProperty("paragraph").GetString());
+        Assert.Equal("BULLETS", content.GetProperty("certifications")[0].GetProperty("contentStyle").GetString());
+        Assert.Equal(JsonValueKind.Null, content.GetProperty("certifications")[0].GetProperty("paragraph").ValueKind);
+        Assert.Equal("Shipped a CLI.", content.GetProperty("projects")[0].GetProperty("paragraph").GetString());
+    }
+
     private const string SaveContent = """
         mutation ($listingId: Int!, $content: TailoredCvContentInput!) {
           saveTailoredCvDraft(input: { listingId: $listingId, content: $content }) {

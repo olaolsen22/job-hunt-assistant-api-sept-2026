@@ -25,16 +25,17 @@ public static class TailoredCvDraftValidation
         var content = new TailoredCvContent(input.Summary?.Trim(),
             input.Experiences?.Select(e => new TailoredCvExperience(CleanRequired(e.Employer), CleanRequired(e.Title), e.StartMonth,
                 e.EndMonth, (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
-                CleanOptional(e.Location), e.ContentStyle ?? TailoredCvExperienceContentStyle.Bullets,
+                CleanOptional(e.Location), e.ContentStyle ?? TailoredCvContentStyle.Bullets,
                 CleanOptional(e.Paragraph))).ToList(),
             input.Educations?.Select(e => new TailoredCvEducation(CleanRequired(e.School), CleanOptional(e.Degree), CleanOptional(e.Field),
                 e.StartMonth, e.EndMonth, (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
-                CleanOptional(e.Location))).ToList(),
+                CleanOptional(e.Location), e.ContentStyle ?? TailoredCvContentStyle.Bullets, CleanOptional(e.Paragraph))).ToList(),
             input.Certifications?.Select(e => new TailoredCvCertification(CleanRequired(e.Name), CleanOptional(e.Issuer), e.IssuedMonth,
-                e.ExpiresMonth, CleanOptional(e.Url), (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId)).ToList(),
+                e.ExpiresMonth, CleanOptional(e.Url), (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
+                e.ContentStyle ?? TailoredCvContentStyle.Bullets, CleanOptional(e.Paragraph))).ToList(),
             input.Projects?.Select(e => new TailoredCvProject(CleanRequired(e.Name), CleanOptional(e.Url), e.StartMonth, e.EndMonth,
                 (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
-                CleanOptional(e.Location))).ToList(),
+                CleanOptional(e.Location), e.ContentStyle ?? TailoredCvContentStyle.Bullets, CleanOptional(e.Paragraph))).ToList(),
             input.Skills?.Select(s => new TailoredCvSkill(CleanRequired(s.Name), s.Level, s.SourceSkillId)).ToList(),
             input.Languages?.Select(l => new TailoredCvLanguage(CleanRequired(l.Name), l.Written, l.Spoken)).ToList(),
             CleanOptional(input.FullName), CleanOptional(input.Headline), CleanOptional(input.Email), CleanOptional(input.Phone), CleanOptional(input.Address),
@@ -169,8 +170,6 @@ public static class TailoredCvDraftValidation
         if (c.Skills?.Any(s => Blank(s.Name) || s.Level is < 1 or > 5) == true)
             throw Invalid("skills", "name is required and level must be 1–5");
         ValidateFields(c.Experiences?.SelectMany(e => new[] { e.Employer, e.Title, e.Location }), "experiences");
-        if (c.Experiences?.Any(e => e.Paragraph?.Length > 10_000) == true)
-            throw Invalid("experiences", "paragraphs must be at most 10000 characters");
         ValidateFields(c.Educations?.SelectMany(e => new[] { e.School, e.Degree, e.Field, e.Location }), "educations");
         ValidateFields(c.Certifications?.SelectMany(e => new[] { e.Name, e.Issuer }), "certifications");
         ValidateFields(c.Projects?.SelectMany(e => new[] { e.Name, e.Location }), "projects");
@@ -188,6 +187,10 @@ public static class TailoredCvDraftValidation
             try { _ = new MailAddress(email); }
             catch (FormatException) { throw Invalid("email", "must be a valid email address"); }
         }
+        Paragraphs(c.Experiences?.Select(e => e.Paragraph), "experiences");
+        Paragraphs(c.Educations?.Select(e => e.Paragraph), "educations");
+        Paragraphs(c.Certifications?.Select(e => e.Paragraph), "certifications");
+        Paragraphs(c.Projects?.Select(e => e.Paragraph), "projects");
         foreach (var e in c.Experiences ?? []) ValidateMonths(e.StartMonth, e.EndMonth, "experiences");
         foreach (var e in c.Educations ?? []) ValidateMonths(e.StartMonth, e.EndMonth, "educations");
         foreach (var e in c.Certifications ?? []) ValidateMonths(e.IssuedMonth, e.ExpiresMonth, "certifications");
@@ -221,6 +224,12 @@ public static class TailoredCvDraftValidation
             throw Invalid(path, "dates must use the first day of a month");
         if (start is { } first && end is { } last && last < first)
             throw Invalid(path, "end month must not precede start month");
+    }
+
+    private static void Paragraphs(IEnumerable<string?>? paragraphs, string path)
+    {
+        if (paragraphs?.Any(p => p?.Length > 10_000) == true)
+            throw Invalid(path, "paragraphs must be at most 10000 characters");
     }
 
     private static void Text(string? value, string path, int max)

@@ -12,7 +12,7 @@ The system SHALL analyze a user's profile content in relation to one of the user
 #### Scenario: Analyze one experience section
 - **WHEN** the user requests analysis for one profile experience on a listing
 - **THEN** the result identifies relevant bullets from that experience in relation to the listing
-- **AND** the result may include a concise paragraph suggestion based only on the selected bullets
+- **AND** an experience or education result may include a concise paragraph suggestion based only on the selected bullets
 - **AND** no other profile entry is changed
 
 #### Scenario: Analyze the full profile

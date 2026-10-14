@@ -10,13 +10,16 @@ namespace JobHunt.Api.Features.TailoredCvDrafts;
 public record TailoredCvBulletInput(string Text, int? SourceBulletId = null);
 public record TailoredCvExperienceInput(string Employer, string Title, DateOnly? StartMonth, DateOnly? EndMonth,
     List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null, string? Location = null,
-    TailoredCvExperienceContentStyle? ContentStyle = null, string? Paragraph = null);
+    TailoredCvContentStyle? ContentStyle = null, string? Paragraph = null);
 public record TailoredCvEducationInput(string School, string? Degree, string? Field, DateOnly? StartMonth,
-    DateOnly? EndMonth, List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null, string? Location = null);
+    DateOnly? EndMonth, List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null, string? Location = null,
+    TailoredCvContentStyle? ContentStyle = null, string? Paragraph = null);
 public record TailoredCvCertificationInput(string Name, string? Issuer, DateOnly? IssuedMonth, DateOnly? ExpiresMonth,
-    string? Url, List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null);
+    string? Url, List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null,
+    TailoredCvContentStyle? ContentStyle = null, string? Paragraph = null);
 public record TailoredCvProjectInput(string Name, string? Url, DateOnly? StartMonth, DateOnly? EndMonth,
-    List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null, string? Location = null);
+    List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null, string? Location = null,
+    TailoredCvContentStyle? ContentStyle = null, string? Paragraph = null);
 public record TailoredCvSkillInput(string Name, int? Level, int? SourceSkillId = null);
 public record TailoredCvLanguageInput(string Name, LanguageProficiency? Written, LanguageProficiency? Spoken);
 // A null Language means the listing's posting language, or English when the listing has none.

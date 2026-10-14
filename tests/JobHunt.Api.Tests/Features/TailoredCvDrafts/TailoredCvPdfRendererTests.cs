@@ -124,13 +124,35 @@ public class TailoredCvPdfRendererTests
         [
             new TailoredCvExperience("Acme", "Developer", null, null,
                 [new TailoredCvBullet("Built the service."), new TailoredCvBullet("Cut latency by 30%.")],
-                ContentStyle: TailoredCvExperienceContentStyle.Paragraph,
+                ContentStyle: TailoredCvContentStyle.Paragraph,
                 Paragraph: "Built the service and cut latency by 30%."),
         ]);
 
         var text = ExtractText(content);
 
         Assert.Contains("Built the service and cut latency by 30%.", text);
+        Assert.DoesNotContain("•", text);
+    }
+
+    [Fact]
+    public void Render_ParagraphInOtherSections_RendersProseWithoutBulletGlyphs()
+    {
+        var content = new TailoredCvContent(
+            Educations: [new TailoredCvEducation("State University", "BSc", null, null, null,
+                [new TailoredCvBullet("Thesis on caching.")],
+                ContentStyle: TailoredCvContentStyle.Paragraph, Paragraph: "Wrote a thesis on caching.")],
+            Certifications: [new TailoredCvCertification("AWS SA", null, null, null, null,
+                [new TailoredCvBullet("Passed first try."), new TailoredCvBullet("Scored 900.")],
+                ContentStyle: TailoredCvContentStyle.Paragraph)],
+            Projects: [new TailoredCvProject("Side Project", null, null, null,
+                [new TailoredCvBullet("Shipped a CLI.")],
+                ContentStyle: TailoredCvContentStyle.Paragraph, Paragraph: "Shipped a small CLI tool.")]);
+
+        var text = ExtractText(content);
+
+        Assert.Contains("Wrote a thesis on caching.", text);
+        Assert.Contains("Passed first try. Scored 900.", text);
+        Assert.Contains("Shipped a small CLI tool.", text);
         Assert.DoesNotContain("•", text);
     }
 
