@@ -102,8 +102,15 @@ public static class TailoredCvPdfRenderer
     private static void AddLabelledLine(ColumnDescriptor column, string label, string? value)
     {
         if (!string.IsNullOrWhiteSpace(value))
-            column.Item().Text($"{label}: {value}");
+            AddLabelledText(column, label, value);
     }
+
+    private static void AddLabelledText(ColumnDescriptor column, string label, string value) =>
+        column.Item().Text(text =>
+        {
+            text.Span($"{label}: ").Bold();
+            text.Span(value);
+        });
 
     private static void AddEntryHeader(ColumnDescriptor entry, string title, string? organization, string? dates)
     {
@@ -211,9 +218,9 @@ public static class TailoredCvPdfRenderer
         {
             entry.Item().Text(t.LanguageName(language.Name)).Bold();
             if (language.Written is { } written)
-                entry.Item().Text($"{t.Written}: {t.Proficiency(written)}");
+                AddLabelledText(entry, t.Written, t.Proficiency(written));
             if (language.Spoken is { } spoken)
-                entry.Item().Text($"{t.Spoken}: {t.Proficiency(spoken)}");
+                AddLabelledText(entry, t.Spoken, t.Proficiency(spoken));
         });
 
     // Plain, comma-separated names: no bars/dots for level, which an ATS can't read anyway.
@@ -236,17 +243,13 @@ public static class TailoredCvPdfRenderer
         {
             AddHeading(section, t.Skills);
             foreach (var (label, names) in lines)
-                section.Item().Text(text =>
-                {
-                    text.Span($"{label}: ").Bold();
-                    text.Span(names);
-                });
+                AddLabelledText(section, label, names);
         });
     }
 
     // Link lines sit at the column's normal spacing rather than entry spacing.
     private static void AddLinksSection(ColumnDescriptor column, List<TailoredCvLink>? links, CvText t) =>
-        AddEntrySection(column, t.Links, links, (entry, link) => entry.Item().Text($"{link.Label}: {link.Url}"),
+        AddEntrySection(column, t.Links, links, (entry, link) => AddLabelledText(entry, link.Label, link.Url),
             entrySpacing: 0);
 
     // A paragraph falls back to the joined bullet texts when none was written.
