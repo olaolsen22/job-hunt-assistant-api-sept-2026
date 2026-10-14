@@ -7,6 +7,7 @@ using JobHunt.Api.Features.LlmModels;
 using JobHunt.Api.Features.LlmProviderKeys;
 using JobHunt.Api.Features.Parsing;
 using JobHunt.Api.Features.Profiles;
+using JobHunt.Api.Features.Skills;
 using JobHunt.Api.Features.TailoredCvDrafts;
 using JobHunt.Api.Llm;
 using Microsoft.AspNetCore.Authorization;
@@ -114,6 +115,7 @@ builder.Services.AddScoped<LlmModelResolver>();
 builder.Services.AddScoped<LlmExecution>();
 builder.Services.AddScoped<ListingParser>();
 builder.Services.AddScoped<ProfileCvParser>();
+builder.Services.AddScoped<SkillCleanupSuggester>();
 builder.Services.AddScoped<TailoredCvAnalyzer>();
 TailoredCvPdfFonts.EnsureRegistered();
 // Browser-like User-Agent: several job boards answer 403 to the default .NET one.

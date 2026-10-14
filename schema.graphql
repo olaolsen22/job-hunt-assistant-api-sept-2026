@@ -141,6 +141,7 @@ type Query {
   parseJob(id: UUID!): ParseJob @cost(weight: "10")
   profileCvParsePrompt: ProfileCvParsePrompt! @cost(weight: "10")
   profile: Profile! @cost(weight: "10")
+  skillCleanupPrompt: SkillCleanupPrompt! @cost(weight: "10")
   skills(
     search: String
     "Returns the first _n_ elements from the list."
@@ -309,6 +310,12 @@ type Mutation {
     @cost(weight: "10")
   deleteProfileTranslation(input: DeleteProfileTranslationInput!): DeleteProfileTranslationPayload!
     @cost(weight: "10")
+  suggestSkillCleanup(input: SuggestSkillCleanupInput!): SuggestSkillCleanupPayload!
+    @cost(weight: "10")
+  setSkillCategory(input: SetSkillCategoryInput!): SetSkillCategoryPayload!
+    @cost(weight: "10")
+  cleanUpSkills(input: CleanUpSkillsInput!): CleanUpSkillsPayload!
+    @cost(weight: "10")
   analyzeTailoredCvSection(input: AnalyzeTailoredCvSectionInput!): AnalyzeTailoredCvSectionPayload!
     @cost(weight: "10")
   analyzeAllTailoredCv(input: AnalyzeAllTailoredCvInput!): AnalyzeAllTailoredCvPayload!
@@ -379,6 +386,11 @@ type AnalyzeTailoredCvSectionPayload {
 type ApplyToListingPayload {
   listing: Listing
   errors: [ApplyToListingError!]
+}
+
+type CleanUpSkillsPayload {
+  skills: [Skill!]
+  errors: [CleanUpSkillsError!]
 }
 
 type ClearProfileSectionsPayload {
@@ -690,6 +702,10 @@ type InvalidProfileError implements Error {
 }
 
 type InvalidProfileImportError implements Error {
+  message: String!
+}
+
+type InvalidSkillCleanupError implements Error {
   message: String!
 }
 
@@ -1130,6 +1146,7 @@ type ProfileCvProject {
 type ProfileCvSkill {
   name: String
   level: Int
+  category: SkillCategory
 }
 
 type ProfileCvWarning {
@@ -1335,10 +1352,36 @@ type SetProviderKeyPayload {
   errors: [SetProviderKeyError!]
 }
 
+type SetSkillCategoryPayload {
+  skill: Skill
+  errors: [SetSkillCategoryError!]
+}
+
 type Skill {
   listingCount: Int! @cost(weight: "10")
   id: Int!
   name: String!
+  category: SkillCategory
+}
+
+type SkillCleanupOperation {
+  skillIds: [Int!]!
+  names: [String!]!
+}
+
+type SkillCleanupPrompt {
+  version: Int!
+  instructions: String!
+}
+
+type SkillCleanupSuggestion {
+  status: SkillCleanupSuggestStatus!
+  operations: [SkillCleanupOperation!]
+  error: String
+}
+
+type SkillNotFoundError implements Error {
+  message: String!
 }
 
 "A connection to a list of items."
@@ -1373,6 +1416,11 @@ type StatusChange {
 
 type StatusChangeNotFoundError implements Error {
   message: String!
+}
+
+type SuggestSkillCleanupPayload {
+  result: SkillCleanupSuggestion
+  errors: [SuggestSkillCleanupError!]
 }
 
 type TailoredCvAnalysisReport {
@@ -1498,6 +1546,7 @@ type TailoredCvSkill {
   name: String!
   level: Int
   sourceSkillId: Int
+  category: SkillCategory
 }
 
 type TrainingProgram {
@@ -1654,6 +1703,8 @@ union ApplyToListingError =
   | DocumentNotFoundError
   | InvalidDocumentError
 
+union CleanUpSkillsError = SkillNotFoundError | InvalidSkillCleanupError
+
 union ClearProfileSectionsError = InvalidProfileError
 
 union CreateCompaniesError = InvalidCompanyError | InvalidLocationError
@@ -1781,6 +1832,10 @@ union SetProfileSkillError = InvalidProfileError
 union SetProfileTranslationError = InvalidProfileError
 
 union SetProviderKeyError = ProviderKeyError
+
+union SetSkillCategoryError = SkillNotFoundError
+
+union SuggestSkillCleanupError = UnknownLlmModelError | AiSafetyError
 
 union UndoStatusChangeError =
   | ListingNotFoundError
@@ -1939,6 +1994,10 @@ input ApplyToListingInput {
 input BooleanOperationFilterInput {
   eq: Boolean @cost(weight: "10")
   neq: Boolean @cost(weight: "10")
+}
+
+input CleanUpSkillsInput {
+  operations: [SkillCleanupOperationInput!]!
 }
 
 input ClearProfileSectionsInput {
@@ -2390,6 +2449,7 @@ input ListingSkillInput {
   level: Int! = 3
   minYears: Int
   isRequired: Boolean! = true
+  category: SkillCategory
 }
 
 input ListingSortInput {
@@ -2515,6 +2575,13 @@ input NullableOfSeniorityOperationFilterInput {
   nin: [Seniority] @cost(weight: "10")
 }
 
+input NullableOfSkillCategoryOperationFilterInput {
+  eq: SkillCategory @cost(weight: "10")
+  neq: SkillCategory @cost(weight: "10")
+  in: [SkillCategory] @cost(weight: "10")
+  nin: [SkillCategory] @cost(weight: "10")
+}
+
 input NullableOfWorkModeOperationFilterInput {
   eq: WorkMode @cost(weight: "10")
   neq: WorkMode @cost(weight: "10")
@@ -2635,6 +2702,7 @@ input ProfileCvProjectSelectionInput {
 input ProfileCvSkillInput {
   name: String
   level: Int
+  category: SkillCategory
 }
 
 input ProfileLinkInput {
@@ -2750,16 +2818,28 @@ input SetProviderKeyInput {
   apiKey: String!
 }
 
+input SetSkillCategoryInput {
+  skillId: Int!
+  category: SkillCategory
+}
+
+input SkillCleanupOperationInput {
+  skillIds: [Int!]!
+  names: [String!]!
+}
+
 input SkillFilterInput {
   and: [SkillFilterInput!]
   or: [SkillFilterInput!]
   id: IntOperationFilterInput
   name: StringOperationFilterInput
+  category: NullableOfSkillCategoryOperationFilterInput
 }
 
 input SkillSortInput {
   id: SortEnumType @cost(weight: "10")
   name: SortEnumType @cost(weight: "10")
+  category: SortEnumType @cost(weight: "10")
 }
 
 input StatusChangeFilterInput {
@@ -2797,6 +2877,11 @@ input StringOperationFilterInput {
   nstartsWith: String @cost(weight: "20")
   endsWith: String @cost(weight: "20")
   nendsWith: String @cost(weight: "20")
+}
+
+input SuggestSkillCleanupInput {
+  model: String
+  requestId: UUID
 }
 
 input TailoredCvBulletInput {
@@ -2885,6 +2970,7 @@ input TailoredCvSkillInput {
   name: String!
   level: Int
   sourceSkillId: Int
+  category: SkillCategory
 }
 
 input TrainingProgramFilterInput {
@@ -3180,6 +3266,20 @@ enum Seniority {
   MID
   SENIOR
   LEAD
+}
+
+enum SkillCategory {
+  LANGUAGE
+  FRAMEWORK
+  DATABASE
+  CLOUD_DEVOPS
+  TOOL
+  METHOD
+}
+
+enum SkillCleanupSuggestStatus {
+  SUCCEEDED
+  FAILED
 }
 
 enum SortEnumType {
