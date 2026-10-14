@@ -47,7 +47,9 @@ public record ListingSkillInput(
     string Name,
     [property: DefaultValue(3)] int Level,
     int? MinYears,
-    [property: DefaultValue(true)] bool IsRequired);
+    [property: DefaultValue(true)] bool IsRequired,
+    // A suggestion: it only fills a skill without a category, never replaces one the user set.
+    SkillCategory? Category = null);
 
 public record ListingLanguageInput(
     Language Language,
@@ -253,10 +255,12 @@ public static class ListingMutations
         foreach (var skill in input.Skills)
         {
             var name = Names.Normalize(skill.Name);
+            var lookup = skills.GetValueOrDefault(name)
+                ?? new Skill { UserId = entity.UserId, Name = skill.Name.Trim(), NormalizedName = name };
+            lookup.Category ??= skill.Category;
             entity.Skills.Add(new ListingSkill
             {
-                Skill = skills.GetValueOrDefault(name)
-                    ?? new Skill { UserId = entity.UserId, Name = skill.Name.Trim(), NormalizedName = name },
+                Skill = lookup,
                 Level = skill.Level,
                 MinYears = skill.MinYears,
                 IsRequired = skill.IsRequired,

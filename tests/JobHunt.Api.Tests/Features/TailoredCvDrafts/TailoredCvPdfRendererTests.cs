@@ -1,5 +1,6 @@
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Profiles;
+using JobHunt.Api.Features.Skills;
 using JobHunt.Api.Features.TailoredCvDrafts;
 using UglyToad.PdfPig;
 
@@ -88,6 +89,41 @@ public class TailoredCvPdfRendererTests
         AssertInOrder(text, "E-post: ola@example.com", "GitHub: https://github.com/ola", "Sammendrag", "Kompetanser",
             "Arbeidsforhold", "Prosjekter", "Utdanning", "Kurs og sertifiseringer", "Språk", "Referanser");
         Assert.DoesNotContain("Lenker", text);
+    }
+
+    private static readonly List<TailoredCvSkill> CategorizedSkills =
+    [
+        new("Docker", 3, Category: SkillCategory.CloudDevops),
+        new("TypeScript", 4, Category: SkillCategory.Language),
+        new("Kundeservice", 5),
+        new("C#", 5, Category: SkillCategory.Language),
+        new("PostgreSQL", 3, Category: SkillCategory.Database),
+    ];
+
+    [Theory]
+    [InlineData(Language.Norwegian, "Programmeringsspråk: TypeScript, C#", "Databaser: PostgreSQL",
+        "Sky og DevOps: Docker", "Annet: Kundeservice")]
+    [InlineData(Language.English, "Languages: TypeScript, C#", "Databases: PostgreSQL",
+        "Cloud & DevOps: Docker", "Other: Kundeservice")]
+    public void Render_DeveloperOrder_GroupsSkillsByCategoryInDraftOrder(Language language, params string[] lines)
+    {
+        var text = ExtractText(FullDraft(language) with
+        {
+            SectionOrder = TailoredCvSectionOrder.Developer, Skills = CategorizedSkills,
+        });
+
+        // Categories in enum order, uncategorized last; skills keep the draft's relevance order.
+        AssertInOrder(text, lines);
+        Assert.DoesNotContain(language == Language.Norwegian ? "Rammeverk" : "Frameworks", text);
+    }
+
+    [Fact]
+    public void Render_StandardOrder_IgnoresCategories()
+    {
+        var text = ExtractText(FullDraft(Language.Norwegian) with { Skills = CategorizedSkills });
+
+        Assert.Contains("Docker, TypeScript, Kundeservice, C#, PostgreSQL", text);
+        Assert.DoesNotContain("Programmeringsspråk", text);
     }
 
     [Fact]

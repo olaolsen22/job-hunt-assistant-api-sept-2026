@@ -120,6 +120,7 @@ public static class ProfileCvImportMutations
                 var input = selection.Skills![i]; path = $"skills[{i}]";
                 if (input.Level is not (>= 1 and <= 5)) throw new InvalidProfileImportException(path + ".level: choose a reviewed level from 1 to 5.");
                 var skill = (await FindOrCreateSkillsAsync([Required(input.Name, "Skill name")], profile.UserId, db, ct))[0];
+                skill.Category ??= input.Category;
                 var level = db.ProfileSkills.Local.FirstOrDefault(s => s.ProfileId == profile.Id
                     && (s.Skill == skill || (skill.Id != 0 && s.SkillId == skill.Id)));
                 if (level is null) db.ProfileSkills.Add(level = new ProfileSkill { ProfileId = profile.Id, Skill = skill });

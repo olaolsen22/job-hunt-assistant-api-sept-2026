@@ -2,6 +2,7 @@ using System.Text.Json;
 using JobHunt.Api.Features.Auth;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Profiles;
+using JobHunt.Api.Features.Skills;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -67,7 +68,8 @@ public record TailoredCvCertification(string Name, string? Issuer, DateOnly? Iss
 public record TailoredCvProject(string Name, string? Url, DateOnly? StartMonth, DateOnly? EndMonth,
     List<TailoredCvBullet> Bullets, int? SourceEntryId = null, string? Location = null,
     string? Paragraph = null);
-public record TailoredCvSkill(string Name, int? Level, int? SourceSkillId = null);
+// Category is copied from the skill lookup so one CV can override it; list order is relevance order and prints as is.
+public record TailoredCvSkill(string Name, int? Level, int? SourceSkillId = null, SkillCategory? Category = null);
 public record TailoredCvLanguage(string Name, LanguageProficiency? Written, LanguageProficiency? Spoken);
 public record TailoredCvLink(string Label, string Url);
 

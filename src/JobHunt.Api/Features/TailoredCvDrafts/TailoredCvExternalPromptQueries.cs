@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Profiles;
+using JobHunt.Api.Features.Skills;
 using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.TailoredCvDrafts;
@@ -12,7 +13,7 @@ public record TailoredCvExternalPrompt(int Version, string Instructions);
 [QueryType]
 public static class TailoredCvExternalPromptQueries
 {
-    public const int Version = 6;
+    public const int Version = 7;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseUpper, allowIntegerValues: false) },
@@ -71,7 +72,7 @@ public static class TailoredCvExternalPromptQueries
                     Skills = e.Skills.Select(s => s.Name),
                     Bullets = e.Bullets.Select(b => new { b.Id, Text = BulletText(b) }),
                 }),
-                Skills = profile.Skills.Select(s => new { Id = s.SkillId, s.Skill.Name, s.Level }),
+                Skills = profile.Skills.Select(s => new { Id = s.SkillId, s.Skill.Name, s.Level, s.Skill.Category }),
                 Languages = profile.Languages.Select(l => new { l.Name, l.Written, l.Spoken }),
             },
         };
@@ -91,7 +92,10 @@ public static class TailoredCvExternalPromptQueries
             default so the user can choose the presentation for the whole CV. Omit irrelevant entries and bullets. Do not present the
             same work in full under both an experience and a project, and never present a personal or school project
             as employment. Select only profile skills relevant to the listing using sourceSkillId; keep that list short,
-            preferring skills the listing asks for that are also tagged on experiences or projects. Include languages
+            preferring skills the listing asks for that are also tagged on experiences or projects. Order skills by
+            relevance, most relevant first: required by the listing, then nice to have, then supporting; within each
+            group skills tagged on experiences or projects first, then higher level. Copy each skill's category from the
+            profile; only when it is null, suggest one using the rules below. Include languages
             only when present in the profile. Write a concise listing-specific summary from supported profile facts,
             starting from the profile's own headline and summary and adjusting their emphasis rather than rewriting them,
             or null when there is not enough evidence. {{TailoredCvAnalyzer.VoiceGuidance}} This applies to the summary
@@ -102,6 +106,7 @@ public static class TailoredCvExternalPromptQueries
             Copy bullet text exactly as supplied even if it is in another language; the user translates it in the UI.
             For an entry with a location, set "location" to "City, Country" with the country name in the CV language,
             or just the country when the city is null. Copy language names and written/spoken levels from the profile.
+            {{SkillCategories.PromptGuidance("Skill category")}}
             Do not output full name, contact details, location, links, references, date of birth, nationality, work
             authorization, hobbies, or job-search preferences. The user fills contact fields in the UI.
 
@@ -116,7 +121,7 @@ public static class TailoredCvExternalPromptQueries
                 "educations": [{"sourceEntryId": 3, "school": "Example University", "degree": "MSc", "field": "Computer Science", "location": null, "startMonth": "2020-01-01", "endMonth": "2022-01-01", "paragraph": null, "bullets": []}],
                 "certifications": [{"sourceEntryId": 4, "name": "Certification", "issuer": "Issuer", "issuedMonth": "2024-01-01", "expiresMonth": null, "url": null, "paragraph": null, "bullets": []}],
                 "projects": [{"sourceEntryId": 5, "name": "Project", "url": null, "location": null, "startMonth": null, "endMonth": null, "paragraph": null, "bullets": []}],
-                "skills": [{"sourceSkillId": 6, "name": "TypeScript", "level": 5}],
+                "skills": [{"sourceSkillId": 6, "name": "TypeScript", "level": 5, "category": "LANGUAGE"}],
                 "languages": [{"name": "English", "written": "NATIVE", "spoken": "NATIVE"}]
               }
             }

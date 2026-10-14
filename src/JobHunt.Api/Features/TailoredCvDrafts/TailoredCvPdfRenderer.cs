@@ -1,6 +1,7 @@
 using System.Globalization;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Profiles;
+using JobHunt.Api.Features.Skills;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -48,7 +49,7 @@ public static class TailoredCvPdfRenderer
                         foreach (var link in content.Links ?? [])
                             AddLabelledLine(column, link.Label, link.Url);
                         AddTextSection(column, t.Summary, content.Summary);
-                        AddSkillsSection(column, content.Skills, t);
+                        AddGroupedSkillsSection(column, content.Skills, t);
                         AddExperienceSection(column, content.ContentStyle, content.Experiences, t);
                         AddProjectSection(column, content.ContentStyle, content.Projects, t);
                         AddEducationSection(column, content.ContentStyle, content.Educations, t);
@@ -84,7 +85,8 @@ public static class TailoredCvPdfRenderer
     private static void AddContact(ColumnDescriptor column, TailoredCvContent content, CvText t)
     {
         if (!string.IsNullOrWhiteSpace(content.FullName))
-            column.Item().Text(content.FullName).FontSize(22).Bold();
+            // Body line height would add a large gap at 22pt.
+            column.Item().Text(content.FullName).FontSize(22).Bold().LineHeight(1);
         if (!string.IsNullOrWhiteSpace(content.Headline))
             column.Item().Text(content.Headline).Bold();
         // Small gap between the name/headline block and the contact lines.
@@ -221,6 +223,23 @@ public static class TailoredCvPdfRenderer
             AddTextSection(column, t.Skills, string.Join(", ", skills.Select(s => s.Name)));
     }
 
+    // Developer CVs: one labelled line per category in enum order, uncategorized last. Each line keeps the
+    // draft's order, which is relevance order, so the strongest match leads its line.
+    private static void AddGroupedSkillsSection(ColumnDescriptor column, List<TailoredCvSkill>? skills, CvText t)
+    {
+        if (skills is not { Count: > 0 })
+            return;
+        var lines = skills.GroupBy(s => s.Category)
+            .OrderBy(g => g.Key is { } category ? (int)category : int.MaxValue)
+            .Select(g => $"{t.SkillCategoryLabel(g.Key)}: {string.Join(", ", g.Select(s => s.Name))}");
+        column.Item().EnsureSpace(MinTextSectionStart).Column(section =>
+        {
+            AddHeading(section, t.Skills);
+            foreach (var line in lines)
+                section.Item().Text(line);
+        });
+    }
+
     // Link lines sit at the column's normal spacing rather than entry spacing.
     private static void AddLinksSection(ColumnDescriptor column, List<TailoredCvLink>? links, CvText t) =>
         AddEntrySection(column, t.Links, links, (entry, link) => entry.Item().Text($"{link.Label}: {link.Url}"),
@@ -262,6 +281,7 @@ internal sealed record CvText(
     string Languages, string Skills, string Links, string References, string ReferencesOnRequest,
     string Email, string Phone, string Address, string DateOfBirth,
     string Present, string Expires, string Written, string Spoken,
+    string[] SkillCategories, string OtherSkills,
     string[] Months, string[] Levels, bool NumericDates, Dictionary<string, string> LanguageNames)
 {
     private static readonly CvText English = new(
@@ -269,6 +289,7 @@ internal sealed record CvText(
         "Languages", "Skills", "Links", "References", "Available on request.",
         "Email", "Phone", "Address", "Date of birth",
         "Present", "Expires", "Written", "Spoken",
+        ["Languages", "Frameworks", "Databases", "Cloud & DevOps", "Tools", "Methods"], "Other",
         ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
         ["Beginner", "Good", "Very good", "Native (first language)"],
         NumericDates: false,
@@ -283,6 +304,7 @@ internal sealed record CvText(
         "Språk", "Kompetanser", "Lenker", "Referanser", "Oppgis ved forespørsel.",
         "E-post", "Telefon", "Adresse", "Fødselsdato",
         "Nåværende", "Utløper", "Skriftlig", "Muntlig",
+        ["Programmeringsspråk", "Rammeverk", "Databaser", "Sky og DevOps", "Verktøy", "Metoder"], "Annet",
         ["Januar", "Februar", "Mars", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Desember"],
         ["Nybegynner", "Godt", "Veldig godt", "Førstespråk (morsmål)"],
         NumericDates: true,
@@ -310,6 +332,9 @@ internal sealed record CvText(
     }
 
     public string Proficiency(LanguageProficiency level) => Levels[(int)level];
+
+    // Indexed by enum value, so the arrays follow SkillCategory's declaration order.
+    public string SkillCategoryLabel(SkillCategory? category) => category is { } c ? SkillCategories[(int)c] : OtherSkills;
 
     // Common names stored in the other language read naturally; anything else prints as entered.
     public string LanguageName(string name) => LanguageNames.GetValueOrDefault(name.Trim(), name);

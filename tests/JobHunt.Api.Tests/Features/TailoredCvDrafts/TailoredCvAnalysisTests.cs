@@ -119,6 +119,26 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
     }
 
     [Fact]
+    public async Task SkillsAnalysis_KeepsRelevanceOrder()
+    {
+        var client = await factory.GetGuestClientAsync();
+        async Task<int> SkillAsync(string name) => (await client.GraphQLAsync("""
+            mutation ($name: String!) { setProfileSkill(input: { name: $name, level: 4 }) { profileSkill { skill { id } } } }
+            """, new { name })).GetProperty("setProfileSkill").GetProperty("profileSkill")
+            .GetProperty("skill").GetProperty("id").GetInt32();
+        var first = await SkillAsync("Order Alpha");
+        var second = await SkillAsync("Order Beta");
+        var listingId = await CreateListingAsync(client, "Ordered developer", "Needs Beta, then Alpha", ["Order Beta"]);
+        factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant,
+            $$"""{"selectedSkillIds":[{{second}},{{first}}]}"""));
+
+        var result = (await AnalyzeAsync(client, listingId, "SKILLS", null)).GetProperty("result");
+
+        Assert.Equal(new[] { second, first }, result.GetProperty("selectedSkillIds").EnumerateArray().Select(v => v.GetInt32()));
+        Assert.Contains("most relevant first", factory.Llm.LastMessages[0].Text);
+    }
+
+    [Fact]
     public async Task SkillsAnalysis_ReturnsOnlyKnownProfileSkillIds()
     {
         var client = await factory.GetGuestClientAsync();

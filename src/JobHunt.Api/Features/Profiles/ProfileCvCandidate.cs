@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Locations;
+using JobHunt.Api.Features.Skills;
 
 namespace JobHunt.Api.Features.Profiles;
 
@@ -22,7 +23,7 @@ public record ProfileCvCertification(string? Name = null, string? Issuer = null,
     string? ExpiresMonth = null, string? Url = null, List<string>? Bullets = null);
 public record ProfileCvProject(string? Name = null, string? Url = null, ProfileCvLocation? Location = null,
     string? StartMonth = null, string? EndMonth = null, List<string>? SkillNames = null, List<string>? Bullets = null);
-public record ProfileCvSkill(string? Name = null, int? Level = null);
+public record ProfileCvSkill(string? Name = null, int? Level = null, SkillCategory? Category = null);
 public record ProfileCvLanguage(string? Name = null, LanguageProficiency? Written = null, LanguageProficiency? Spoken = null);
 
 public class ProfileCvCandidate

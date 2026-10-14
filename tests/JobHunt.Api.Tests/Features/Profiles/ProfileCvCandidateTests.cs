@@ -88,7 +88,7 @@ public class ProfileCvPreviewTests(ApiFactory factory) : IClassFixture<ApiFactor
         var locations = await db.Locations.IgnoreQueryFilters().CountAsync();
         var before = await client.GraphQLAsync("{profile{fullName projects{id}} llmUsageToday{requests}}");
         var prompt = (await client.GraphQLAsync("{profileCvParsePrompt{version instructions}}" )).GetProperty("profileCvParsePrompt");
-        Assert.Equal(2, prompt.GetProperty("version").GetInt32());
+        Assert.Equal(3, prompt.GetProperty("version").GetInt32());
         Assert.Equal(ProfileCvPromptQueries.Instructions, prompt.GetProperty("instructions").GetString());
         Assert.Contains("Do not invent dates or proficiency levels", prompt.GetProperty("instructions").GetString());
         var result = await client.GraphQLAsync("""

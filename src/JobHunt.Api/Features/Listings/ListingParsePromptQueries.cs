@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using System.Text.Json;
 using JobHunt.Api.Data;
+using JobHunt.Api.Features.Skills;
 using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.Listings;
@@ -13,7 +14,7 @@ public record ListingParsePrompt(int Version, string Instructions);
 public static partial class ListingParsePromptQueries
 {
     // Bump whenever the prompt or output shape changes; the server-side parse cache keys on it.
-    public const int Version = 10;
+    public const int Version = 11;
 
     // Separate from Version: the quick prompt changes on its own schedule.
     public const int QuickVersion = 6;
@@ -51,7 +52,7 @@ public static partial class ListingParsePromptQueries
               "deadlineType": {{Values<DeadlineType>()}},
               "deadlineOn": "YYYY-MM-DD" | null,
               "postingLanguage": {{Values<Language>()}} | null,
-              "skills":    [{ "name": string, "level": 1-5, "minYears": number | null, "isRequired": boolean }],
+              "skills":    [{ "name": string, "level": 1-5, "minYears": number | null, "isRequired": boolean, "category": string | null }],
               "languages": [{ "language": {{Values<Language>()}}, "level": {{Values<CefrLevel>()}} | null, "isRequired": boolean }],
               "locations": [{ "city": string | null, "countryCode": string }],  // ISO 3166-1 alpha-2, e.g. "NO"
               "contacts":  [{ "name": string, "title": string | null, "email": string | null, "phone": string | null, "url": string | null }],
@@ -121,6 +122,7 @@ public static partial class ListingParsePromptQueries
                 No signal → 3.
               minYears: only when the ad states years for that skill ("5+ years" → 5).
               isRequired: false for "fordel", "et pluss", "ønskelig", "nice to have", "bonus"; otherwise true.
+            {{SkillCategories.PromptGuidance("  category")}}
 
             languages: requirements for the candidate, not the ad's language.
               "flytende"/"fluent"/"excellent" → C1. "morsmål"/"native" → C2. "god muntlig og skriftlig"/"good" → B2.

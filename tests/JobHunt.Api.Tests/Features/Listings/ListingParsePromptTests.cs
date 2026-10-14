@@ -17,7 +17,7 @@ public class ListingParsePromptTests(ApiFactory factory) : IClassFixture<ApiFact
         var guestPrompt = (await guest.GraphQLAsync(query)).GetProperty("listingParsePrompt");
 
         var instructions = ownerPrompt.GetProperty("instructions").GetString()!;
-        Assert.Equal(10, ownerPrompt.GetProperty("version").GetInt32());
+        Assert.Equal(11, ownerPrompt.GetProperty("version").GetInt32());
         Assert.Contains("\"trainingProgram\"", instructions);
         Assert.Contains("\"ON_PASS\"", instructions);
         Assert.Contains("partner companies", instructions);
