@@ -1,0 +1,160 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using JobHunt.Api.Data;
+using JobHunt.Api.Features.Listings;
+using JobHunt.Api.Features.Profiles;
+using JobHunt.Api.Features.Skills;
+using JobHunt.Api.Features.TailoredCvDrafts;
+using JobHunt.Api.Features.WritingSamples;
+using Microsoft.EntityFrameworkCore;
+
+namespace JobHunt.Api.Features.CoverLetters;
+
+// Header is a complete letter without a body: every path (prefill, AI, external, paste) starts from it, so only the
+// body and wording come from the model or the paste, never names, contact details or dates.
+public record CoverLetterPromptContext(string Json, Language Language, CoverLetterContent Header);
+
+// Shared by the built-in and external paths, so both send the model exactly the same allowlisted data.
+public static class CoverLetterContext
+{
+    public const int MaxContextLength = 100_000;
+    private const int SampleBudget = 12_000;
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseUpper, allowIntegerValues: false) },
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    private record Sources(Listing Listing, Profile Profile, TailoredCvContent? Cv, CoverLetterDraft? Letter,
+        Language Language, CoverLetterContent Header);
+
+    public static async Task<CoverLetterContent> HeaderAsync(int listingId, AppDbContext db, TimeProvider time,
+        CancellationToken ct) => (await LoadAsync(listingId, db, time, ct)).Header;
+
+    public static async Task<CoverLetterPromptContext> BuildAsync(int listingId, AppDbContext db, TimeProvider time,
+        CancellationToken ct)
+    {
+        var (listing, profile, cv, letter, language, header) = await LoadAsync(listingId, db, time, ct);
+        var samples = await db.WritingSamples.AsNoTracking().ToListAsync(ct);
+        var context = new
+        {
+            Listing = new
+            {
+                listing.Title, Company = listing.Company.Name, Industry = listing.Company.Industry?.Name,
+                JobRole = listing.JobRole.Name, listing.Description,
+                Skills = listing.Skills.Select(s => new { s.Skill.Name, s.Level, s.MinYears, s.IsRequired }),
+                Languages = listing.Languages.Select(l => new { l.Language, l.Level, l.IsRequired }),
+                Recipient = header.RecipientName,
+            },
+            Candidate = cv is null ? FromProfile(profile, language) : FromCv(cv),
+            Availability = new { profile.NoticePeriodMonths },
+            Story = new
+            {
+                profile.Story.Origin, profile.Story.Upbringing, profile.Story.CareerJourney,
+                profile.Story.Motivation, profile.Story.Values, profile.Hobbies,
+            },
+            letter?.Brief,
+            WritingSamples = WritingSample.ForPrompt(samples, language, SampleBudget)
+                .Select(s => new { s.Title, s.Language, s.Kind, s.Text }),
+        };
+        var json = JsonSerializer.Serialize(context, JsonOptions);
+        if (json.Length > MaxContextLength)
+            throw new InvalidCoverLetterException($"Prompt context must be at most {MaxContextLength} characters.");
+        return new(json, language, header);
+    }
+
+    private static async Task<Sources> LoadAsync(int listingId, AppDbContext db, TimeProvider time, CancellationToken ct)
+    {
+        var listing = await db.Listings.AsNoTracking()
+            .Include(l => l.Company).ThenInclude(c => c.Industry)
+            .Include(l => l.JobRole)
+            .Include(l => l.Skills).ThenInclude(s => s.Skill)
+            .Include(l => l.Languages)
+            .Include(l => l.Contacts).ThenInclude(c => c.Contact)
+            .AsSplitQuery()
+            .FirstOrDefaultAsync(l => l.Id == listingId, ct)
+            ?? throw new ListingNotFoundException(listingId);
+        var letter = await db.CoverLetterDrafts.AsNoTracking().FirstOrDefaultAsync(d => d.ListingId == listingId, ct);
+        var cv = (await db.TailoredCvDrafts.AsNoTracking().FirstOrDefaultAsync(d => d.ListingId == listingId, ct))?.Content;
+        var profile = await ProfileQueries.LoadAsync(db, ct);
+        // The letter follows its own saved language, else the CV it goes with, else the posting.
+        var language = letter?.Content.Language ?? cv?.Language ?? listing.PostingLanguage ?? Language.English;
+        var contact = listing.Contacts.OrderBy(c => c.ContactId).Select(c => c.Contact.Name).FirstOrDefault();
+        var norwegian = language == Language.Norwegian;
+
+        // The tailored CV's contact lines are the ones the user already reviewed for this application.
+        var header = new CoverLetterContent(
+            Language: language,
+            FullName: cv?.FullName ?? profile.FullName,
+            Address: SenderAddress(profile, cv, language),
+            Phone: cv?.Phone ?? profile.Phone,
+            Email: cv?.Email ?? profile.Email,
+            Date: DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime),
+            Organization: listing.Company.Name,
+            RecipientName: contact,
+            Subject: norwegian ? $"Søknad på stilling som {listing.Title}" : $"Application for the position of {listing.Title}",
+            // Norwegian letters go straight from subject to body, as in the published examples.
+            Greeting: norwegian ? null : contact is null ? "Dear hiring team," : $"Dear {contact},",
+            Closing: norwegian ? "Vennlig hilsen" : "Kind regards");
+        return new(listing, profile, cv, letter, language, header);
+    }
+
+    // The profile's postal address when there is one: a CV address is usually just "City, Country".
+    private static string? SenderAddress(Profile profile, TailoredCvContent? cv, Language language)
+    {
+        if (profile.StreetAddress is not null || profile.PostalCode is not null)
+        {
+            var town = string.Join(" ", new[] { profile.PostalCode, profile.Location?.City }.OfType<string>());
+            return string.Join("\n", new[] { profile.StreetAddress, town }.Where(l => !string.IsNullOrEmpty(l)));
+        }
+        var fallback = cv?.Address ?? (profile.Location is { } home ? TailoredCvDraftValidation.FormatPlace(home, language) : null);
+        return fallback is null ? null : string.Join("\n", CoverLetterValidation.AddressLines(fallback));
+    }
+
+    // The CV actually being sent, so the letter backs it up. Contact details stay out.
+    private static object FromCv(TailoredCvContent cv) => new
+    {
+        cv.Headline, cv.Summary,
+        Experiences = cv.Experiences?.Select(e => new
+        {
+            e.Employer, e.Title, e.StartMonth, e.EndMonth, e.Paragraph, Bullets = e.Bullets.Select(b => b.Text),
+        }),
+        Educations = cv.Educations?.Select(e => new
+        {
+            e.School, e.Degree, e.Field, e.StartMonth, e.EndMonth, e.Paragraph, Bullets = e.Bullets.Select(b => b.Text),
+        }),
+        Projects = cv.Projects?.Select(p => new
+        {
+            p.Name, p.StartMonth, p.EndMonth, p.Paragraph, Bullets = p.Bullets.Select(b => b.Text),
+        }),
+        Skills = cv.Skills?.Select(s => s.Name),
+        Languages = cv.Languages?.Select(l => new { l.Name, l.Written, l.Spoken }),
+    };
+
+    // Explicit allowlist: date of birth, nationality, work authorization and contact details never go out.
+    private static object FromProfile(Profile profile, Language language)
+    {
+        var translation = profile.Translations.FirstOrDefault(t => t.Language == language);
+        return new
+        {
+            Headline = translation?.Headline ?? profile.Headline,
+            Summary = translation?.Summary ?? profile.Summary,
+            Experiences = profile.Experiences.Select(e => new
+            {
+                e.Employer, e.Title, e.StartMonth, e.EndMonth,
+                Bullets = e.Bullets.Select(b => TailoredCvLanguageText.Bullet(b, language)),
+            }),
+            Educations = profile.Educations.Select(e => new
+            {
+                e.School, e.Degree, e.Field, e.StartMonth, e.EndMonth,
+                Bullets = e.Bullets.Select(b => TailoredCvLanguageText.Bullet(b, language)),
+            }),
+            Projects = profile.Projects.Select(p => new
+            {
+                p.Name, p.StartMonth, p.EndMonth, Bullets = p.Bullets.Select(b => TailoredCvLanguageText.Bullet(b, language)),
+            }),
+            Skills = profile.Skills.Select(s => s.Skill.NameIn(language)),
+            Languages = profile.Languages.Select(l => new { l.Name, l.Written, l.Spoken }),
+        };
+    }
+}

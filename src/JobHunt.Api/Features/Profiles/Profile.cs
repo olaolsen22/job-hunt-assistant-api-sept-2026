@@ -22,13 +22,18 @@ public class Profile
     public Language ContentLanguage { get; set; } = Language.English;
     public string? Email { get; set; }
     public string? Phone { get; set; }
-    // Sensitive: only stored and shown. A future AI CV prompt builder must pick fields from an explicit allowlist,
-    // so these never reach an LLM by default.
+    // Sensitive: only stored and shown. AI prompt builders pick fields from an explicit allowlist,
+    // so these never reach an LLM.
     public DateOnly? DateOfBirth { get; set; }
     public string? Nationality { get; set; }
     public string? WorkAuthorization { get; set; }
+    // Postal address for the cover letter's sender block; the town is Location.City. Never sent to an LLM.
+    public string? StreetAddress { get; set; }
+    public string? PostalCode { get; set; }
     // Leaf data that is never filtered or matched, so a list column, not rows.
     public List<string> Hobbies { get; set; } = [];
+    // Personal background for cover letters only; CV prompts never include it.
+    public ProfileStory Story { get; set; } = new();
     // Where the user lives; target cities are Location.IsTarget instead.
     public int? LocationId { get; set; }
     public Location? Location { get; set; }
@@ -86,6 +91,7 @@ public class ProfileConfiguration : IEntityTypeConfiguration<Profile>
         builder.HasOne<AppUser>().WithMany().HasForeignKey(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
         builder.HasIndex(p => p.UserId).IsUnique();
         builder.HasOne(p => p.Location).WithMany().OnDelete(DeleteBehavior.SetNull);
+        builder.ComplexProperty(p => p.Story);
         builder.OwnsMany(p => p.Links, b =>
         {
             b.ToJson();

@@ -13,7 +13,9 @@ using JobHunt.Api.Features.LlmModels;
 using JobHunt.Api.Features.LlmProviderKeys;
 using JobHunt.Api.Features.Parsing;
 using JobHunt.Api.Features.Profiles;
+using JobHunt.Api.Features.CoverLetters;
 using JobHunt.Api.Features.TailoredCvDrafts;
+using JobHunt.Api.Features.WritingSamples;
 // Hot Chocolate also has a global Location type (a position in a query document).
 using Location = JobHunt.Api.Features.Locations.Location;
 using JobHunt.Api.Features.Skills;
@@ -66,6 +68,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
     public DbSet<ProfileLanguage> ProfileLanguages => Set<ProfileLanguage>();
     public DbSet<ProfileReference> ProfileReferences => Set<ProfileReference>();
     public DbSet<TailoredCvDraft> TailoredCvDrafts => Set<TailoredCvDraft>();
+    public DbSet<WritingSample> WritingSamples => Set<WritingSample>();
+    public DbSet<CoverLetterDraft> CoverLetterDrafts => Set<CoverLetterDraft>();
 
     // Null outside a request (startup, seeding), so the user filters below then match nothing.
     public string? CurrentUserId => httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -124,5 +128,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
         modelBuilder.Entity<ProfileLanguage>().HasQueryFilter(l => l.Profile.UserId == CurrentUserId);
         modelBuilder.Entity<ProfileReference>().HasQueryFilter(r => r.UserId == CurrentUserId);
         modelBuilder.Entity<TailoredCvDraft>().HasQueryFilter(d => d.UserId == CurrentUserId);
+        modelBuilder.Entity<WritingSample>().HasQueryFilter(s => s.UserId == CurrentUserId);
+        modelBuilder.Entity<CoverLetterDraft>().HasQueryFilter(d => d.UserId == CurrentUserId);
     }
 }

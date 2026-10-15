@@ -98,6 +98,18 @@ public static class ProfileMutations
         };
     }
 
+    // Separate from updateProfile so existing callers don't clear it. Both fields are replaced; null clears.
+    [Error<InvalidProfileException>]
+    public static async Task<Profile> UpdateProfileAddressAsync(
+        string? streetAddress, string? postalCode, AppDbContext db, CancellationToken ct)
+    {
+        var profile = await db.Profiles.SingleAsync(ct);
+        profile.StreetAddress = Text(streetAddress, "Street address", 100);
+        profile.PostalCode = Text(postalCode, "Postal code", 20);
+        await db.SaveChangesAsync(ct);
+        return await ProfileQueries.LoadAsync(db, ct);
+    }
+
     // Full replace of the preferences. Target locations aren't here: they're Location.IsTarget, set with saveLocation.
     [Error<InvalidProfileException>]
     public static async Task<Profile> UpdateProfilePreferencesAsync(

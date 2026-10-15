@@ -3,8 +3,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.Profiles;
 
-// CV content only: personal details, links, preferences and the content language are kept.
-public enum ProfileSection { Summary, Experiences, Educations, Certifications, Projects, Skills, Languages, References, Hobbies }
+// CV content and the cover letter story: personal details, links, preferences and the content language are kept.
+public enum ProfileSection { Summary, Experiences, Educations, Certifications, Projects, Skills, Languages, References, Hobbies, Story }
 
 [MutationType]
 public static class ProfileClearMutations
@@ -28,6 +28,7 @@ public static class ProfileClearMutations
             await db.ProfileTranslations.ExecuteDeleteAsync(ct);
         }
         if (sections.Contains(ProfileSection.Hobbies)) profile.Hobbies = [];
+        if (sections.Contains(ProfileSection.Story)) profile.Story = new();
         if (sections.Contains(ProfileSection.Experiences)) await db.ProfileExperiences.ExecuteDeleteAsync(ct);
         if (sections.Contains(ProfileSection.Educations)) await db.ProfileEducations.ExecuteDeleteAsync(ct);
         if (sections.Contains(ProfileSection.Certifications)) await db.ProfileCertifications.ExecuteDeleteAsync(ct);
