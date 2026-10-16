@@ -36,7 +36,8 @@ public static class SkillCleanupPromptQueries
         - Merge duplicates and spelling variants into one name: "Vue" and "Vue.js" → ["Vue"], "Nuxt.js" → ["Nuxt"].
         - Fix casing with a single id and the corrected name: "typescript" → ["TypeScript"].
         - Split compound names into separate skills: "C#/.NET" → ["C#", ".NET"]. A name may match another skill in the list.
-        Use the official product spelling. Do not merge different products ("Vue" and "Nuxt", "SQL" and "PostgreSQL").
+        Use the official product spelling. English names use American spelling: rename "Internationalisation" to
+        "Internationalization", "Data visualisation" to "Data visualization". Do not merge different products ("Vue" and "Nuxt", "SQL" and "PostgreSQL").
         Include only skills that need a change. Each id may appear in at most one operation.
         Use at most {{SkillMutations.MaxNamesPerOperation}} names per operation.
 

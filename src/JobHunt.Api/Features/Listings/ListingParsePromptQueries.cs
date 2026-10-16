@@ -76,6 +76,9 @@ public static partial class ListingParsePromptQueries
 
             {{categoryInstructions}}
 
+            All English text, including descriptions and new skill and role names, uses American spelling
+            ("internationalization", "optimize", "color"), even when the ad uses British spelling.
+
             # Rules
             title: a short, direct job title in natural English, based on the "Stillingstittel"/"Job title" field when the
               page has one, otherwise the ad's heading. Translate it if the ad isn't in English. Keep seniority and

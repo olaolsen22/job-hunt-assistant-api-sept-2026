@@ -19,5 +19,5 @@ public static class TailoredCvLanguageText
     public static string Bullet(ProfileBullet bullet, Language language) =>
         bullet.Translations.FirstOrDefault(t => t.Language == language)?.Text ?? bullet.Text;
 
-    public static string Name(Language language) => language == Language.Norwegian ? "Norwegian (bokmål)" : "English";
+    public static string Name(Language language) => language == Language.Norwegian ? "Norwegian (bokmål)" : "American English (US spelling: color, optimize, internationalization)";
 }
