@@ -3755,6 +3755,8 @@ enum SkillCategory {
   FRAMEWORK
   DATABASE
   CLOUD_DEVOPS
+  TESTING
+  AI
   TOOL
   METHOD
 }
@@ -3783,6 +3785,7 @@ enum TailoredCvContentStyle {
 enum TailoredCvSection {
   EXPERIENCE
   EDUCATION
+  PROJECT
   SKILLS
   SUMMARY
 }

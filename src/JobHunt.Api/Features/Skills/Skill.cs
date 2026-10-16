@@ -34,7 +34,7 @@ public class SkillTranslation
 
 // Fixed rather than user-defined, so PDF headings can be translated and the AI picks from a closed list.
 // Declaration order is the order of the grouped lines on a developer CV.
-public enum SkillCategory { Language, Framework, Database, CloudDevops, Tool, Method }
+public enum SkillCategory { Language, Framework, Database, CloudDevops, Testing, Ai, Tool, Method }
 
 public static class SkillCategories
 {
@@ -44,6 +44,8 @@ public static class SkillCategories
         [SkillCategory.Framework] = "frameworks and libraries (ASP.NET Core, EF Core, Vue, Nuxt, React)",
         [SkillCategory.Database] = "database products and data stores (PostgreSQL, SQLite, Redis, MongoDB)",
         [SkillCategory.CloudDevops] = "hosting, CI/CD, containers and infrastructure (Azure, AWS, Docker, GitHub Actions, Kubernetes)",
+        [SkillCategory.Testing] = "test frameworks and tools (xUnit, NUnit, Jest, Vitest, Playwright, Cypress)",
+        [SkillCategory.Ai] = "AI, LLM and machine learning (OpenAI/Gemini APIs, Microsoft.Extensions.AI, LangChain, RAG, prompt engineering, PyTorch)",
         [SkillCategory.Tool] = "developer tools and software (Git, Visual Studio, Figma, Jira, Postman)",
         [SkillCategory.Method] = "practices and ways of working (Scrum, TDD, API design, code review)",
     };
@@ -56,7 +58,7 @@ public static class SkillCategories
         {field}: one of the categories below for software development skills, or null for anything else
           (licences, certifications, trade and service skills such as "Truckførerbevis" or "Kundeservice") and when unsure.
         {string.Join("\n", Enum.GetValues<SkillCategory>().Select(c => $"  {Value(c)}: {Definitions[c]}"))}
-          SQL is LANGUAGE; a database product is DATABASE.
+          SQL is LANGUAGE; a database product is DATABASE; TDD is METHOD but a test framework is TESTING.
         """;
 }
 

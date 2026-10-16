@@ -70,7 +70,7 @@ results. Formatting rationale: [norwegian-cv-formatting.md](norwegian-cv-formatt
 
 ## Analyze a draft with the API key
 
-The API can analyze one profile section at a time. For work experience, provide the profile entry's `sourceEntryId`; skills and summary use `null`. The result is a suggestion only: the UI applies selected bullet/skill IDs to its editable candidate, then the user reviews it.
+The API can analyze one profile section at a time. For work experience, education and projects, provide the profile entry's `sourceEntryId`; skills and summary use `null`. The result is a suggestion only: the UI applies selected bullet/skill IDs to its editable candidate, then the user reviews it.
 
 ```graphql
 mutation ($input: AnalyzeTailoredCvSectionInput!) {
@@ -81,7 +81,7 @@ mutation ($input: AnalyzeTailoredCvSectionInput!) {
 }
 ```
 
-Sections are `EXPERIENCE`, `EDUCATION`, `SKILLS`, and `SUMMARY`. `analyzeAllTailoredCv(input:{listingId, model})` runs one request per work experience, then each education entry, followed by skills and summary; it returns a result for each section. Both analysis mutations accept an optional `model` selection ID from `llmModels`; omitted uses the effective default. Each attempted call is logged against its actual provider and credential. AI analysis does not save the draft.
+Sections are `EXPERIENCE`, `EDUCATION`, `PROJECT`, `SKILLS`, and `SUMMARY`. `analyzeAllTailoredCv(input:{listingId, model})` runs one request per work experience, then each education entry, then each project, followed by skills and summary; it returns a result for each section. Both analysis mutations accept an optional `model` selection ID from `llmModels`; omitted uses the effective default. Each attempted call is logged against its actual provider and credential. AI analysis does not save the draft.
 
 Configure personal keys through the [provider-key API](llm-provider-keys.md). Credential rejection, rate limiting, timeout, and provider errors return readable failed section results; no automatic key/provider fallback occurs. The UI can prompt users to switch models or update/remove the key. Shared Gemini is used only when a Gemini selection has no personal Gemini key.
 
@@ -118,3 +118,7 @@ mutation ($listingId: Int!, $content: TailoredCvContentInput!) {
 ```
 
 Send the complete edited candidate in `content`, including contact fields the user entered; omitted sections have no content. A foreign or missing listing returns `ListingNotFoundError`. The API enforces the signed-in user's ownership, and draft saves do not change listing status or sent documents.
+
+## Selection guidance
+
+Skills analysis returns listing-relevant skills plus the candidate's core professional stack (about 12-20), not only listing keywords. All sections are told to surface supported evidence of themes the listing emphasises (for example AI-powered features), and the summary sees experience and project bullets. The external prompt (version 9) puts the listing, including its `url`, first and asks a browsing-capable AI to read the full posting when the stored listing is incomplete.

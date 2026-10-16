@@ -98,13 +98,18 @@ public class TailoredCvPdfRendererTests
         new("Kundeservice", 5),
         new("C#", 5, Category: SkillCategory.Language),
         new("PostgreSQL", 3, Category: SkillCategory.Database),
+        new("Git", 4, Category: SkillCategory.Tool),
+        new("Microsoft.Extensions.AI", 3, Category: SkillCategory.Ai),
+        new("xUnit", 3, Category: SkillCategory.Testing),
     ];
 
     [Theory]
     [InlineData(Language.Norwegian, "Programmeringsspråk: TypeScript, C#", "Databaser: PostgreSQL",
-        "Sky og DevOps: Docker", "Annet: Kundeservice")]
+        "Sky og DevOps: Docker", "Testing: xUnit", "KI og maskinlæring: Microsoft.Extensions.AI", "Verktøy: Git",
+        "Annet: Kundeservice")]
     [InlineData(Language.English, "Languages: TypeScript, C#", "Databases: PostgreSQL",
-        "Cloud & DevOps: Docker", "Other: Kundeservice")]
+        "Cloud & DevOps: Docker", "Testing: xUnit", "AI & ML: Microsoft.Extensions.AI", "Tools: Git",
+        "Other: Kundeservice")]
     public void Render_DeveloperOrder_GroupsSkillsByCategoryInDraftOrder(Language language, params string[] lines)
     {
         var text = ExtractText(FullDraft(language) with
@@ -122,7 +127,7 @@ public class TailoredCvPdfRendererTests
     {
         var text = ExtractText(FullDraft(Language.Norwegian) with { Skills = CategorizedSkills });
 
-        Assert.Contains("Docker, TypeScript, Kundeservice, C#, PostgreSQL", text);
+        Assert.Contains("Docker, TypeScript, Kundeservice, C#, PostgreSQL, Git", text);
         Assert.DoesNotContain("Programmeringsspråk", text);
     }
 

@@ -71,6 +71,43 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
     }
 
     [Fact]
+    public async Task ProjectAnalysis_UsesOnlyRequestedProjectAndRejectsOtherUsersProject()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var projectData = await client.GraphQLAsync("""
+            mutation { addProfileProject(input: { name: "LLM job tracker", skillNames: ["Microsoft.Extensions.AI"] }) {
+              profileProject { id }
+            } }
+            """);
+        var entryId = projectData.GetProperty("addProfileProject").GetProperty("profileProject").GetProperty("id").GetInt32();
+        var bulletData = await client.GraphQLAsync("""
+            mutation ($entryId: Int!) {
+              addProfileBullet(input: { kind: PROJECT, entryId: $entryId, text: "Parsed job listings with an LLM" }) {
+                profileBullet { id }
+              }
+            }
+            """, new { entryId });
+        var bulletId = bulletData.GetProperty("addProfileBullet").GetProperty("profileBullet").GetProperty("id").GetInt32();
+        var listingId = await CreateListingAsync(client, "AI developer", "Build AI-powered features", []);
+        factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant,
+            $$"""{"selectedBulletIds":[{{bulletId}}],"paragraph":"Parsed job listings with an LLM."}"""));
+
+        var result = (await AnalyzeAsync(client, listingId, "PROJECT", entryId)).GetProperty("result");
+
+        Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
+        Assert.Equal(new[] { bulletId }, result.GetProperty("selectedBulletIds").EnumerateArray().Select(v => v.GetInt32()));
+        var prompt = string.Join("\n", factory.Llm.LastMessages.Select(m => m.Text));
+        Assert.Contains("LLM job tracker", prompt);
+        Assert.Contains("AI-powered features", prompt);
+
+        var guest = await factory.GetGuestClientAsync();
+        var guestListingId = await CreateListingAsync(guest, "Developer", "Build software", []);
+        var foreign = await guest.GraphQLAsync(Analyze, new { listingId = guestListingId, section = "PROJECT", sourceEntryId = entryId });
+        Assert.Equal("ProfileEntryNotFoundError", foreign.GetProperty("analyzeTailoredCvSection")
+            .GetProperty("errors")[0].GetProperty("__typename").GetString());
+    }
+
+    [Fact]
     public async Task ModelCannotSelectABulletOutsideTheRequestedExperience()
     {
         var client = await factory.GetOwnerClientAsync();
@@ -278,6 +315,11 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Contains("schemaVersion", instructions);
         Assert.Contains("candidate's own voice", instructions);
         Assert.Contains("sourceBulletId", instructions);
+        Assert.Contains("https://tailored-cv-analysis.example/", instructions);
+        Assert.Contains("open its url", instructions);
+        Assert.Contains("core professional", instructions);
+        Assert.True(instructions.IndexOf("Go developer", StringComparison.Ordinal)
+            < instructions.IndexOf("Prompt Employer", StringComparison.Ordinal));
         Assert.DoesNotContain("PRIVATE_", instructions, StringComparison.Ordinal);
     }
 
@@ -490,7 +532,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
     }
 
     [Fact]
-    public async Task AnalyzeAll_RunsOneCallPerExperienceThenSkillsAndSummary_AndLogsEach()
+    public async Task AnalyzeAll_RunsOneCallPerEntryThenSkillsAndSummary_AndLogsEach()
     {
         var client = await factory.GetOwnerClientAsync();
         await ProfileEntryTests.AddExperienceAsync(client, employer: $"Analyze all {Guid.NewGuid()}", skills: []);
@@ -499,15 +541,18 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
               profileEducation { id }
             } }
             """);
-        var profile = await client.GraphQLAsync("{ profile { experiences { id } educations { id } } }");
+        await client.GraphQLAsync("""
+            mutation { addProfileProject(input: { name: "Analyze all project", skillNames: [] }) { profileProject { id } } }
+            """);
+        var profile = await client.GraphQLAsync("{ profile { experiences { id } educations { id } projects { id } } }");
         var experienceCount = profile.GetProperty("profile").GetProperty("experiences").GetArrayLength();
         var educationCount = profile.GetProperty("profile").GetProperty("educations").GetArrayLength();
+        var projectCount = profile.GetProperty("profile").GetProperty("projects").GetArrayLength();
         var listingId = await CreateListingAsync(client, "Full stack developer", "Build web applications", []);
         factory.Llm.Respond = () =>
         {
             var instructions = factory.Llm.LastMessages[0].Text;
-            var json = instructions.Contains("existing experience bullet IDs", StringComparison.Ordinal)
-                || instructions.Contains("existing education bullet IDs", StringComparison.Ordinal)
+            var json = instructions.Contains(" bullet IDs ", StringComparison.Ordinal)
                 ? "{\"selectedBulletIds\":[]}"
                 : instructions.Contains("profile skill IDs", StringComparison.Ordinal)
                     ? "{\"selectedSkillIds\":[]}" : "{\"summary\":null}";
@@ -523,13 +568,14 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         var payload = data.GetProperty("analyzeAllTailoredCv");
         Assert.Equal(JsonValueKind.Null, payload.GetProperty("errors").ValueKind);
         var results = payload.GetProperty("analysis").GetProperty("results").EnumerateArray().ToList();
-        Assert.Equal(experienceCount + educationCount + 2, results.Count);
+        Assert.Equal(experienceCount + educationCount + projectCount + 2, results.Count);
         Assert.Equal(experienceCount, results.Count(r => r.GetProperty("section").GetString() == "EXPERIENCE"));
         Assert.Equal(educationCount, results.Count(r => r.GetProperty("section").GetString() == "EDUCATION"));
+        Assert.Equal(projectCount, results.Count(r => r.GetProperty("section").GetString() == "PROJECT"));
         Assert.Equal("SKILLS", results[^2].GetProperty("section").GetString());
         Assert.Equal("SUMMARY", results[^1].GetProperty("section").GetString());
         Assert.All(results, result => Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString()));
-        Assert.Equal(usageBefore + experienceCount + educationCount + 2, await db.LlmUsages.IgnoreQueryFilters()
+        Assert.Equal(usageBefore + experienceCount + educationCount + projectCount + 2, await db.LlmUsages.IgnoreQueryFilters()
             .CountAsync(u => u.Operation == TailoredCvAnalyzer.Operation));
         Assert.Equal(JsonValueKind.Null, (await client.GraphQLAsync("""
             query ($listingId: Int!) { tailoredCvDraft(listingId: $listingId) { id } }
