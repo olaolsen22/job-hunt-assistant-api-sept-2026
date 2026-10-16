@@ -41,10 +41,21 @@ public static class CoverLetterContext
             Listing = new
             {
                 listing.Title, Company = listing.Company.Name, Industry = listing.Company.Industry?.Name,
-                JobRole = listing.JobRole.Name, listing.Description,
+                JobRole = listing.JobRole.Name, listing.Url, listing.Seniority, listing.EmploymentType,
+                listing.WorkMode, Locations = listing.Locations.Select(l => new { l.Location.City, l.Location.CountryCode }),
+                listing.Description,
                 Skills = listing.Skills.Select(s => new { s.Skill.Name, s.Level, s.MinYears, s.IsRequired }),
                 Languages = listing.Languages.Select(l => new { l.Language, l.Level, l.IsRequired }),
                 Recipient = header.RecipientName,
+            },
+            // The user's own research and impressions: often the best source of a specific, truthful motivation.
+            Notes = new
+            {
+                Company = listing.Company.Notes,
+                Contacts = listing.Contacts.Where(c => c.Contact.Notes is not null)
+                    .Select(c => new { c.Contact.Name, c.Contact.Title, c.Contact.Notes }),
+                Application = listing.StatusHistory.Where(s => s.Note is not null).OrderBy(s => s.OccurredAt)
+                    .Select(s => new { s.Status, s.Note }),
             },
             Candidate = cv is null ? FromProfile(profile, language) : FromCv(cv),
             Availability = new { profile.NoticePeriodMonths },
@@ -70,6 +81,8 @@ public static class CoverLetterContext
             .Include(l => l.JobRole)
             .Include(l => l.Skills).ThenInclude(s => s.Skill)
             .Include(l => l.Languages)
+            .Include(l => l.Locations).ThenInclude(l => l.Location)
+            .Include(l => l.StatusHistory)
             .Include(l => l.Contacts).ThenInclude(c => c.Contact)
             .AsSplitQuery()
             .FirstOrDefaultAsync(l => l.Id == listingId, ct)

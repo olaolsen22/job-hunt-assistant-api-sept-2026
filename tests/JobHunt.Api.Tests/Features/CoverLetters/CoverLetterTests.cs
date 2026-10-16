@@ -105,6 +105,9 @@ public class CoverLetterTests(ApiFactory factory) : IClassFixture<ApiFactory>
         await WritingSampleTests.AddAsync(guest, "Guest sample", "GUEST_SAMPLE_TEXT");
         var listingId = await CreateListingAsync(owner);
         await owner.GraphQLAsync(Save, new { listingId, content = new { }, brief = "BRIEF_TEXT" });
+        var companyId = (await owner.GraphQLAsync("query ($id: Int!) { listingById(id: $id) { company { id } } }", new { id = listingId }))
+            .GetProperty("listingById").GetProperty("company").GetProperty("id").GetInt32();
+        await owner.GraphQLAsync("mutation ($id: Int!) { setCompanyNotes(input: { id: $id, notes: \"COMPANY_NOTES\" }) { errors { __typename } } }", new { id = companyId });
         factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant, LetterJson));
 
         var payload = (await owner.GraphQLAsync(Generate, new { listingId })).GetProperty("generateCoverLetter");
@@ -117,7 +120,7 @@ public class CoverLetterTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal("Cover letter company", content.GetProperty("organization").GetString());
         Assert.Equal("Application: Backend developer", content.GetProperty("subject").GetString());
         var prompt = string.Join("\n", factory.Llm.LastMessages.Select(m => m.Text));
-        foreach (var expected in new[] { "STORY_ORIGIN", "STORY_MOTIVATION", "Climbing", "OWNER_SAMPLE_TEXT", "BRIEF_TEXT", "Build services" })
+        foreach (var expected in new[] { "STORY_ORIGIN", "STORY_MOTIVATION", "Climbing", "OWNER_SAMPLE_TEXT", "BRIEF_TEXT", "Build services", "COMPANY_NOTES", "https://" })
             Assert.Contains(expected, prompt);
         Assert.DoesNotContain("PRIVATE_", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("GUEST_SAMPLE_TEXT", prompt, StringComparison.Ordinal);
@@ -171,11 +174,11 @@ public class CoverLetterTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var prompt = (await client.GraphQLAsync("""
             query ($listingId: Int!) { coverLetterExternalPrompt(listingId: $listingId) { version instructions } }
             """, new { listingId })).GetProperty("coverLetterExternalPrompt");
-        Assert.Equal(2, prompt.GetProperty("version").GetInt32());
+        Assert.Equal(3, prompt.GetProperty("version").GetInt32());
         Assert.Contains("Build services", prompt.GetProperty("instructions").GetString());
-        Assert.Contains("\"schemaVersion\": 2", prompt.GetProperty("instructions").GetString());
+        Assert.Contains("\"schemaVersion\": 3", prompt.GetProperty("instructions").GetString());
 
-        var valid = (await client.GraphQLAsync(Preview, new { listingId, json = LetterJson.Replace("{\"subject\"", "{\"schemaVersion\":2,\"subject\"") }))
+        var valid = (await client.GraphQLAsync(Preview, new { listingId, json = LetterJson.Replace("{\"subject\"", "{\"schemaVersion\":3,\"subject\"") }))
             .GetProperty("previewCoverLetterDraft");
         Assert.Equal("Dear Kari,", valid.GetProperty("candidate").GetProperty("greeting").GetString());
 
