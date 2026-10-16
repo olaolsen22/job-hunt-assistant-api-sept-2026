@@ -18,6 +18,9 @@ public record SkillCleanupOperation(List<int> SkillIds, List<string> Names);
 // By skill name, so a cleanup can translate a skill it creates; applied after the operations.
 public record SkillCleanupTranslation(string SkillName, Language Language, string Name);
 
+// Sets the category of the skill named SkillName (its name after the operations).
+public record SkillCleanupCategory(string SkillName, string CategoryName);
+
 [MutationType]
 public static class SkillMutations
 {
@@ -96,10 +99,11 @@ public static class SkillMutations
     [UseMutationConvention(PayloadFieldName = "skills")]
     public static async Task<List<Skill>> CleanUpSkillsAsync(
         List<SkillCleanupOperation> operations, AppDbContext db, CancellationToken ct,
-        List<SkillCleanupTranslation>? translations = null)
+        List<SkillCleanupTranslation>? translations = null, List<SkillCleanupCategory>? categories = null)
     {
         translations ??= [];
-        Validate(operations, translations);
+        categories ??= [];
+        Validate(operations, translations, categories);
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var result = new List<Skill>();
         foreach (var operation in operations) result.AddRange(await ApplyAsync(operation, db, ct));
@@ -112,14 +116,29 @@ public static class SkillMutations
             await db.SaveChangesAsync(ct);
             result.Add(skill);
         }
+        foreach (var assignment in categories)
+        {
+            var normalized = Names.Normalize(assignment.SkillName);
+            var skill = await db.Skills.FirstOrDefaultAsync(s => s.NormalizedName == normalized, ct)
+                ?? throw new InvalidSkillCleanupException($"There is no skill \"{assignment.SkillName.Trim()}\" to categorize.");
+            var categoryName = Names.Normalize(assignment.CategoryName);
+            skill.Category = await db.SkillCategories.FirstOrDefaultAsync(c => c.NormalizedName == categoryName, ct)
+                ?? throw new InvalidSkillCleanupException($"There is no skill category \"{assignment.CategoryName.Trim()}\".");
+            await db.SaveChangesAsync(ct);
+            result.Add(skill);
+        }
         await transaction.CommitAsync(ct);
         return [.. result.Distinct().OrderBy(s => s.Name)];
     }
 
-    private static void Validate(List<SkillCleanupOperation> operations, List<SkillCleanupTranslation> translations)
+    private static void Validate(
+        List<SkillCleanupOperation> operations, List<SkillCleanupTranslation> translations, List<SkillCleanupCategory> categories)
     {
-        if (operations.Count + translations.Count == 0 || operations.Count > MaxOperations || translations.Count > MaxOperations)
-            throw new InvalidSkillCleanupException($"Send 1–{MaxOperations} operations or translations.");
+        if (operations.Count + translations.Count + categories.Count == 0 || operations.Count > MaxOperations
+            || translations.Count > MaxOperations || categories.Count > MaxOperations)
+            throw new InvalidSkillCleanupException($"Send 1–{MaxOperations} operations, translations or categories.");
+        if (categories.Any(c => string.IsNullOrWhiteSpace(c.SkillName) || string.IsNullOrWhiteSpace(c.CategoryName)))
+            throw new InvalidSkillCleanupException("Categories need a skill and a category name.");
         if (translations.Any(t => string.IsNullOrWhiteSpace(t.SkillName) || string.IsNullOrWhiteSpace(t.Name)
                 || t.Name.Trim().Length > SkillTranslation.MaxNameLength))
             throw new InvalidSkillCleanupException($"Translations need a skill and a name of at most {SkillTranslation.MaxNameLength} characters.");

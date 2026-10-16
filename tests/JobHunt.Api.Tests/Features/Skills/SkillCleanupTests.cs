@@ -255,4 +255,61 @@ public class SkillCleanupTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal("FAILED", result.GetProperty("status").GetString());
         Assert.Equal(JsonValueKind.Null, result.GetProperty("operations").ValueKind);
     }
+
+    private static async Task<int> CreateCategoryAsync(HttpClient client, string name) =>
+        (await client.GraphQLAsync("""
+            mutation ($name: String!) { createSkillCategory(input: { name: $name }) { skillCategory { id } } }
+            """, new { name })).GetProperty("createSkillCategory").GetProperty("skillCategory").GetProperty("id").GetInt32();
+
+    [Fact]
+    public async Task Suggest_KeepsCategoriesOnlyForUncategorizedSkills_WithKnownCategories()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var categoryId = await CreateCategoryAsync(client, "SuggestCatFrameworks");
+        await SetProfileSkillAsync(client, "SuggestCatVue", 3);
+        var set = await SetProfileSkillAsync(client, "SuggestCatSet", 3);
+        await client.GraphQLAsync("""
+            mutation ($skillId: Int!, $categoryId: Int) { setSkillCategory(input: { skillId: $skillId, categoryId: $categoryId }) { skill { id } } }
+            """, new { skillId = set, categoryId });
+        factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant, """
+            {"operations":[],"translations":[],
+             "categories":[{"skillName":"SuggestCatVue","categoryName":"suggestcatframeworks"},
+                           {"skillName":"SuggestCatSet","categoryName":"SuggestCatFrameworks"},
+                           {"skillName":"SuggestCatVue","categoryName":"Invented"},
+                           {"skillName":"SuggestCatMissing","categoryName":"SuggestCatFrameworks"}]}
+            """));
+
+        var result = (await client.GraphQLAsync("""
+            mutation { suggestSkillCleanup(input: {}) { result { status categories { skillName categoryName } } } }
+            """)).GetProperty("suggestSkillCleanup").GetProperty("result");
+
+        var category = Assert.Single(result.GetProperty("categories").EnumerateArray());
+        Assert.Equal("SuggestCatVue", category.GetProperty("skillName").GetString());
+        Assert.Equal("SuggestCatFrameworks", category.GetProperty("categoryName").GetString());
+        Assert.Contains("SuggestCatSet {SuggestCatFrameworks}", factory.Llm.LastMessages[1].Text);
+        Assert.Contains("<categories>", factory.Llm.LastMessages[1].Text);
+    }
+
+    [Fact]
+    public async Task CleanUp_SetsCategories_AndRejectsUnknownCategory()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        await CreateCategoryAsync(client, "CleanCatTools");
+        await SetProfileSkillAsync(client, "CleanCatGit", 3);
+        const string mutation = """
+            mutation ($categories: [SkillCleanupCategoryInput!]) {
+              cleanUpSkills(input: { operations: [], categories: $categories }) {
+                skills { name category { name } } errors { __typename }
+              }
+            }
+            """;
+
+        var ok = (await client.GraphQLAsync(mutation, new { categories = new[] { new { skillName = "cleancatgit", categoryName = "CleanCatTools" } } }))
+            .GetProperty("cleanUpSkills");
+        var unknown = (await client.GraphQLAsync(mutation, new { categories = new[] { new { skillName = "CleanCatGit", categoryName = "Nope" } } }))
+            .GetProperty("cleanUpSkills");
+
+        Assert.Equal("CleanCatTools", Assert.Single(ok.GetProperty("skills").EnumerateArray()).GetProperty("category").GetProperty("name").GetString());
+        Assert.Equal("InvalidSkillCleanupError", unknown.GetProperty("errors")[0].GetProperty("__typename").GetString());
+    }
 }

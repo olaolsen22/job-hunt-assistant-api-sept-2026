@@ -1674,6 +1674,11 @@ type SkillCategoryTranslation {
   name: String!
 }
 
+type SkillCleanupCategory {
+  skillName: String!
+  categoryName: String!
+}
+
 type SkillCleanupOperation {
   skillIds: [Int!]!
   names: [String!]!
@@ -1688,6 +1693,7 @@ type SkillCleanupSuggestion {
   status: SkillCleanupSuggestStatus!
   operations: [SkillCleanupOperation!]
   translations: [SkillCleanupTranslation!]
+  categories: [SkillCleanupCategory!]
   error: String
 }
 
@@ -2474,6 +2480,7 @@ input BooleanOperationFilterInput {
 input CleanUpSkillsInput {
   operations: [SkillCleanupOperationInput!]!
   translations: [SkillCleanupTranslationInput!]
+  categories: [SkillCleanupCategoryInput!]
 }
 
 input ClearProfileSectionsInput {
@@ -3421,6 +3428,11 @@ input SkillCategoryTranslationFilterInput {
   skillCategoryId: IntOperationFilterInput
   language: LanguageOperationFilterInput
   name: StringOperationFilterInput
+}
+
+input SkillCleanupCategoryInput {
+  skillName: String!
+  categoryName: String!
 }
 
 input SkillCleanupOperationInput {

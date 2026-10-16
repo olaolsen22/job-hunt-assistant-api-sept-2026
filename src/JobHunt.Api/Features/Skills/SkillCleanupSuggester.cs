@@ -11,14 +11,15 @@ namespace JobHunt.Api.Features.Skills;
 
 public enum SkillCleanupSuggestStatus { Succeeded, Failed }
 public record SkillCleanupSuggestion(SkillCleanupSuggestStatus Status, List<SkillCleanupOperation>? Operations,
-    List<SkillCleanupTranslation>? Translations, string? Error);
+    List<SkillCleanupTranslation>? Translations, List<SkillCleanupCategory>? Categories, string? Error);
 
 // Only suggests: nothing is saved but usage. The reviewed operations go to cleanUpSkills.
 public class SkillCleanupSuggester(LlmExecution execution, LlmModelResolver models, AiOperations operations)
 {
     public const string Operation = "suggest-skill-cleanup";
 
-    private record Plan(List<SkillCleanupOperation?>? Operations, List<Translation?>? Translations);
+    private record Plan(List<SkillCleanupOperation?>? Operations, List<Translation?>? Translations, List<Category?>? Categories);
+    private record Category(string? SkillName, string? CategoryName);
     // Language as text: an unknown value drops that row instead of failing the whole answer.
     private record Translation(string? SkillName, string? Language, string? Name);
 
@@ -34,17 +35,18 @@ public class SkillCleanupSuggester(LlmExecution execution, LlmModelResolver mode
             new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0, MaxOutputTokens = 16_384 },
             Operation, db, ct);
         SkillCleanupSuggestion result;
-        if (call.Error is { } error) result = new(SkillCleanupSuggestStatus.Failed, null, null, error);
+        if (call.Error is { } error) result = new(SkillCleanupSuggestStatus.Failed, null, null, null, error);
         else if (Decode(call.Response!.Text) is { } plan)
         {
             var known = await KnownAsync(plan, db, ct);
-            result = new(SkillCleanupSuggestStatus.Succeeded, known, await TranslationsAsync(plan, known, db, ct), null);
+            result = new(SkillCleanupSuggestStatus.Succeeded, known, await TranslationsAsync(plan, known, db, ct),
+                await CategoriesAsync(plan, known, db, ct), null);
         }
         else
         {
             call.Usage!.Success = false;
             call.Usage.ErrorCode = "invalid-json";
-            result = new(SkillCleanupSuggestStatus.Failed, null, null, "The AI's answer couldn't be read. Try again.");
+            result = new(SkillCleanupSuggestStatus.Failed, null, null, null, "The AI's answer couldn't be read. Try again.");
         }
         if (call.Usage is { } audited) await execution.SaveUsageAsync(audited, ct);
         return result;
@@ -90,6 +92,27 @@ public class SkillCleanupSuggester(LlmExecution execution, LlmModelResolver mode
                     && (skill.Name == t.Name || skill.Translations.Any(x => x.Language == t.Language && x.Name == t.Name))))
             .DistinctBy(t => (Names.Normalize(t.SkillName!), t.Language))
             .Select(t => new SkillCleanupTranslation(t.SkillName!, t.Language!.Value, t.Name!))];
+    }
+
+    // Like the other prompts, a suggestion only fills an uncategorized skill: an existing one, or one an operation
+    // creates without inheriting a category. Unknown category names are dropped.
+    private static async Task<List<SkillCleanupCategory>> CategoriesAsync(
+        Plan plan, List<SkillCleanupOperation> operations, AppDbContext db, CancellationToken ct)
+    {
+        var skills = await db.Skills.ToDictionaryAsync(s => s.NormalizedName, ct);
+        var categories = await db.SkillCategories.ToDictionaryAsync(c => c.NormalizedName, c => c.Name, ct);
+        var inherited = operations.Where(o => o.SkillIds.Any(id => skills.Values.Any(s => s.Id == id && s.CategoryId is not null)))
+            .SelectMany(o => o.Names).Select(Names.Normalize).ToHashSet();
+        var targets = operations.SelectMany(o => o.Names).Select(Names.Normalize).Where(n => !inherited.Contains(n)).ToHashSet();
+        return [.. (plan.Categories ?? []).OfType<Category>()
+            .Select(c => (SkillName: c.SkillName?.Trim(), CategoryName: c.CategoryName?.Trim()))
+            .Where(c => !string.IsNullOrEmpty(c.SkillName) && !string.IsNullOrEmpty(c.CategoryName)
+                && categories.ContainsKey(Names.Normalize(c.CategoryName))
+                && (skills.GetValueOrDefault(Names.Normalize(c.SkillName)) is { } skill
+                    ? skill.CategoryId is null && !inherited.Contains(Names.Normalize(c.SkillName))
+                    : targets.Contains(Names.Normalize(c.SkillName))))
+            .DistinctBy(c => Names.Normalize(c.SkillName!))
+            .Select(c => new SkillCleanupCategory(c.SkillName!, categories[Names.Normalize(c.CategoryName!)]))];
     }
 }
 
