@@ -166,6 +166,41 @@ public static class ProfileMutations
         return profileSkill;
     }
 
+    // From a listing: a skill only goes on the profile together with the jobs or projects that back it up.
+    // Tags are added, never removed, so it can be repeated to back a skill with more entries.
+    [Error<InvalidProfileException>]
+    [Error<SkillNotFoundException>]
+    [Error<ProfileEntryNotFoundException>]
+    public static async Task<ProfileSkill> AddSkillToProfileAsync(
+        int skillId, int level, List<int> experienceIds, List<int> projectIds, AppDbContext db, CancellationToken ct)
+    {
+        if (level is < 1 or > 5)
+            throw new InvalidProfileException("Skill level must be 1–5.");
+        if (experienceIds.Count == 0 && projectIds.Count == 0)
+            throw new InvalidProfileException("Pick at least one experience or project where you used the skill.");
+        var skill = await db.Skills.FirstOrDefaultAsync(s => s.Id == skillId, ct) ?? throw new SkillNotFoundException(skillId);
+
+        var experiences = await db.ProfileExperiences.Include(e => e.Skills).Where(e => experienceIds.Contains(e.Id)).ToListAsync(ct);
+        if (experienceIds.Except(experiences.Select(e => e.Id)).FirstOrDefault() is var missingExperience and not 0)
+            throw new ProfileEntryNotFoundException("Experience", missingExperience);
+        var projects = await db.ProfileProjects.Include(p => p.Skills).Where(p => projectIds.Contains(p.Id)).ToListAsync(ct);
+        if (projectIds.Except(projects.Select(p => p.Id)).FirstOrDefault() is var missingProject and not 0)
+            throw new ProfileEntryNotFoundException("Project", missingProject);
+
+        foreach (var experience in experiences.Where(e => !e.Skills.Contains(skill)))
+            experience.Skills.Add(skill);
+        foreach (var project in projects.Where(p => !p.Skills.Contains(skill)))
+            project.Skills.Add(skill);
+
+        var profile = await db.Profiles.SingleAsync(ct);
+        var profileSkill = await db.ProfileSkills.FirstOrDefaultAsync(s => s.SkillId == skillId, ct);
+        if (profileSkill is null)
+            db.ProfileSkills.Add(profileSkill = new ProfileSkill { ProfileId = profile.Id, Skill = skill });
+        profileSkill.Level = level;
+        await db.SaveChangesAsync(ct);
+        return profileSkill;
+    }
+
     // Only takes the skill off the profile's list: the Skill lookup row and entry tags stay.
     [Error<ProfileEntryNotFoundException>]
     [UseMutationConvention(PayloadFieldName = "skillId")]

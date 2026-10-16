@@ -324,6 +324,8 @@ type Mutation {
     @cost(weight: "10")
   setProfileSkill(input: SetProfileSkillInput!): SetProfileSkillPayload!
     @cost(weight: "10")
+  addSkillToProfile(input: AddSkillToProfileInput!): AddSkillToProfilePayload!
+    @cost(weight: "10")
   removeProfileSkill(input: RemoveProfileSkillInput!): RemoveProfileSkillPayload!
     @cost(weight: "10")
   setProfileLanguage(input: SetProfileLanguageInput!): SetProfileLanguagePayload!
@@ -420,6 +422,11 @@ type AddProfileProjectPayload {
 type AddProfileReferencePayload {
   profileReference: ProfileReference
   errors: [AddProfileReferenceError!]
+}
+
+type AddSkillToProfilePayload {
+  profileSkill: ProfileSkill
+  errors: [AddSkillToProfileError!]
 }
 
 type AddWritingSamplePayload {
@@ -1544,6 +1551,7 @@ type SetSkillTranslationPayload {
 
 type Skill {
   listingCount: Int! @cost(weight: "10")
+  profileLevel: Int @cost(weight: "10")
   id: Int!
   nameIn(language: Language!): String!
   name: String!
@@ -1938,6 +1946,11 @@ union AddProfileProjectError = InvalidProfileError | InvalidLocationError
 
 union AddProfileReferenceError = InvalidProfileError
 
+union AddSkillToProfileError =
+  | InvalidProfileError
+  | SkillNotFoundError
+  | ProfileEntryNotFoundError
+
 union AddWritingSampleError = InvalidWritingSampleError
 
 union AnalyzeAllTailoredCvError =
@@ -2257,6 +2270,13 @@ input AddProfileReferenceInput {
   email: String
   phone: String
   note: String
+}
+
+input AddSkillToProfileInput {
+  skillId: Int!
+  level: Int!
+  experienceIds: [Int!]!
+  projectIds: [Int!]!
 }
 
 input AddWritingSampleInput {

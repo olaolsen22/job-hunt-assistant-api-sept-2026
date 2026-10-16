@@ -1,5 +1,6 @@
 using System.Text.Json;
 using JobHunt.Api.Tests.Features.Applications;
+using JobHunt.Api.Tests.Features.Listings;
 
 namespace JobHunt.Api.Tests.Features.Profiles;
 
@@ -171,5 +172,85 @@ public class ProfileSkillTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var languages = (await other.GraphQLAsync("{ profile { languages { name } } }"))
             .GetProperty("profile").GetProperty("languages");
         Assert.DoesNotContain(languages.EnumerateArray(), l => l.GetProperty("name").GetString() == "Svensk");
+    }
+
+    private const string AddToProfile = """
+        mutation ($skillId: Int!, $level: Int!, $experienceIds: [Int!]!, $projectIds: [Int!]!) {
+          addSkillToProfile(input: { skillId: $skillId, level: $level, experienceIds: $experienceIds, projectIds: $projectIds }) {
+            profileSkill { level skill { id } }
+            errors { __typename }
+          }
+        }
+        """;
+
+    private static async Task<JsonElement> AddToProfileAsync(
+        HttpClient client, int skillId, int level, int[] experienceIds, int[]? projectIds = null) =>
+        (await client.GraphQLAsync(AddToProfile, new { skillId, level, experienceIds, projectIds = projectIds ?? [] }))
+        .GetProperty("addSkillToProfile");
+
+    private static async Task<(int ListingId, int SkillId)> ListingWithSkillAsync(HttpClient client, string skill)
+    {
+        var listing = await ListingTests.CreateAsync(client,
+            ListingTests.NewListing(ListingTests.Unique("Skill Co"), skills: [new { name = skill }]));
+        return (listing.GetProperty("id").GetInt32(), listing.GetProperty("skills")[0].GetProperty("skill").GetProperty("id").GetInt32());
+    }
+
+    private static async Task<JsonElement> ListingProfileLevelAsync(HttpClient client, int listingId) =>
+        (await client.GraphQLAsync("query ($id: Int!) { listingById(id: $id) { skills { skill { profileLevel } } } }", new { id = listingId }))
+        .GetProperty("listingById").GetProperty("skills")[0].GetProperty("skill").GetProperty("profileLevel");
+
+    private static async Task<string[]> EntrySkillNamesAsync(HttpClient client, string kind, int id) =>
+        (await client.GraphQLAsync($"{{ profile {{ {kind} {{ id skills {{ name }} }} }} }}")).GetProperty("profile").GetProperty(kind)
+        .EnumerateArray().Single(e => e.GetProperty("id").GetInt32() == id)
+        .GetProperty("skills").EnumerateArray().Select(s => s.GetProperty("name").GetString()!).ToArray();
+
+    [Fact]
+    public async Task AddSkillToProfile_TagsEntries_SetsLevel_AndListingShowsIt()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var name = ListingTests.Unique("Figma");
+        var (listingId, skillId) = await ListingWithSkillAsync(client, name);
+        var experienceId = (await ProfileEntryTests.AddExperienceAsync(client)).GetProperty("id").GetInt32();
+        var projectId = (await client.GraphQLAsync("""
+            mutation { addProfileProject(input: { name: "Side", startMonth: "2021-01-01", skillNames: [] }) { profileProject { id } } }
+            """)).GetProperty("addProfileProject").GetProperty("profileProject").GetProperty("id").GetInt32();
+        Assert.Equal(JsonValueKind.Null, (await ListingProfileLevelAsync(client, listingId)).ValueKind);
+
+        var added = await AddToProfileAsync(client, skillId, 3, [experienceId], [projectId]);
+        await AddToProfileAsync(client, skillId, 4, [experienceId]);
+
+        Assert.Equal(skillId, added.GetProperty("profileSkill").GetProperty("skill").GetProperty("id").GetInt32());
+        Assert.Equal(4, (await ListingProfileLevelAsync(client, listingId)).GetInt32());
+        Assert.Equal([name], await EntrySkillNamesAsync(client, "experiences", experienceId));
+        Assert.Equal([name], await EntrySkillNamesAsync(client, "projects", projectId));
+    }
+
+    [Theory]
+    [InlineData(3, false, "InvalidProfileError")]
+    [InlineData(0, true, "InvalidProfileError")]
+    public async Task AddSkillToProfile_Invalid_SavesNothing(int level, bool withExperience, string error)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var (listingId, skillId) = await ListingWithSkillAsync(client, ListingTests.Unique("Sketch"));
+        int[] experienceIds = withExperience ? [(await ProfileEntryTests.AddExperienceAsync(client)).GetProperty("id").GetInt32()] : [];
+
+        Assert.Equal(error, ApplicationTests.ErrorType(await AddToProfileAsync(client, skillId, level, experienceIds)));
+        Assert.Equal(JsonValueKind.Null, (await ListingProfileLevelAsync(client, listingId)).ValueKind);
+    }
+
+    [Fact]
+    public async Task AddSkillToProfile_OtherUsersSkillOrExperience_ReturnsNotFound()
+    {
+        var owner = await factory.GetOwnerClientAsync();
+        var guest = await factory.GetGuestClientAsync();
+        var (listingId, skillId) = await ListingWithSkillAsync(owner, ListingTests.Unique("Zeplin"));
+        var ownExperienceId = (await ProfileEntryTests.AddExperienceAsync(owner)).GetProperty("id").GetInt32();
+        var guestExperienceId = (await ProfileEntryTests.AddExperienceAsync(guest)).GetProperty("id").GetInt32();
+
+        Assert.Equal("SkillNotFoundError", ApplicationTests.ErrorType(await AddToProfileAsync(guest, skillId, 3, [guestExperienceId])));
+        Assert.Equal("ProfileEntryNotFoundError",
+            ApplicationTests.ErrorType(await AddToProfileAsync(owner, skillId, 3, [ownExperienceId, guestExperienceId])));
+        Assert.Equal(JsonValueKind.Null, (await ListingProfileLevelAsync(owner, listingId)).ValueKind);
+        Assert.Empty(await EntrySkillNamesAsync(owner, "experiences", ownExperienceId));
     }
 }

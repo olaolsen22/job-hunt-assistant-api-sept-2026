@@ -38,6 +38,11 @@ public static partial class SkillNode
     public static async Task<int> GetListingCountAsync(
         [Parent] Skill skill, IListingCountBySkillIdDataLoader listingCounts, CancellationToken ct) =>
         await listingCounts.LoadAsync(skill.Id, ct);
+
+    // Null when the skill isn't on the profile, so a listing can mark the skills the user already has.
+    public static async Task<int?> GetProfileLevelAsync(
+        [Parent] Skill skill, IProfileLevelBySkillIdDataLoader profileLevels, CancellationToken ct) =>
+        await profileLevels.LoadAsync(skill.Id, ct);
 }
 
 internal static class SkillDataLoaders
@@ -49,6 +54,13 @@ internal static class SkillDataLoaders
             .Where(s => skillIds.Contains(s.SkillId))
             .GroupBy(s => s.SkillId)
             .ToDictionaryAsync(g => g.Key, g => g.Count(), ct);
+
+    [DataLoader]
+    public static async Task<Dictionary<int, int?>> GetProfileLevelBySkillIdAsync(
+        IReadOnlyList<int> skillIds, AppDbContext db, CancellationToken ct) =>
+        await db.ProfileSkills
+            .Where(s => skillIds.Contains(s.SkillId))
+            .ToDictionaryAsync(s => s.SkillId, s => (int?)s.Level, ct);
 }
 
 [ObjectType<SkillTranslation>]
