@@ -45,6 +45,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
     public DbSet<JobRoleCategory> JobRoleCategories => Set<JobRoleCategory>();
     public DbSet<Skill> Skills => Set<Skill>();
     public DbSet<SkillTranslation> SkillTranslations => Set<SkillTranslation>();
+    public DbSet<SkillCategory> SkillCategories => Set<SkillCategory>();
+    public DbSet<SkillCategoryTranslation> SkillCategoryTranslations => Set<SkillCategoryTranslation>();
     public DbSet<Location> Locations => Set<Location>();
     public DbSet<Document> Documents => Set<Document>();
     public DbSet<DocumentContent> DocumentContents => Set<DocumentContent>();
@@ -103,6 +105,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
         modelBuilder.Entity<JobRoleCategory>().HasQueryFilter(c => c.UserId == CurrentUserId);
         modelBuilder.Entity<Skill>().HasQueryFilter(s => s.UserId == CurrentUserId);
         modelBuilder.Entity<SkillTranslation>().HasQueryFilter(t => t.Skill.UserId == CurrentUserId);
+        modelBuilder.Entity<SkillCategory>().HasQueryFilter(c => c.UserId == CurrentUserId);
+        modelBuilder.Entity<SkillCategoryTranslation>().HasQueryFilter(t => t.SkillCategory.UserId == CurrentUserId);
         modelBuilder.Entity<Location>().HasQueryFilter(l => l.UserId == CurrentUserId);
         modelBuilder.Entity<Document>().HasQueryFilter(d => d.UserId == CurrentUserId);
         modelBuilder.Entity<DocumentContent>().HasQueryFilter(c => c.Document.UserId == CurrentUserId);

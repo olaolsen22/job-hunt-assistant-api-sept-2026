@@ -14,7 +14,7 @@ public class SkillCleanupTests(ApiFactory factory) : IClassFixture<ApiFactory>
     private const string CleanUp = """
         mutation ($operations: [SkillCleanupOperationInput!]!) {
           cleanUpSkills(input: { operations: $operations }) {
-            skills { id name category } errors { __typename }
+            skills { id name category { name } } errors { __typename }
           }
         }
         """;
@@ -62,7 +62,7 @@ public class SkillCleanupTests(ApiFactory factory) : IClassFixture<ApiFactory>
         .GetProperty("listings").GetProperty("items")[0].GetProperty("skills");
 
     [Fact]
-    public async Task Merge_MovesProfileSkillsTagsAndListings_KeepingStrongestClaim()
+    public async Task Merge_MovesProfileSkillsTagsAndListings_KeepingTargetsOwnClaim()
     {
         var client = await factory.GetOwnerClientAsync();
         var vue = await SetProfileSkillAsync(client, "CleanVue", 3);
@@ -79,14 +79,62 @@ public class SkillCleanupTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var profile = await ProfileAsync(client);
         var skill = profile.GetProperty("skills").EnumerateArray()
             .Single(s => s.GetProperty("skill").GetProperty("name").GetString() == "CleanVue");
-        Assert.Equal(5, skill.GetProperty("level").GetInt32());
+        Assert.Equal(3, skill.GetProperty("level").GetInt32());
         var tags = profile.GetProperty("experiences").EnumerateArray()
             .Single(e => e.GetProperty("id").GetInt32() == experience.GetProperty("id").GetInt32()).GetProperty("skills");
         Assert.Equal(["CleanVue"], tags.EnumerateArray().Select(s => s.GetProperty("name").GetString()));
         var listingSkill = Assert.Single((await ListingSkillsAsync(client, listing)).EnumerateArray());
+        Assert.Equal(2, listingSkill.GetProperty("level").GetInt32());
+        Assert.Equal(JsonValueKind.Null, listingSkill.GetProperty("minYears").ValueKind);
+        Assert.False(listingSkill.GetProperty("isRequired").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Merge_TargetWithoutRows_TakesStrongestMergedRow()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var target = (await client.GraphQLAsync("""
+            mutation { setProfileSkill(input: { name: "CleanReact", level: 1 }) { profileSkill { skill { id } } } }
+            """)).GetProperty("setProfileSkill").GetProperty("profileSkill").GetProperty("skill").GetProperty("id").GetInt32();
+        await client.GraphQLAsync("mutation ($id: Int!) { removeProfileSkill(input: { skillId: $id }) { skillId } }", new { id = target });
+        var react = await SetProfileSkillAsync(client, "CleanReact.js", 2);
+        var reactJs = await SetProfileSkillAsync(client, "Clean ReactJS", 4);
+        var listing = await CreateListingAsync(client,
+            new { name = "CleanReact.js", level = 2, isRequired = true, minYears = 5 },
+            new { name = "Clean ReactJS", level = 4, isRequired = false, minYears = 2 });
+
+        await CleanUpAsync(client, new { skillIds = new[] { target, react, reactJs }, names = new[] { "CleanReact" } });
+
+        var skill = (await ProfileAsync(client)).GetProperty("skills").EnumerateArray()
+            .Single(s => s.GetProperty("skill").GetProperty("name").GetString() == "CleanReact");
+        Assert.Equal(4, skill.GetProperty("level").GetInt32());
+        var listingSkill = Assert.Single((await ListingSkillsAsync(client, listing)).EnumerateArray());
+        Assert.Equal("CleanReact", listingSkill.GetProperty("skill").GetProperty("name").GetString());
         Assert.Equal(4, listingSkill.GetProperty("level").GetInt32());
-        Assert.Equal(3, listingSkill.GetProperty("minYears").GetInt32());
-        Assert.True(listingSkill.GetProperty("isRequired").GetBoolean());
+        Assert.Equal(2, listingSkill.GetProperty("minYears").GetInt32());
+        Assert.False(listingSkill.GetProperty("isRequired").GetBoolean());
+    }
+
+    [Fact]
+    public async Task DeleteSkill_RemovesUnusedSkill_RefusesOneInUse()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var used = await SetProfileSkillAsync(client, "CleanDeleteUsed", 3);
+        var unused = (await client.GraphQLAsync("""
+            mutation { setProfileSkill(input: { name: "CleanDeleteUnused", level: 1 }) { profileSkill { skill { id } } } }
+            """)).GetProperty("setProfileSkill").GetProperty("profileSkill").GetProperty("skill").GetProperty("id").GetInt32();
+        await client.GraphQLAsync("mutation ($id: Int!) { removeProfileSkill(input: { skillId: $id }) { skillId } }", new { id = unused });
+        const string Delete = "mutation ($id: Int!) { deleteSkill(input: { id: $id }) { id errors { __typename } } }";
+
+        var deleted = (await client.GraphQLAsync(Delete, new { id = unused })).GetProperty("deleteSkill");
+        var refused = (await client.GraphQLAsync(Delete, new { id = used })).GetProperty("deleteSkill");
+        var other = (await (await factory.GetSecondOwnerClientAsync()).GraphQLAsync(Delete, new { id = used })).GetProperty("deleteSkill");
+
+        Assert.Equal(unused, deleted.GetProperty("id").GetInt32());
+        Assert.Empty(await SkillNamesAsync(client, "CleanDeleteUnused"));
+        Assert.Equal("SkillInUseError", ApplicationTests.ErrorType(refused));
+        Assert.Equal("SkillNotFoundError", ApplicationTests.ErrorType(other));
+        Assert.Equal(["CleanDeleteUsed"], await SkillNamesAsync(client, "CleanDeleteUsed"));
     }
 
     [Fact]

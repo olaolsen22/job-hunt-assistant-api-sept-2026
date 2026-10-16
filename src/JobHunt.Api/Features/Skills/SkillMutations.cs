@@ -10,6 +10,8 @@ public class SkillNotFoundException(int id) : Exception($"Skill {id} was not fou
 
 public class InvalidSkillCleanupException(string message) : Exception(message);
 
+public class SkillInUseException(int id) : Exception($"Skill {id} is still on the profile or a listing; merge it instead.");
+
 // Replaces skillIds with names: one name merges or renames ("Vue", "Vue.js" → "Vue"), several split ("C#/.NET" → "C#", ".NET").
 public record SkillCleanupOperation(List<int> SkillIds, List<string> Names);
 
@@ -25,12 +27,33 @@ public static class SkillMutations
 
     // Null clears it. Set on the lookup, so listings, the profile and new CV drafts all share it.
     [Error<SkillNotFoundException>]
-    public static async Task<Skill> SetSkillCategoryAsync(int skillId, SkillCategory? category, AppDbContext db, CancellationToken ct)
+    [Error<SkillCategoryNotFoundException>]
+    public static async Task<Skill> SetSkillCategoryAsync(int skillId, int? categoryId, AppDbContext db, CancellationToken ct)
     {
         var skill = await db.Skills.FirstOrDefaultAsync(s => s.Id == skillId, ct) ?? throw new SkillNotFoundException(skillId);
-        skill.Category = category;
+        skill.Category = categoryId is { } id
+            ? await db.SkillCategories.FirstOrDefaultAsync(c => c.Id == id, ct) ?? throw new SkillCategoryNotFoundException(id)
+            : null;
+        skill.CategoryId = categoryId;
         await db.SaveChangesAsync(ct);
         return skill;
+    }
+
+    // Only for unused skills (typos, unneeded starter skills): one in use is merged instead, so nothing loses a skill.
+    [Error<SkillNotFoundException>]
+    [Error<SkillInUseException>]
+    [UseMutationConvention(PayloadFieldName = "id")]
+    public static async Task<int> DeleteSkillAsync(int id, AppDbContext db, CancellationToken ct)
+    {
+        var skill = await db.Skills.FirstOrDefaultAsync(s => s.Id == id, ct) ?? throw new SkillNotFoundException(id);
+        if (await db.ProfileSkills.AnyAsync(s => s.SkillId == id, ct)
+            || await db.ListingSkills.AnyAsync(s => s.SkillId == id, ct)
+            || await db.ProfileExperiences.AnyAsync(e => e.Skills.Any(s => s.Id == id), ct)
+            || await db.ProfileProjects.AnyAsync(p => p.Skills.Any(s => s.Id == id), ct))
+            throw new SkillInUseException(id);
+        db.Skills.Remove(skill);
+        await db.SaveChangesAsync(ct);
+        return id;
     }
 
     // Upsert. Only for skills that are words; a product name needs none and prints as is.
@@ -124,14 +147,14 @@ public static class SkillMutations
         var names = operation.Names.Select(n => n.Trim()).DistinctBy(Names.Normalize).ToList();
         var normalized = names.Select(Names.Normalize).ToList();
         var existing = await db.Skills.Where(s => normalized.Contains(s.NormalizedName)).ToDictionaryAsync(s => s.NormalizedName, ct);
-        var category = sources.Select(s => s.Category).FirstOrDefault(c => c is not null);
+        var category = sources.Select(s => s.CategoryId).FirstOrDefault(c => c is not null);
         var targets = names.Select(name =>
         {
             var skill = existing.GetValueOrDefault(Names.Normalize(name));
             if (skill is null)
                 db.Skills.Add(skill = new Skill { UserId = sources[0].UserId, NormalizedName = Names.Normalize(name) });
             skill.Name = name;
-            skill.Category ??= category;
+            skill.CategoryId ??= category;
             return skill;
         }).ToList();
         await db.SaveChangesAsync(ct);
@@ -141,17 +164,15 @@ public static class SkillMutations
         var removedIds = removed.Select(s => s.Id).ToList();
         if (removedIds.Count == 0) return targets;
 
-        // Merged rows keep the strongest claim: highest level, required if any was.
+        // A target's own row (the profile's or a listing's) keeps its claim as it is; without one, the target
+        // takes the strongest merged row, so a merge never drops a level the user or the listing set.
         var profileSkills = await db.ProfileSkills
             .Where(s => removedIds.Contains(s.SkillId) || targetIds.Contains(s.SkillId)).ToListAsync(ct);
         foreach (var group in profileSkills.GroupBy(s => s.ProfileId).Where(g => g.Any(s => removedIds.Contains(s.SkillId))))
         {
             var level = group.Where(s => removedIds.Contains(s.SkillId)).Max(s => s.Level);
-            foreach (var targetId in targetIds)
-            {
-                if (group.FirstOrDefault(s => s.SkillId == targetId) is { } row) row.Level = Math.Max(row.Level, level);
-                else db.ProfileSkills.Add(new ProfileSkill { ProfileId = group.Key, SkillId = targetId, Level = level });
-            }
+            foreach (var targetId in targetIds.Where(id => group.All(s => s.SkillId != id)))
+                db.ProfileSkills.Add(new ProfileSkill { ProfileId = group.Key, SkillId = targetId, Level = level });
             db.ProfileSkills.RemoveRange(group.Where(s => removedIds.Contains(s.SkillId)));
         }
 
@@ -160,15 +181,13 @@ public static class SkillMutations
         foreach (var group in listingSkills.GroupBy(s => s.ListingId).Where(g => g.Any(s => removedIds.Contains(s.SkillId))))
         {
             var merged = group.Where(s => removedIds.Contains(s.SkillId)).ToList();
-            foreach (var targetId in targetIds)
-            {
-                var row = group.FirstOrDefault(s => s.SkillId == targetId);
-                if (row is null) db.ListingSkills.Add(row = new ListingSkill { ListingId = group.Key, SkillId = targetId });
-                var all = merged.Append(row).ToList();
-                row.Level = all.Max(s => s.Level);
-                row.MinYears = all.Max(s => s.MinYears);
-                row.IsRequired = all.Any(s => s.IsRequired);
-            }
+            var strongest = merged.OrderByDescending(s => s.Level).ThenByDescending(s => s.IsRequired).First();
+            foreach (var targetId in targetIds.Where(id => group.All(s => s.SkillId != id)))
+                db.ListingSkills.Add(new ListingSkill
+                {
+                    ListingId = group.Key, SkillId = targetId,
+                    Level = strongest.Level, MinYears = strongest.MinYears, IsRequired = strongest.IsRequired,
+                });
             db.ListingSkills.RemoveRange(merged);
         }
 

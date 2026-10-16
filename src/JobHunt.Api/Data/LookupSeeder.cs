@@ -62,6 +62,10 @@ public static class LookupSeeder
                     Category = StarterJobRoleCategories.TechnicalRoles.Contains(Names.Normalize(name)) ? categories["IT"] : null,
                 }));
 
+            // Only into an empty list, so a starter category the user deleted doesn't come back on the next start.
+            if (!await db.SkillCategories.IgnoreQueryFilters().AnyAsync(c => c.UserId == userId, ct))
+                db.SkillCategories.AddRange(StarterSkillCategories.For(userId));
+
             var skills = await db.Skills.IgnoreQueryFilters()
                 .Where(s => s.UserId == userId).Select(s => s.NormalizedName).ToListAsync(ct);
             db.Skills.AddRange(Skills

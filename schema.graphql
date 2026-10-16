@@ -145,8 +145,29 @@ type Query {
     @cost(weight: "10")
   parseJob(id: UUID!): ParseJob @cost(weight: "10")
   profileCvParsePrompt: ProfileCvParsePrompt! @cost(weight: "10")
+  instructions: String! @cost(weight: "10")
   profile: Profile! @cost(weight: "10")
   profileSkillWordingPrompt: ProfileSkillWordingPrompt! @cost(weight: "10")
+  skillCategories(
+    "Returns the first _n_ elements from the list."
+    first: Int
+    "Returns the elements in the list that come after the specified cursor."
+    after: String
+    "Returns the last _n_ elements from the list."
+    last: Int
+    "Returns the elements in the list that come before the specified cursor."
+    before: String
+    where: SkillCategoryFilterInput @cost(weight: "10")
+    order: [SkillCategorySortInput!] @cost(weight: "10")
+  ): SkillCategoriesConnection
+    @listSize(
+      assumedSize: 50
+      slicingArguments: ["first", "last"]
+      slicingArgumentDefaultValue: 10
+      sizedFields: ["edges", "nodes"]
+      requireOneSlicingArgument: false
+    )
+    @cost(weight: "10")
   skillCleanupPrompt: SkillCleanupPrompt! @cost(weight: "10")
   skills(
     search: String
@@ -356,10 +377,23 @@ type Mutation {
     @cost(weight: "10")
   deleteProfileTranslation(input: DeleteProfileTranslationInput!): DeleteProfileTranslationPayload!
     @cost(weight: "10")
+  createSkillCategory(input: CreateSkillCategoryInput!): CreateSkillCategoryPayload!
+    @cost(weight: "10")
+  updateSkillCategory(input: UpdateSkillCategoryInput!): UpdateSkillCategoryPayload!
+    @cost(weight: "10")
+  moveSkillCategory(input: MoveSkillCategoryInput!): MoveSkillCategoryPayload!
+    @cost(weight: "10")
+  deleteSkillCategory(input: DeleteSkillCategoryInput!): DeleteSkillCategoryPayload!
+    @cost(weight: "10")
+  setSkillCategoryTranslation(input: SetSkillCategoryTranslationInput!): SetSkillCategoryTranslationPayload!
+    @cost(weight: "10")
+  deleteSkillCategoryTranslation(input: DeleteSkillCategoryTranslationInput!): DeleteSkillCategoryTranslationPayload!
+    @cost(weight: "10")
   suggestSkillCleanup(input: SuggestSkillCleanupInput!): SuggestSkillCleanupPayload!
     @cost(weight: "10")
   setSkillCategory(input: SetSkillCategoryInput!): SetSkillCategoryPayload!
     @cost(weight: "10")
+  deleteSkill(input: DeleteSkillInput!): DeleteSkillPayload! @cost(weight: "10")
   setSkillTranslation(input: SetSkillTranslationInput!): SetSkillTranslationPayload!
     @cost(weight: "10")
   deleteSkillTranslation(input: DeleteSkillTranslationInput!): DeleteSkillTranslationPayload!
@@ -605,6 +639,11 @@ type CreateListingPayload {
   errors: [CreateListingError!]
 }
 
+type CreateSkillCategoryPayload {
+  skillCategory: SkillCategory
+  errors: [CreateSkillCategoryError!]
+}
+
 type DailyUsage {
   day: LocalDate!
   model: String!
@@ -682,6 +721,21 @@ type DeleteProfileTranslationPayload {
   errors: [DeleteProfileTranslationError!]
 }
 
+type DeleteSkillCategoryPayload {
+  id: Int
+  errors: [DeleteSkillCategoryError!]
+}
+
+type DeleteSkillCategoryTranslationPayload {
+  skillCategory: SkillCategory
+  errors: [DeleteSkillCategoryTranslationError!]
+}
+
+type DeleteSkillPayload {
+  id: Int
+  errors: [DeleteSkillError!]
+}
+
 type DeleteSkillTranslationPayload {
   skill: Skill
   errors: [DeleteSkillTranslationError!]
@@ -726,6 +780,11 @@ type DuplicateJobRoleCategoryError implements Error {
 type DuplicateListingError implements Error {
   message: String!
   existingListingId: Int!
+}
+
+type DuplicateSkillCategoryError implements Error {
+  message: String!
+  existingCategoryId: Int!
 }
 
 type GenerateCoverLetterDocumentPayload {
@@ -837,6 +896,10 @@ type InvalidProfileError implements Error {
 }
 
 type InvalidProfileImportError implements Error {
+  message: String!
+}
+
+type InvalidSkillCategoryError implements Error {
   message: String!
 }
 
@@ -1079,6 +1142,11 @@ type MoveProfileReferencePayload {
   errors: [MoveProfileReferenceError!]
 }
 
+type MoveSkillCategoryPayload {
+  skillCategories: [SkillCategory!]
+  errors: [MoveSkillCategoryError!]
+}
+
 "Information about pagination in a connection."
 type PageInfo {
   "Indicates whether more edges exist following the set defined by the clients arguments."
@@ -1303,7 +1371,7 @@ type ProfileCvProject {
 type ProfileCvSkill {
   name: String
   level: Int
-  category: SkillCategory
+  categoryName: String
 }
 
 type ProfileCvWarning {
@@ -1544,6 +1612,11 @@ type SetSkillCategoryPayload {
   errors: [SetSkillCategoryError!]
 }
 
+type SetSkillCategoryTranslationPayload {
+  skillCategory: SkillCategory
+  errors: [SetSkillCategoryTranslationError!]
+}
+
 type SetSkillTranslationPayload {
   skill: Skill
   errors: [SetSkillTranslationError!]
@@ -1555,8 +1628,50 @@ type Skill {
   id: Int!
   nameIn(language: Language!): String!
   name: String!
+  categoryId: Int
   category: SkillCategory
   translations: [SkillTranslation!]!
+}
+
+"A connection to a list of items."
+type SkillCategoriesConnection {
+  "Information to aid in pagination."
+  pageInfo: PageInfo!
+  "A list of edges."
+  edges: [SkillCategoriesEdge!]
+  "A flattened list of the nodes."
+  nodes: [SkillCategory!]
+  "Identifies the total count of items in the connection."
+  totalCount: Int! @cost(weight: "10")
+}
+
+"An edge in a connection."
+type SkillCategoriesEdge {
+  "A cursor for use in pagination."
+  cursor: String!
+  "The item at the end of the edge."
+  node: SkillCategory!
+}
+
+type SkillCategory {
+  skillCount: Int! @cost(weight: "10")
+  id: Int!
+  nameIn(language: Language!): String!
+  name: String!
+  description: String
+  sortOrder: Int!
+  translations: [SkillCategoryTranslation!]!
+}
+
+type SkillCategoryNotFoundError implements Error {
+  message: String!
+}
+
+type SkillCategoryTranslation {
+  id: Int!
+  skillCategoryId: Int!
+  language: Language!
+  name: String!
 }
 
 type SkillCleanupOperation {
@@ -1580,6 +1695,10 @@ type SkillCleanupTranslation {
   skillName: String!
   language: Language!
   name: String!
+}
+
+type SkillInUseError implements Error {
+  message: String!
 }
 
 type SkillNotFoundError implements Error {
@@ -1760,7 +1879,7 @@ type TailoredCvSkill {
   name: String!
   level: Int
   sourceSkillId: Int
-  category: SkillCategory
+  categoryId: Int
 }
 
 type TrainingProgram {
@@ -1856,6 +1975,11 @@ type UpdateProfileReferencePayload {
 type UpdateProfileStoryPayload {
   profile: Profile
   errors: [UpdateProfileStoryError!]
+}
+
+type UpdateSkillCategoryPayload {
+  skillCategory: SkillCategory
+  errors: [UpdateSkillCategoryError!]
 }
 
 type UpdateStatusChangePayload {
@@ -1990,6 +2114,8 @@ union CreateListingError =
   | InvalidLocationError
   | DuplicateListingError
 
+union CreateSkillCategoryError = InvalidSkillCategoryError
+
 union DeleteContactError = ContactNotFoundError
 
 union DeleteDocumentError = DocumentNotFoundError | DocumentSentError
@@ -2013,6 +2139,12 @@ union DeleteProfileProjectError = ProfileEntryNotFoundError
 union DeleteProfileReferenceError = ProfileEntryNotFoundError
 
 union DeleteProfileTranslationError = ProfileEntryNotFoundError
+
+union DeleteSkillCategoryError = SkillCategoryNotFoundError
+
+union DeleteSkillCategoryTranslationError = SkillCategoryNotFoundError
+
+union DeleteSkillError = SkillNotFoundError | SkillInUseError
 
 union DeleteSkillTranslationError = SkillNotFoundError
 
@@ -2042,6 +2174,10 @@ union MoveProfileBulletError = ProfileEntryNotFoundError | InvalidProfileError
 union MoveProfileReferenceError =
   | ProfileEntryNotFoundError
   | InvalidProfileError
+
+union MoveSkillCategoryError =
+  | SkillCategoryNotFoundError
+  | InvalidSkillCategoryError
 
 union ParseListingError =
   | InvalidParseRequestError
@@ -2131,7 +2267,11 @@ union SetProfileTranslationError = InvalidProfileError
 
 union SetProviderKeyError = ProviderKeyError
 
-union SetSkillCategoryError = SkillNotFoundError
+union SetSkillCategoryError = SkillNotFoundError | SkillCategoryNotFoundError
+
+union SetSkillCategoryTranslationError =
+  | SkillCategoryNotFoundError
+  | InvalidSkillCategoryError
 
 union SetSkillTranslationError = SkillNotFoundError | InvalidSkillCleanupError
 
@@ -2199,6 +2339,11 @@ union UpdateProfileReferenceError =
   | InvalidProfileError
 
 union UpdateProfileStoryError = InvalidProfileError
+
+union UpdateSkillCategoryError =
+  | InvalidSkillCategoryError
+  | SkillCategoryNotFoundError
+  | DuplicateSkillCategoryError
 
 union UpdateStatusChangeError =
   | StatusChangeNotFoundError
@@ -2425,6 +2570,11 @@ input CreateListingInput {
   listing: ListingInput!
 }
 
+input CreateSkillCategoryInput {
+  name: String!
+  description: String
+}
+
 input DashboardWidgetStateInput {
   widget: DashboardWidgetKind!
   isShown: Boolean!
@@ -2498,6 +2648,19 @@ input DeleteProfileReferenceInput {
 
 input DeleteProfileTranslationInput {
   language: Language!
+}
+
+input DeleteSkillCategoryInput {
+  id: Int!
+}
+
+input DeleteSkillCategoryTranslationInput {
+  categoryId: Int!
+  language: Language!
+}
+
+input DeleteSkillInput {
+  id: Int!
 }
 
 input DeleteSkillTranslationInput {
@@ -2698,6 +2861,13 @@ input ListFilterInputTypeOfListingSkillFilterInput {
   any: Boolean @cost(weight: "10")
 }
 
+input ListFilterInputTypeOfSkillCategoryTranslationFilterInput {
+  all: SkillCategoryTranslationFilterInput @cost(weight: "10")
+  none: SkillCategoryTranslationFilterInput @cost(weight: "10")
+  some: SkillCategoryTranslationFilterInput @cost(weight: "10")
+  any: Boolean @cost(weight: "10")
+}
+
 input ListFilterInputTypeOfSkillTranslationFilterInput {
   all: SkillTranslationFilterInput @cost(weight: "10")
   none: SkillTranslationFilterInput @cost(weight: "10")
@@ -2822,7 +2992,7 @@ input ListingSkillInput {
   level: Int! = 3
   minYears: Int
   isRequired: Boolean! = true
-  category: SkillCategory
+  categoryName: String
 }
 
 input ListingSortInput {
@@ -2913,6 +3083,11 @@ input MoveProfileReferenceInput {
   position: Int!
 }
 
+input MoveSkillCategoryInput {
+  id: Int!
+  position: Int!
+}
+
 input NullableOfCefrLevelOperationFilterInput {
   eq: CefrLevel @cost(weight: "10")
   neq: CefrLevel @cost(weight: "10")
@@ -2946,13 +3121,6 @@ input NullableOfSeniorityOperationFilterInput {
   neq: Seniority @cost(weight: "10")
   in: [Seniority] @cost(weight: "10")
   nin: [Seniority] @cost(weight: "10")
-}
-
-input NullableOfSkillCategoryOperationFilterInput {
-  eq: SkillCategory @cost(weight: "10")
-  neq: SkillCategory @cost(weight: "10")
-  in: [SkillCategory] @cost(weight: "10")
-  nin: [SkillCategory] @cost(weight: "10")
 }
 
 input NullableOfWorkModeOperationFilterInput {
@@ -3090,7 +3258,7 @@ input ProfileCvProjectSelectionInput {
 input ProfileCvSkillInput {
   name: String
   level: Int
-  category: SkillCategory
+  categoryName: String
 }
 
 input ProfileLinkInput {
@@ -3214,13 +3382,45 @@ input SetProviderKeyInput {
 
 input SetSkillCategoryInput {
   skillId: Int!
-  category: SkillCategory
+  categoryId: Int
+}
+
+input SetSkillCategoryTranslationInput {
+  categoryId: Int!
+  language: Language!
+  name: String!
 }
 
 input SetSkillTranslationInput {
   skillId: Int!
   language: Language!
   name: String!
+}
+
+input SkillCategoryFilterInput {
+  and: [SkillCategoryFilterInput!]
+  or: [SkillCategoryFilterInput!]
+  id: IntOperationFilterInput
+  name: StringOperationFilterInput
+  description: StringOperationFilterInput
+  sortOrder: IntOperationFilterInput
+  translations: ListFilterInputTypeOfSkillCategoryTranslationFilterInput
+}
+
+input SkillCategorySortInput {
+  id: SortEnumType @cost(weight: "10")
+  name: SortEnumType @cost(weight: "10")
+  description: SortEnumType @cost(weight: "10")
+  sortOrder: SortEnumType @cost(weight: "10")
+}
+
+input SkillCategoryTranslationFilterInput {
+  and: [SkillCategoryTranslationFilterInput!]
+  or: [SkillCategoryTranslationFilterInput!]
+  id: IntOperationFilterInput
+  skillCategoryId: IntOperationFilterInput
+  language: LanguageOperationFilterInput
+  name: StringOperationFilterInput
 }
 
 input SkillCleanupOperationInput {
@@ -3239,14 +3439,16 @@ input SkillFilterInput {
   or: [SkillFilterInput!]
   id: IntOperationFilterInput
   name: StringOperationFilterInput
-  category: NullableOfSkillCategoryOperationFilterInput
+  categoryId: IntOperationFilterInput
+  category: SkillCategoryFilterInput
   translations: ListFilterInputTypeOfSkillTranslationFilterInput
 }
 
 input SkillSortInput {
   id: SortEnumType @cost(weight: "10")
   name: SortEnumType @cost(weight: "10")
-  category: SortEnumType @cost(weight: "10")
+  categoryId: SortEnumType @cost(weight: "10")
+  category: SkillCategorySortInput @cost(weight: "10")
 }
 
 input SkillTranslationFilterInput {
@@ -3391,7 +3593,7 @@ input TailoredCvSkillInput {
   name: String!
   level: Int
   sourceSkillId: Int
-  category: SkillCategory
+  categoryId: Int
 }
 
 input TrainingProgramFilterInput {
@@ -3547,6 +3749,12 @@ input UpdateProfileStoryInput {
   careerJourney: String
   motivation: String
   values: String
+}
+
+input UpdateSkillCategoryInput {
+  id: Int!
+  name: String!
+  description: String
 }
 
 input UpdateStatusChangeInput {
@@ -3748,17 +3956,6 @@ enum Seniority {
   MID
   SENIOR
   LEAD
-}
-
-enum SkillCategory {
-  LANGUAGE
-  FRAMEWORK
-  DATABASE
-  CLOUD_DEVOPS
-  TESTING
-  AI
-  TOOL
-  METHOD
 }
 
 enum SkillCleanupSuggestStatus {

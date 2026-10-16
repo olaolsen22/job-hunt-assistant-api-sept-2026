@@ -29,7 +29,7 @@ public class ProfileCvParser(
     private async Task<ProfileCvParseResult> ParseCoreAsync(string text, ResolvedLlmModel resolved, AppDbContext db, CancellationToken ct)
     {
         var call = await execution.RunAsync(resolved,
-            [new(ChatRole.System, ProfileCvPromptQueries.Instructions), new(ChatRole.User, $"<cv>\n{text}\n</cv>")],
+            [new(ChatRole.System, await ProfileCvPromptQueries.InstructionsAsync(db, ct)), new(ChatRole.User, $"<cv>\n{text}\n</cv>")],
             new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0, MaxOutputTokens = 32_768 },
             Operation, db, ct);
         ProfileCvParseResult result;

@@ -8,7 +8,8 @@ using QuestPDF.Infrastructure;
 
 namespace JobHunt.Api.Features.TailoredCvDrafts;
 
-// Pure function, no DB/DI, so the layout can be tested by rendering a TailoredCvContent directly.
+// Pure function, no DB/DI, so the layout can be tested by rendering a TailoredCvContent directly. The caller passes
+// the user's skill categories (in SortOrder, with translations) for the developer order's grouped skill lines.
 // Follows docs/norwegian-cv-formatting.md and NAV's CV headings: one column, left aligned, black on white,
 // 11 pt body, labelled contact lines, and title / organization / date lines per entry so extracted text stays clear.
 // The draft's SectionOrder picks NAV's standard order or the developer order.
@@ -16,7 +17,7 @@ public static class TailoredCvPdfRenderer
 {
     private const string Bullet = "•";
 
-    public static byte[] Render(TailoredCvContent content)
+    public static byte[] Render(TailoredCvContent content, IReadOnlyList<SkillCategory>? categories = null)
     {
         TailoredCvPdfFonts.EnsureRegistered();
         var t = CvText.For(content.Language);
@@ -49,7 +50,7 @@ public static class TailoredCvPdfRenderer
                         foreach (var link in content.Links ?? [])
                             AddLabelledLine(column, link.Label, link.Url);
                         AddTextSection(column, t.Summary, content.Summary);
-                        AddGroupedSkillsSection(column, content.Skills, t);
+                        AddGroupedSkillsSection(column, content.Skills, categories ?? [], content.Language, t);
                         AddExperienceSection(column, content.ContentStyle, content.Experiences, t);
                         AddProjectSection(column, content.ContentStyle, content.Projects, t);
                         AddEducationSection(column, content.ContentStyle, content.Educations, t);
@@ -230,15 +231,18 @@ public static class TailoredCvPdfRenderer
             AddTextSection(column, t.Skills, string.Join(", ", skills.Select(s => s.Name)));
     }
 
-    // Developer CVs: one labelled line per category in enum order, uncategorized last. Each line keeps the
-    // draft's order, which is relevance order, so the strongest match leads its line.
-    private static void AddGroupedSkillsSection(ColumnDescriptor column, List<TailoredCvSkill>? skills, CvText t)
+    // Developer CVs: one labelled line per category in the user's category order, uncategorized (or a category
+    // deleted since) last. Each line keeps the draft's order, which is relevance order, so the strongest match leads.
+    private static void AddGroupedSkillsSection(ColumnDescriptor column, List<TailoredCvSkill>? skills,
+        IReadOnlyList<SkillCategory> categories, Language language, CvText t)
     {
         if (skills is not { Count: > 0 })
             return;
-        var lines = skills.GroupBy(s => s.Category)
-            .OrderBy(g => g.Key is { } category ? (int)category : int.MaxValue)
-            .Select(g => (Label: t.SkillCategoryLabel(g.Key), Names: string.Join(", ", g.Select(s => s.Name))));
+        var positions = categories.Select((c, i) => (c, i)).ToDictionary(x => x.c.Id, x => (Category: x.c, Position: x.i));
+        var lines = skills.GroupBy(s => s.CategoryId is { } id && positions.ContainsKey(id) ? id : (int?)null)
+            .OrderBy(g => g.Key is { } id ? positions[id].Position : int.MaxValue)
+            .Select(g => (Label: g.Key is { } id ? positions[id].Category.NameIn(language) : t.OtherSkills,
+                Names: string.Join(", ", g.Select(s => s.Name))));
         column.Item().EnsureSpace(MinTextSectionStart).Column(section =>
         {
             AddHeading(section, t.Skills);
@@ -288,7 +292,7 @@ internal sealed record CvText(
     string Languages, string Skills, string Links, string References, string ReferencesOnRequest,
     string Email, string Phone, string Address, string DateOfBirth,
     string Present, string Expires, string Written, string Spoken,
-    string[] SkillCategories, string OtherSkills,
+    string OtherSkills,
     string[] Months, string[] Levels, bool NumericDates, Dictionary<string, string> LanguageNames)
 {
     private static readonly CvText English = new(
@@ -296,7 +300,7 @@ internal sealed record CvText(
         "Languages", "Skills", "Links", "References", "Available on request.",
         "Email", "Phone", "Address", "Date of birth",
         "Present", "Expires", "Written", "Spoken",
-        ["Languages", "Frameworks", "Databases", "Cloud & DevOps", "Testing", "AI & ML", "Tools", "Methods"], "Other",
+        "Other",
         ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
         ["Beginner", "Good", "Very good", "Native (first language)"],
         NumericDates: false,
@@ -311,7 +315,7 @@ internal sealed record CvText(
         "Språk", "Kompetanser", "Lenker", "Referanser", "Oppgis ved forespørsel.",
         "E-post", "Telefon", "Adresse", "Fødselsdato",
         "Nåværende", "Utløper", "Skriftlig", "Muntlig",
-        ["Programmeringsspråk", "Rammeverk", "Databaser", "Sky og DevOps", "Testing", "KI og maskinlæring", "Verktøy", "Metoder"], "Annet",
+        "Annet",
         ["Januar", "Februar", "Mars", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Desember"],
         ["Nybegynner", "Godt", "Veldig godt", "Førstespråk (morsmål)"],
         NumericDates: true,
@@ -339,9 +343,6 @@ internal sealed record CvText(
     }
 
     public string Proficiency(LanguageProficiency level) => Levels[(int)level];
-
-    // Indexed by enum value, so the arrays follow SkillCategory's declaration order.
-    public string SkillCategoryLabel(SkillCategory? category) => category is { } c ? SkillCategories[(int)c] : OtherSkills;
 
     // Common names stored in the other language read naturally; anything else prints as entered.
     public string LanguageName(string name) => LanguageNames.GetValueOrDefault(name.Trim(), name);

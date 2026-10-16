@@ -1411,8 +1411,8 @@ namespace JobHunt.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("Category")
-                        .HasColumnType("TEXT");
+                    b.Property<int?>("CategoryId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -1428,10 +1428,72 @@ namespace JobHunt.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CategoryId");
+
                     b.HasIndex("UserId", "NormalizedName")
                         .IsUnique();
 
                     b.ToTable("Skills");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.Skills.SkillCategory", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "NormalizedName")
+                        .IsUnique();
+
+                    b.ToTable("SkillCategories");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.Skills.SkillCategoryTranslation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SkillCategoryId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SkillCategoryId", "Language")
+                        .IsUnique();
+
+                    b.ToTable("SkillCategoryTranslations");
                 });
 
             modelBuilder.Entity("JobHunt.Api.Features.Skills.SkillTranslation", b =>
@@ -2399,11 +2461,38 @@ namespace JobHunt.Api.Migrations
 
             modelBuilder.Entity("JobHunt.Api.Features.Skills.Skill", b =>
                 {
+                    b.HasOne("JobHunt.Api.Features.Skills.SkillCategory", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("JobHunt.Api.Features.Auth.AppUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.Skills.SkillCategory", b =>
+                {
+                    b.HasOne("JobHunt.Api.Features.Auth.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.Skills.SkillCategoryTranslation", b =>
+                {
+                    b.HasOne("JobHunt.Api.Features.Skills.SkillCategory", "SkillCategory")
+                        .WithMany("Translations")
+                        .HasForeignKey("SkillCategoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SkillCategory");
                 });
 
             modelBuilder.Entity("JobHunt.Api.Features.Skills.SkillTranslation", b =>
@@ -2637,6 +2726,11 @@ namespace JobHunt.Api.Migrations
                 });
 
             modelBuilder.Entity("JobHunt.Api.Features.Skills.Skill", b =>
+                {
+                    b.Navigation("Translations");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.Skills.SkillCategory", b =>
                 {
                     b.Navigation("Translations");
                 });

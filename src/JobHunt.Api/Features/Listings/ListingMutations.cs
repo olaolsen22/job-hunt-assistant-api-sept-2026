@@ -48,8 +48,8 @@ public record ListingSkillInput(
     [property: DefaultValue(3)] int Level,
     int? MinYears,
     [property: DefaultValue(true)] bool IsRequired,
-    // A suggestion: it only fills a skill without a category, never replaces one the user set.
-    SkillCategory? Category = null);
+    // A suggestion by name: it only fills a skill without a category, never replaces one the user set.
+    string? CategoryName = null);
 
 public record ListingLanguageInput(
     Language Language,
@@ -251,13 +251,15 @@ public static class ListingMutations
         var skills = await db.Skills
             .Where(s => skillNames.Contains(s.NormalizedName))
             .ToDictionaryAsync(s => s.NormalizedName, ct);
+        var categories = await SkillCategoryPrompt.ByNormalizedNameAsync(input.Skills.Select(s => s.CategoryName), db, ct);
         entity.Skills.Clear();
         foreach (var skill in input.Skills)
         {
             var name = Names.Normalize(skill.Name);
             var lookup = skills.GetValueOrDefault(name)
                 ?? new Skill { UserId = entity.UserId, Name = skill.Name.Trim(), NormalizedName = name };
-            lookup.Category ??= skill.Category;
+            if (lookup.CategoryId is null && lookup.Category is null && skill.CategoryName is { } categoryName)
+                lookup.Category = categories.GetValueOrDefault(Names.Normalize(categoryName));
             entity.Skills.Add(new ListingSkill
             {
                 Skill = lookup,

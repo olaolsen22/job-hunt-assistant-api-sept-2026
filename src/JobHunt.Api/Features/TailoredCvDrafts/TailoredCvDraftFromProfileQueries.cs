@@ -33,7 +33,7 @@ public static class TailoredCvDraftFromProfileQueries
                 c.Name, c.Issuer, c.IssuedMonth, c.ExpiresMonth, c.Url, Bullets(c.Bullets), c.Id))],
             Projects: [.. profile.Projects.Select(p => new TailoredCvProject(
                 p.Name, p.Url, p.StartMonth, p.EndMonth, Bullets(p.Bullets), p.Id, Place(p.Location)))],
-            Skills: [.. profile.Skills.Select(s => new TailoredCvSkill(s.Skill.NameIn(language), s.Level, s.SkillId, s.Skill.Category))],
+            Skills: [.. profile.Skills.Select(s => new TailoredCvSkill(s.Skill.NameIn(language), s.Level, s.SkillId, s.Skill.CategoryId))],
             Languages: [.. profile.Languages.Select(l => new TailoredCvLanguage(l.Name, l.Written, l.Spoken))],
             FullName: profile.FullName,
             Headline: translation?.Headline ?? profile.Headline,

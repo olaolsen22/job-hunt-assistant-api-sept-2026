@@ -3,7 +3,6 @@ using JobHunt.Api.Data;
 using JobHunt.Api.Features.Documents;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Profiles;
-using JobHunt.Api.Features.Skills;
 using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.TailoredCvDrafts;
@@ -21,7 +20,7 @@ public record TailoredCvCertificationInput(string Name, string? Issuer, DateOnly
 public record TailoredCvProjectInput(string Name, string? Url, DateOnly? StartMonth, DateOnly? EndMonth,
     List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null, string? Location = null,
     string? Paragraph = null);
-public record TailoredCvSkillInput(string Name, int? Level, int? SourceSkillId = null, SkillCategory? Category = null);
+public record TailoredCvSkillInput(string Name, int? Level, int? SourceSkillId = null, int? CategoryId = null);
 public record TailoredCvLanguageInput(string Name, LanguageProficiency? Written, LanguageProficiency? Spoken);
 // A null Language means the listing's posting language, or English when the listing has none.
 public record TailoredCvContentInput(string? Summary = null,
@@ -97,7 +96,9 @@ public static class TailoredCvDraftMutations
         var draft = await db.TailoredCvDrafts.AsNoTracking().FirstOrDefaultAsync(d => d.ListingId == listingId, ct)
             ?? throw new TailoredCvDraftNotFoundException(listingId);
 
-        var bytes = TailoredCvPdfRenderer.Render(draft.Content);
+        var categories = await db.SkillCategories.AsNoTracking().Include(c => c.Translations)
+            .OrderBy(c => c.SortOrder).ThenBy(c => c.Id).ToListAsync(ct);
+        var bytes = TailoredCvPdfRenderer.Render(draft.Content, categories);
         var now = time.GetUtcNow().UtcDateTime;
         var fileName = DocumentMutations.FileName(listing.Company, listing.JobRole, DocumentKind.Cv, now);
         var document = new Document

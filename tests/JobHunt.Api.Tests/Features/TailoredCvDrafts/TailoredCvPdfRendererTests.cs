@@ -91,16 +91,31 @@ public class TailoredCvPdfRendererTests
         Assert.DoesNotContain("Lenker", text);
     }
 
+    // The starter categories in their SortOrder, with ids 1-8.
+    private static readonly List<SkillCategory> Categories =
+    [
+        .. new[]
+        {
+            ("Languages", "Programmeringsspråk"), ("Frameworks", "Rammeverk"), ("Databases", "Databaser"),
+            ("Cloud & DevOps", "Sky og DevOps"), ("Testing", "Testing"), ("AI & ML", "KI og maskinlæring"),
+            ("Tools", "Verktøy"), ("Methods", "Metoder"),
+        }.Select((c, i) => new SkillCategory
+        {
+            Id = i + 1, Name = c.Item1, SortOrder = i,
+            Translations = [new SkillCategoryTranslation { Language = Language.Norwegian, Name = c.Item2 }],
+        }),
+    ];
+
     private static readonly List<TailoredCvSkill> CategorizedSkills =
     [
-        new("Docker", 3, Category: SkillCategory.CloudDevops),
-        new("TypeScript", 4, Category: SkillCategory.Language),
+        new("Docker", 3, CategoryId: 4),
+        new("TypeScript", 4, CategoryId: 1),
         new("Kundeservice", 5),
-        new("C#", 5, Category: SkillCategory.Language),
-        new("PostgreSQL", 3, Category: SkillCategory.Database),
-        new("Git", 4, Category: SkillCategory.Tool),
-        new("Microsoft.Extensions.AI", 3, Category: SkillCategory.Ai),
-        new("xUnit", 3, Category: SkillCategory.Testing),
+        new("C#", 5, CategoryId: 1),
+        new("PostgreSQL", 3, CategoryId: 3),
+        new("Git", 4, CategoryId: 7),
+        new("Microsoft.Extensions.AI", 3, CategoryId: 6),
+        new("xUnit", 3, CategoryId: 5),
     ];
 
     [Theory]
@@ -115,11 +130,29 @@ public class TailoredCvPdfRendererTests
         var text = ExtractText(FullDraft(language) with
         {
             SectionOrder = TailoredCvSectionOrder.Developer, Skills = CategorizedSkills,
-        });
+        }, Categories);
 
-        // Categories in enum order, uncategorized last; skills keep the draft's relevance order.
+        // Categories in SortOrder, uncategorized last; skills keep the draft's relevance order.
         AssertInOrder(text, lines);
         Assert.DoesNotContain(language == Language.Norwegian ? "Rammeverk" : "Frameworks", text);
+    }
+
+    [Fact]
+    public void Render_DeveloperOrder_UsesCurrentCategoryNamesAndOrder_DeletedCategoryAsOther()
+    {
+        List<SkillCategory> categories =
+        [
+            new() { Id = 7, Name = "Daily tools", SortOrder = 0 },
+            new() { Id = 1, Name = "Code", SortOrder = 1 },
+        ];
+        var text = ExtractText(FullDraft(Language.Norwegian) with
+        {
+            SectionOrder = TailoredCvSectionOrder.Developer,
+            Skills = [new("C#", 5, CategoryId: 1), new("Git", 4, CategoryId: 7), new("Docker", 3, CategoryId: 99)],
+        }, categories);
+
+        // No Norwegian translation, so the name prints as is; id 99 was deleted since the draft was saved.
+        AssertInOrder(text, "Daily tools: Git", "Code: C#", "Annet: Docker");
     }
 
     [Fact]
@@ -269,9 +302,9 @@ public class TailoredCvPdfRendererTests
         Assert.True(indices.SequenceEqual(indices.OrderBy(i => i)), $"out of order: {string.Join(", ", values)}");
     }
 
-    private static string ExtractText(TailoredCvContent content)
+    private static string ExtractText(TailoredCvContent content, IReadOnlyList<SkillCategory>? categories = null)
     {
-        var bytes = TailoredCvPdfRenderer.Render(content);
+        var bytes = TailoredCvPdfRenderer.Render(content, categories);
         using var document = PdfDocument.Open(bytes);
         return string.Join("\n", document.GetPages().Select(p => p.Text));
     }

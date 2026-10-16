@@ -37,7 +37,7 @@ public static class TailoredCvDraftValidation
             input.Projects?.Select(e => new TailoredCvProject(CleanRequired(e.Name), CleanOptional(e.Url), e.StartMonth, e.EndMonth,
                 (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
                 CleanOptional(e.Location), CleanOptional(e.Paragraph))).ToList(),
-            input.Skills?.Select(s => new TailoredCvSkill(CleanRequired(s.Name), s.Level, s.SourceSkillId, s.Category)).ToList(),
+            input.Skills?.Select(s => new TailoredCvSkill(CleanRequired(s.Name), s.Level, s.SourceSkillId, s.CategoryId)).ToList(),
             input.Languages?.Select(l => new TailoredCvLanguage(CleanRequired(l.Name), l.Written, l.Spoken)).ToList(),
             CleanOptional(input.FullName), CleanOptional(input.Headline), CleanOptional(input.Email), CleanOptional(input.Phone), CleanOptional(input.Address),
             input.Links?.Select(l => new TailoredCvLink(CleanRequired(l.Label), CleanRequired(l.Url))).ToList(),
@@ -121,6 +121,10 @@ public static class TailoredCvDraftValidation
             throw InvalidSource("projects.sourceEntryId");
         if (skillIds.Length > 0 && await db.ProfileSkills.CountAsync(s => skillIds.Contains(s.SkillId), ct) != skillIds.Length)
             throw InvalidSource("skills.sourceSkillId");
+        var categoryIds = content.Skills?.Where(s => s.CategoryId is not null)
+            .Select(s => s.CategoryId!.Value).Distinct().ToArray() ?? [];
+        if (categoryIds.Length > 0 && await db.SkillCategories.CountAsync(c => categoryIds.Contains(c.Id), ct) != categoryIds.Length)
+            throw InvalidSource("skills.categoryId");
 
         var bulletReferences = new List<(int Id, int? EntryId, string Kind, string Text)>();
         bulletReferences.AddRange(content.Experiences?.SelectMany(e => e.Bullets

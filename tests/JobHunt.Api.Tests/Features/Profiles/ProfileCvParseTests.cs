@@ -30,10 +30,12 @@ public class ProfileCvParseTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var before = await Counts(db);
         var profileBefore = (await client.GraphQLAsync("{profile{fullName}}" )).GetRawText();
+        var prompt = (await client.GraphQLAsync("{profileCvParsePrompt{instructions}}"))
+            .GetProperty("profileCvParsePrompt").GetProperty("instructions").GetString();
         var result = (await client.GraphQLAsync(Parse, new { text })).GetProperty("parseProfileCv").GetProperty("result");
         Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
         Assert.Equal(JsonValueKind.Null, result.GetProperty("candidate").GetProperty("skills")[0].GetProperty("level").ValueKind);
-        Assert.Equal(ProfileCvPromptQueries.Instructions, factory.Llm.LastMessages[0].Text);
+        Assert.Equal(prompt, factory.Llm.LastMessages[0].Text);
         Assert.Equal($"<cv>\n{text}\n</cv>", factory.Llm.LastMessages[1].Text);
         Assert.Equal(ChatResponseFormat.Json, factory.Llm.LastOptions!.ResponseFormat);
         Assert.Equal(before, await Counts(db));
