@@ -312,4 +312,79 @@ public class SkillCleanupTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal("CleanCatTools", Assert.Single(ok.GetProperty("skills").EnumerateArray()).GetProperty("category").GetProperty("name").GetString());
         Assert.Equal("InvalidSkillCleanupError", unknown.GetProperty("errors")[0].GetProperty("__typename").GetString());
     }
+
+    private const string Remove = """
+        mutation ($operations: [SkillCleanupOperationInput!]!, $ids: [Int!]) {
+          cleanUpSkills(input: { operations: $operations, removeSkillIds: $ids }) {
+            skills { id } errors { __typename }
+          }
+        }
+        """;
+
+    [Fact]
+    public async Task CleanUp_RemovesSkillsInUse_Everywhere()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var area = await SetProfileSkillAsync(client, "RemoveBackend Development", 4);
+        await SetProfileSkillAsync(client, "RemoveKeepC#", 3);
+        await ProfileEntryTests.AddExperienceAsync(client, skills: ["RemoveBackend Development", "RemoveKeepC#"]);
+        var listing = await CreateListingAsync(client,
+            new { name = "RemoveBackend Development", level = 4 }, new { name = "RemoveKeepC#", level = 3 });
+
+        var result = (await client.GraphQLAsync(Remove, new { operations = Array.Empty<object>(), ids = new[] { area } }))
+            .GetProperty("cleanUpSkills");
+
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("errors").ValueKind);
+        Assert.Empty(await SkillNamesAsync(client, "RemoveBackend"));
+        var profile = await ProfileAsync(client);
+        Assert.DoesNotContain(profile.GetProperty("skills").EnumerateArray(),
+            s => s.GetProperty("skill").GetProperty("name").GetString() == "RemoveBackend Development");
+        Assert.Contains(profile.GetProperty("experiences").EnumerateArray(),
+            e => e.GetProperty("skills").EnumerateArray().Select(s => s.GetProperty("name").GetString()).SequenceEqual(["RemoveKeepC#"]));
+        var listingSkill = Assert.Single((await ListingSkillsAsync(client, listing)).EnumerateArray());
+        Assert.Equal("RemoveKeepC#", listingSkill.GetProperty("skill").GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task CleanUp_Removal_RejectsForeignIds_AndOverlapWithOperations()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var mine = await SetProfileSkillAsync(client, "RemoveOverlap", 3);
+        var foreign = await SetProfileSkillAsync(await factory.GetSecondOwnerClientAsync(), "RemoveOtherOwner", 3);
+
+        var overlap = (await client.GraphQLAsync(Remove, new
+        {
+            operations = new[] { new { skillIds = new[] { mine }, names = new[] { "RemoveOverlapped" } } }, ids = new[] { mine },
+        })).GetProperty("cleanUpSkills");
+        var other = (await client.GraphQLAsync(Remove, new { operations = Array.Empty<object>(), ids = new[] { foreign } }))
+            .GetProperty("cleanUpSkills");
+
+        Assert.Equal("InvalidSkillCleanupError", overlap.GetProperty("errors")[0].GetProperty("__typename").GetString());
+        Assert.Equal("SkillNotFoundError", other.GetProperty("errors")[0].GetProperty("__typename").GetString());
+        Assert.Equal(["RemoveOverlap"], await SkillNamesAsync(client, "RemoveOverlap"));
+        Assert.Equal(["RemoveOtherOwner"], await SkillNamesAsync(await factory.GetSecondOwnerClientAsync(), "RemoveOtherOwner"));
+    }
+
+    [Fact]
+    public async Task Suggest_KeepsRemovalsOfOwnSkillsNotInOperations()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var area = await SetProfileSkillAsync(client, "SuggestRemoveDebugging", 3);
+        var merged = await SetProfileSkillAsync(client, "SuggestRemovevue", 3);
+        var foreign = await SetProfileSkillAsync(await factory.GetSecondOwnerClientAsync(), "SuggestRemoveForeign", 3);
+        factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant, $$"""
+            {"operations":[{"skillIds":[{{merged}}],"names":["SuggestRemoveVue"]}],
+             "removals":[{"skillId":{{area}},"reason":"Generic activity"},{"skillId":{{area}},"reason":"dup"},
+                         {"skillId":{{merged}},"reason":"x"},{"skillId":{{foreign}},"reason":"x"},{"skillId":null}]}
+            """));
+
+        var result = (await client.GraphQLAsync("""
+            mutation { suggestSkillCleanup(input: {}) { result { status removals { skillId reason } } } }
+            """)).GetProperty("suggestSkillCleanup").GetProperty("result");
+
+        var removal = Assert.Single(result.GetProperty("removals").EnumerateArray());
+        Assert.Equal(area, removal.GetProperty("skillId").GetInt32());
+        Assert.Equal("Generic activity", removal.GetProperty("reason").GetString());
+        Assert.Equal(["SuggestRemoveDebugging"], await SkillNamesAsync(client, "SuggestRemoveDebugging"));
+    }
 }

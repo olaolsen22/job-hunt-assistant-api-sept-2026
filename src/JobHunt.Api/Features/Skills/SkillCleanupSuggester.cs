@@ -11,14 +11,17 @@ namespace JobHunt.Api.Features.Skills;
 
 public enum SkillCleanupSuggestStatus { Succeeded, Failed }
 public record SkillCleanupSuggestion(SkillCleanupSuggestStatus Status, List<SkillCleanupOperation>? Operations,
-    List<SkillCleanupTranslation>? Translations, List<SkillCleanupCategory>? Categories, string? Error);
+    List<SkillCleanupTranslation>? Translations, List<SkillCleanupCategory>? Categories,
+    List<SkillCleanupRemoval>? Removals, string? Error);
 
 // Only suggests: nothing is saved but usage. The reviewed operations go to cleanUpSkills.
 public class SkillCleanupSuggester(LlmExecution execution, LlmModelResolver models, AiOperations operations)
 {
     public const string Operation = "suggest-skill-cleanup";
 
-    private record Plan(List<SkillCleanupOperation?>? Operations, List<Translation?>? Translations, List<Category?>? Categories);
+    private record Plan(List<SkillCleanupOperation?>? Operations, List<Translation?>? Translations, List<Category?>? Categories,
+        List<Removal?>? Removals);
+    private record Removal(int? SkillId, string? Reason);
     private record Category(string? SkillName, string? CategoryName);
     // Language as text: an unknown value drops that row instead of failing the whole answer.
     private record Translation(string? SkillName, string? Language, string? Name);
@@ -35,18 +38,18 @@ public class SkillCleanupSuggester(LlmExecution execution, LlmModelResolver mode
             new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0, MaxOutputTokens = 16_384 },
             Operation, db, ct);
         SkillCleanupSuggestion result;
-        if (call.Error is { } error) result = new(SkillCleanupSuggestStatus.Failed, null, null, null, error);
+        if (call.Error is { } error) result = new(SkillCleanupSuggestStatus.Failed, null, null, null, null, error);
         else if (Decode(call.Response!.Text) is { } plan)
         {
             var known = await KnownAsync(plan, db, ct);
             result = new(SkillCleanupSuggestStatus.Succeeded, known, await TranslationsAsync(plan, known, db, ct),
-                await CategoriesAsync(plan, known, db, ct), null);
+                await CategoriesAsync(plan, known, db, ct), await RemovalsAsync(plan, known, db, ct), null);
         }
         else
         {
             call.Usage!.Success = false;
             call.Usage.ErrorCode = "invalid-json";
-            result = new(SkillCleanupSuggestStatus.Failed, null, null, null, "The AI's answer couldn't be read. Try again.");
+            result = new(SkillCleanupSuggestStatus.Failed, null, null, null, null, "The AI's answer couldn't be read. Try again.");
         }
         if (call.Usage is { } audited) await execution.SaveUsageAsync(audited, ct);
         return result;
@@ -92,6 +95,18 @@ public class SkillCleanupSuggester(LlmExecution execution, LlmModelResolver mode
                     && (skill.Name == t.Name || skill.Translations.Any(x => x.Language == t.Language && x.Name == t.Name))))
             .DistinctBy(t => (Names.Normalize(t.SkillName!), t.Language))
             .Select(t => new SkillCleanupTranslation(t.SkillName!, t.Language!.Value, t.Name!))];
+    }
+
+    // Only skills that exist and no operation touches, so cleanUpSkills accepts the reviewed set as is.
+    private static async Task<List<SkillCleanupRemoval>> RemovalsAsync(
+        Plan plan, List<SkillCleanupOperation> operations, AppDbContext db, CancellationToken ct)
+    {
+        var ids = await db.Skills.Select(s => s.Id).ToHashSetAsync(ct);
+        var changed = operations.SelectMany(o => o.SkillIds).ToHashSet();
+        return [.. (plan.Removals ?? []).OfType<Removal>()
+            .Where(r => r.SkillId is { } id && ids.Contains(id) && !changed.Contains(id))
+            .DistinctBy(r => r.SkillId)
+            .Select(r => new SkillCleanupRemoval(r.SkillId!.Value, r.Reason?.Trim() is { Length: > 0 } reason ? reason : "Not a skill"))];
     }
 
     // Like the other prompts, a suggestion only fills an uncategorized skill: an existing one, or one an operation

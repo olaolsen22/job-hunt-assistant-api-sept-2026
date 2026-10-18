@@ -21,6 +21,9 @@ public record SkillCleanupTranslation(string SkillName, Language Language, strin
 // Sets the category of the skill named SkillName (its name after the operations).
 public record SkillCleanupCategory(string SkillName, string CategoryName);
 
+// A suggested removal of a non-skill (role area, generic activity, trait); the reason is shown in the review.
+public record SkillCleanupRemoval(int SkillId, string Reason);
+
 [MutationType]
 public static class SkillMutations
 {
@@ -99,12 +102,16 @@ public static class SkillMutations
     [UseMutationConvention(PayloadFieldName = "skills")]
     public static async Task<List<Skill>> CleanUpSkillsAsync(
         List<SkillCleanupOperation> operations, AppDbContext db, CancellationToken ct,
-        List<SkillCleanupTranslation>? translations = null, List<SkillCleanupCategory>? categories = null)
+        List<SkillCleanupTranslation>? translations = null, List<SkillCleanupCategory>? categories = null,
+        List<int>? removeSkillIds = null)
     {
         translations ??= [];
         categories ??= [];
-        Validate(operations, translations, categories);
+        removeSkillIds = removeSkillIds?.Distinct().ToList() ?? [];
+        Validate(operations, translations, categories, removeSkillIds);
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        // First, so an operation naming a removed skill creates a fresh one instead of reusing the doomed row.
+        await RemoveAsync(removeSkillIds, db, ct);
         var result = new List<Skill>();
         foreach (var operation in operations) result.AddRange(await ApplyAsync(operation, db, ct));
         foreach (var translation in translations)
@@ -131,12 +138,15 @@ public static class SkillMutations
         return [.. result.Distinct().OrderBy(s => s.Name)];
     }
 
-    private static void Validate(
-        List<SkillCleanupOperation> operations, List<SkillCleanupTranslation> translations, List<SkillCleanupCategory> categories)
+    private static void Validate(List<SkillCleanupOperation> operations, List<SkillCleanupTranslation> translations,
+        List<SkillCleanupCategory> categories, List<int> removeSkillIds)
     {
-        if (operations.Count + translations.Count + categories.Count == 0 || operations.Count > MaxOperations
-            || translations.Count > MaxOperations || categories.Count > MaxOperations)
-            throw new InvalidSkillCleanupException($"Send 1–{MaxOperations} operations, translations or categories.");
+        if (operations.Count + translations.Count + categories.Count + removeSkillIds.Count == 0
+            || operations.Count > MaxOperations || translations.Count > MaxOperations || categories.Count > MaxOperations
+            || removeSkillIds.Count > MaxOperations)
+            throw new InvalidSkillCleanupException($"Send 1–{MaxOperations} operations, translations, categories or removals.");
+        if (operations.SelectMany(o => o.SkillIds).FirstOrDefault(removeSkillIds.Contains) is var both and not 0)
+            throw new InvalidSkillCleanupException($"Skill {both} can't be both removed and changed.");
         if (categories.Any(c => string.IsNullOrWhiteSpace(c.SkillName) || string.IsNullOrWhiteSpace(c.CategoryName)))
             throw new InvalidSkillCleanupException("Categories need a skill and a category name.");
         if (translations.Any(t => string.IsNullOrWhiteSpace(t.SkillName) || string.IsNullOrWhiteSpace(t.Name)
@@ -242,6 +252,28 @@ public static class SkillMutations
         db.Skills.RemoveRange(removed);
         await db.SaveChangesAsync(ct);
         return targets;
+    }
+
+    // Unlike deleteSkill, removes skills in use: the user reviewed each removal. The database cascades the
+    // profile, listing and experience/project links; drafts only lose the source link and keep their text.
+    private static async Task RemoveAsync(List<int> ids, AppDbContext db, CancellationToken ct)
+    {
+        if (ids.Count == 0) return;
+        var skills = await db.Skills.Where(s => ids.Contains(s.Id)).ToListAsync(ct);
+        if (skills.Count != ids.Count) throw new SkillNotFoundException(ids.Except(skills.Select(s => s.Id)).First());
+
+        var drafts = await db.TailoredCvDrafts.ToListAsync(ct);
+        foreach (var draft in drafts)
+        {
+            var content = draft.Content;
+            if (content.Skills?.Any(s => s.SourceSkillId is { } id && ids.Contains(id)) != true) continue;
+            draft.Content = content with
+            {
+                Skills = [.. content.Skills.Select(s => s.SourceSkillId is { } id && ids.Contains(id) ? s with { SourceSkillId = null } : s)],
+            };
+        }
+        db.Skills.RemoveRange(skills);
+        await db.SaveChangesAsync(ct);
     }
 
     private static void ReplaceTags(List<Skill> tags, List<int> removedIds, List<Skill> targets)

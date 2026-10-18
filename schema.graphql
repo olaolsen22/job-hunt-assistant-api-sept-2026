@@ -1690,11 +1690,17 @@ type SkillCleanupPrompt {
   instructions: String!
 }
 
+type SkillCleanupRemoval {
+  skillId: Int!
+  reason: String!
+}
+
 type SkillCleanupSuggestion {
   status: SkillCleanupSuggestStatus!
   operations: [SkillCleanupOperation!]
   translations: [SkillCleanupTranslation!]
   categories: [SkillCleanupCategory!]
+  removals: [SkillCleanupRemoval!]
   error: String
 }
 
@@ -2482,6 +2488,7 @@ input CleanUpSkillsInput {
   operations: [SkillCleanupOperationInput!]!
   translations: [SkillCleanupTranslationInput!]
   categories: [SkillCleanupCategoryInput!]
+  removeSkillIds: [Int!]
 }
 
 input ClearProfileSectionsInput {
