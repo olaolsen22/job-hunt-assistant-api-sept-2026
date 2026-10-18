@@ -1,5 +1,6 @@
 using System.Text.Json;
 using JobHunt.Api.Data;
+using JobHunt.Api.Features.Parsing;
 using JobHunt.Api.Tests.Features.Listings;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
@@ -65,7 +66,8 @@ public class CompanyParsingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal("<posting>\nEquinor, Aker BP\n</posting>", factory.Llm.LastMessages[1].Text);
 
         var prompt = (await client.GraphQLAsync(Prompt)).GetProperty("companyParsePrompt");
-        Assert.Equal(prompt.GetProperty("instructions").GetString(), factory.Llm.LastMessages[0].Text);
+        Assert.Equal(prompt.GetProperty("instructions").GetString()!.Replace(JsonReply.Rule("array", external: true),
+            JsonReply.Rule("array", external: false)), factory.Llm.LastMessages[0].Text);
 
         var companies = await client.GraphQLAsync(
             "query ($s: String) { companies(search: $s) { totalCount } }", new { s = name });

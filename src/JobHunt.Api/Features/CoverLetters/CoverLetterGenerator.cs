@@ -76,7 +76,7 @@ public static class CoverLetterExternalPromptQueries
         var context = await CoverLetterContext.BuildAsync(listingId, db, time, ct);
         var prompt = $$"""
             {{CoverLetterPrompt.Instructions(context.Language)}}
-            Return it without code fences or prose, and include "schemaVersion": {{CoverLetterPrompt.Version}} in the object.
+            Return it in a single ```json code block without prose, and include "schemaVersion": {{CoverLetterPrompt.Version}} in the object.
 
             Listing, candidate, and writing sample data:
             <cover_letter_context>

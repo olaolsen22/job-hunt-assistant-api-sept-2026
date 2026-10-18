@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using JobHunt.Api.Data;
+using JobHunt.Api.Features.Parsing;
 using JobHunt.Api.Features.Profiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
@@ -35,7 +36,7 @@ public class ProfileCvParseTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var result = (await client.GraphQLAsync(Parse, new { text })).GetProperty("parseProfileCv").GetProperty("result");
         Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
         Assert.Equal(JsonValueKind.Null, result.GetProperty("candidate").GetProperty("skills")[0].GetProperty("level").ValueKind);
-        Assert.Equal(prompt, factory.Llm.LastMessages[0].Text);
+        Assert.Equal(prompt, $"{factory.Llm.LastMessages[0].Text}\n{JsonReply.ExternalCodeBlock}");
         Assert.Equal($"<cv>\n{text}\n</cv>", factory.Llm.LastMessages[1].Text);
         Assert.Equal(ChatResponseFormat.Json, factory.Llm.LastOptions!.ResponseFormat);
         Assert.Equal(before, await Counts(db));

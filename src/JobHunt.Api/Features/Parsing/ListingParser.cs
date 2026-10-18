@@ -32,9 +32,9 @@ public class ListingParser(
         // The same prompts the copy-paste path serves, so both paths return the same JSON.
         var instructions = job.Mode switch
         {
-            ParseMode.Full => (await ListingParsePromptQueries.GetListingParsePromptAsync(db, time, ct)).Instructions,
-            ParseMode.Quick => (await ListingParsePromptQueries.GetListingQuickParsePromptAsync(db, time, ct)).Instructions,
-            _ => (await CompanyParsePromptQueries.GetCompanyParsePromptAsync(db, ct)).Instructions,
+            ParseMode.Full => (await ListingParsePromptQueries.BuildFullAsync(db, time, external: false, ct)).Instructions,
+            ParseMode.Quick => (await ListingParsePromptQueries.BuildQuickAsync(db, time, external: false, ct)).Instructions,
+            _ => (await CompanyParsePromptQueries.BuildAsync(db, external: false, ct)).Instructions,
         };
         var maxInputChars = job.Mode == ParseMode.Quick ? QuickMaxInputChars : MaxInputChars;
         var posting = job.RawText.Length > maxInputChars ? job.RawText[..maxInputChars] : job.RawText;
