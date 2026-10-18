@@ -12,6 +12,8 @@ namespace JobHunt.Api.Features.TailoredCvDrafts;
 public static class TailoredCvDraftValidation
 {
     public const int MaxJsonLength = 200_000;
+    // The PDF fits ~95 characters per line (11pt Source Sans 3 over 17 cm), so this keeps the summary to 3 lines.
+    public const int MaxSummaryLength = 300;
     private const int MaxEntriesPerSection = 100;
     private const int MaxBulletsPerEntry = 20;
     private const int MaxBulletLength = 500;
@@ -201,7 +203,7 @@ public static class TailoredCvDraftValidation
         Text(c.Address, "address", MaxAddressLength);
         if (c.DateOfBirth is { } born && born.Year < 1900)
             throw Invalid("dateOfBirth", "must be after 1900");
-        if (c.Summary?.Length > 10_000) throw Invalid("summary", "must be at most 10000 characters");
+        if (c.Summary?.Length > MaxSummaryLength) throw Invalid("summary", $"must be at most {MaxSummaryLength} characters");
         Limit(c.Experiences, MaxEntriesPerSection, "experiences");
         Limit(c.Educations, MaxEntriesPerSection, "educations");
         Limit(c.Certifications, MaxEntriesPerSection, "certifications");

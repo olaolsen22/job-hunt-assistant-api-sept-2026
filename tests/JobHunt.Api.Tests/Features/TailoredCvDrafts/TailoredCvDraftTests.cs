@@ -272,6 +272,20 @@ public class TailoredCvDraftTests(ApiFactory factory) : IClassFixture<ApiFactory
         Assert.Equal("InvalidTailoredCvDraftError", payload.GetProperty("errors")[0].GetProperty("__typename").GetString());
     }
 
+    [Theory]
+    [InlineData(300, null)]
+    [InlineData(301, "InvalidTailoredCvDraftError")]
+    public async Task Save_LimitsSummaryToThreeLines(int length, string? error)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var listingId = await CreateListingAsync(client);
+
+        var data = await client.GraphQLAsync(SaveContent, new { listingId, content = new { summary = new string('a', length) } });
+
+        var errors = data.GetProperty("saveTailoredCvDraft").GetProperty("errors");
+        Assert.Equal(error, errors.ValueKind == JsonValueKind.Null ? null : errors[0].GetProperty("__typename").GetString());
+    }
+
     private const string FromProfile = """
         query ($listingId: Int!) {
           tailoredCvDraftFromProfile(listingId: $listingId) {

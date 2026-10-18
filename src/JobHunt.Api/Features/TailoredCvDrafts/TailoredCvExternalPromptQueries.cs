@@ -112,8 +112,8 @@ public static class TailoredCvExternalPromptQueries
             or null when there is not enough evidence. {{TailoredCvAnalyzer.VoiceGuidance}} This applies to the summary
             and paragraphs. Follow Norwegian CV guidance for an ordinary job application. {{TailoredCvAnalyzer.BulletSelectionGuidance}}
             Order experiences, educations, certifications, and projects newest first (ongoing entries first). The CV language is {{TailoredCvLanguageText.Name(language)}}:
-            set "language" to "{{(language == Language.Norwegian ? "NORWEGIAN" : "ENGLISH")}}" and write the summary in that language as 2-4 short
-            sentences of plain text without Markdown, reusing the listing's terminology only where the profile supports it.
+            set "language" to "{{(language == Language.Norwegian ? "NORWEGIAN" : "ENGLISH")}}" and write the summary in that language as 2-3 short
+            sentences of plain text without Markdown, at most 280 characters so it fits three lines, reusing the listing's terminology only where the profile supports it.
             Copy bullet text exactly as supplied even if it is in another language; the user translates it in the UI.
             For an entry with a location, set "location" to "City, Country" with the country name in the CV language,
             or just the country when the city is null. Copy language names and written/spoken levels from the profile.

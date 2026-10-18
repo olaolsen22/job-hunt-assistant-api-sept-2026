@@ -275,8 +275,8 @@ public class TailoredCvAnalyzer(
             seniority, experience, achievements, or qualifications not supported by that context. Start from the
             profile's own headline and summary: keep their content and adjust emphasis to the listing rather than
             rewriting from scratch. {{ThemeGuidance}} {{VoiceGuidance}} Favour concrete evidence of what the candidate has built or
-            solved over a list of technology names. Keep it to 2-4 short sentences of plain text (no Markdown,
-            headings, or lists) and reuse the listing's terminology only where the profile supports it.
+            solved over a list of technology names. Keep it to 2-3 short sentences of plain text (no Markdown,
+            headings, or lists), at most 280 characters so it fits three lines, and reuse the listing's terminology only where the profile supports it.
             Write in {{TailoredCvLanguageText.Name(language)}}, even when the profile is in another language. Return
             null when the profile gives too little evidence. Return one JSON object only: {"summary":"..."}.
             """,
@@ -345,7 +345,7 @@ public class TailoredCvAnalyzer(
                 {
                     var summary = root.GetProperty("summary");
                     if (summary.ValueKind is not (JsonValueKind.String or JsonValueKind.Null)
-                        || summary.ValueKind == JsonValueKind.String && summary.GetString()!.Length > 10_000)
+                        || summary.ValueKind == JsonValueKind.String && summary.GetString()!.Length > TailoredCvDraftValidation.MaxSummaryLength)
                         throw new JsonException();
                     return new(TailoredCvAnalysisStatus.Succeeded, section, null, [], [],
                         summary.ValueKind == JsonValueKind.Null ? null : summary.GetString()?.Trim(), null);
