@@ -33,7 +33,9 @@ public record ListingInput(
     List<ContactInput>? Contacts = null,
     // Omitted keeps the program, so clients that don't know about it don't wipe it; an explicit null removes it.
     Optional<TrainingProgramInput?> TrainingProgram = default,
-    string? JobRoleCategoryName = null);
+    string? JobRoleCategoryName = null,
+    // True when this save applies a fresh re-analysis (the prompts change over time); stamps ReanalyzedAt.
+    [property: DefaultValue(false)] bool Reanalyzed = false);
 
 // The end employer comes in by name like the listing's company; null when the ad doesn't name one.
 public record TrainingProgramInput(
@@ -229,6 +231,8 @@ public static class ListingMutations
             entity.AnalyzedAt ??= now;
         else
             entity.AnalyzedAt = null;
+        if (input.Reanalyzed)
+            entity.ReanalyzedAt = now;
 
         entity.Company = await FindOrCreateCompanyAsync(input.CompanyName, entity.UserId, db, ct);
         // Contacts belong to the company, so a listing moved to another company can't keep the old ones.

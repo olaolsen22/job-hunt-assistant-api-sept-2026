@@ -9,7 +9,7 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     private const string ListingFields = """
         id title seniority employmentType schedule workMode description url
-        postedOn deadlineType deadlineOn postingLanguage createdAt updatedAt analyzedAt
+        postedOn deadlineType deadlineOn postingLanguage createdAt updatedAt analyzedAt reanalyzedAt
         company { id name industry { name } locations { location { city countryCode } } }
         jobRole { id name }
         skills { level minYears isRequired skill { id name } }
@@ -461,6 +461,25 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task UpdateListing_StampsReanalyzedAtOnlyWhenFlagged()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var company = Unique("Acme");
+        var created = await CreateAsync(client, NewListing(company));
+        var id = created.GetProperty("id").GetInt32();
+        Assert.Equal(JsonValueKind.Null, created.GetProperty("reanalyzedAt").ValueKind);
+
+        var plain = await UpdateAsync(client, id, NewListing(company, title: "Senior Backend Developer"));
+        Assert.Equal(JsonValueKind.Null, plain.GetProperty("reanalyzedAt").ValueKind);
+
+        var redone = await UpdateAsync(client, id, NewListing(company, reanalyzed: true));
+        var stamp = redone.GetProperty("reanalyzedAt").GetDateTime();
+
+        var edited = await UpdateAsync(client, id, NewListing(company, title: "Lead Backend Developer"));
+        Assert.Equal(stamp, edited.GetProperty("reanalyzedAt").GetDateTime());
+    }
+
+    [Fact]
     public async Task DeleteListing_RemovesListing()
     {
         var client = await factory.GetOwnerClientAsync();
@@ -560,10 +579,11 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         object[]? skills = null,
         object[]? languages = null,
         object[]? locations = null,
-        bool isAnalyzed = false) =>
+        bool isAnalyzed = false,
+        bool reanalyzed = false) =>
         new
         {
-            title, companyName, jobRoleName, deadlineType, deadlineOn, url = url ?? UniqueUrl(), postedOn, isAnalyzed,
+            title, companyName, jobRoleName, deadlineType, deadlineOn, url = url ?? UniqueUrl(), postedOn, isAnalyzed, reanalyzed,
             skills = skills ?? [], languages = languages ?? [], locations = locations ?? [],
         };
 

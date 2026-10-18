@@ -1009,6 +1009,7 @@ type Listing {
   favoritedAt: DateTime
   archivedAt: DateTime
   analyzedAt: DateTime
+  reanalyzedAt: DateTime
   status: ApplicationStatus!
   statusChangedAt: DateTime
   skills: [ListingSkill!]!
@@ -2922,6 +2923,7 @@ input ListingFilterInput {
   favoritedAt: DateTimeOperationFilterInput
   archivedAt: DateTimeOperationFilterInput
   analyzedAt: DateTimeOperationFilterInput
+  reanalyzedAt: DateTimeOperationFilterInput
   status: ApplicationStatusOperationFilterInput
   statusChangedAt: DateTimeOperationFilterInput
   skills: ListFilterInputTypeOfListingSkillFilterInput
@@ -2955,6 +2957,7 @@ input ListingInput {
   contacts: [ContactInput!]
   trainingProgram: TrainingProgramInput
   jobRoleCategoryName: String
+  reanalyzed: Boolean! = false
 }
 
 input ListingLanguageFilterInput {
@@ -3024,6 +3027,7 @@ input ListingSortInput {
   favoritedAt: SortEnumType @cost(weight: "10")
   archivedAt: SortEnumType @cost(weight: "10")
   analyzedAt: SortEnumType @cost(weight: "10")
+  reanalyzedAt: SortEnumType @cost(weight: "10")
   status: SortEnumType @cost(weight: "10")
   statusChangedAt: SortEnumType @cost(weight: "10")
   trainingProgram: TrainingProgramSortInput @cost(weight: "10")

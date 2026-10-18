@@ -617,6 +617,9 @@ namespace JobHunt.Api.Migrations
                     b.Property<string>("PostingLanguage")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("ReanalyzedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Schedule")
                         .HasColumnType("TEXT");
 

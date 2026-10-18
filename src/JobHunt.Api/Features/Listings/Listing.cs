@@ -42,6 +42,8 @@ public class Listing
     // Null = details still to fill in. Set by the user (or ticked by the parse flow), not derived from which
     // fields happen to be set, so a hand-filled listing counts too. A time so the to-do list can sort by it.
     public DateTime? AnalyzedAt { get; set; }
+    // Last time a re-analysis was applied; null = never redone. Lets the UI show which listings predate a prompt change.
+    public DateTime? ReanalyzedAt { get; set; }
     // Current status, kept next to its history so the list can filter and sort on it with plain SQL.
     // Only the application mutations change it, always together with a StatusChange row.
     public ApplicationStatus Status { get; set; }
