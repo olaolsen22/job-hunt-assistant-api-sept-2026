@@ -121,6 +121,9 @@ public static partial class ListingParsePromptQueries
             skills: concrete technologies, tools, methods, certifications and licences (e.g. "Truckførerbevis", "Førerkort klasse B").
               Only names that appear in the posting.
               Skip personality traits ("team player", "selvgående", "strukturert").
+              Skip broad fields, role areas and generic activities ("Backend Development", "Frontend Development",
+              "API Development", "Fullstack", "Debugging", "Software Development", "systemutvikling"): they describe
+              the job, not a skill. Name the languages, frameworks and tools behind them instead (C#, React, REST).
               level, the higher of years and wording:
                 1 basic         "basic knowledge", "grunnleggende kjennskap"
                 2 familiar      < 2 years, "familiarity with", "kjennskap til", "some exposure"
