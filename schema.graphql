@@ -145,9 +145,9 @@ type Query {
     @cost(weight: "10")
   parseJob(id: UUID!): ParseJob @cost(weight: "10")
   profileCvParsePrompt: ProfileCvParsePrompt! @cost(weight: "10")
-  instructions: String! @cost(weight: "10")
   profile: Profile! @cost(weight: "10")
   profileSkillWordingPrompt: ProfileSkillWordingPrompt! @cost(weight: "10")
+  profileSummaryPrompt: ProfileSummaryPrompt! @cost(weight: "10")
   skillCategories(
     "Returns the first _n_ elements from the list."
     first: Int
@@ -366,6 +366,8 @@ type Mutation {
   applyProfileSkillWording(input: ApplyProfileSkillWordingInput!): ApplyProfileSkillWordingPayload!
     @cost(weight: "10")
   updateProfileStory(input: UpdateProfileStoryInput!): UpdateProfileStoryPayload!
+    @cost(weight: "10")
+  suggestProfileSummary(input: SuggestProfileSummaryInput!): SuggestProfileSummaryPayload!
     @cost(weight: "10")
   setProfileContentLanguage(input: SetProfileContentLanguageInput!): SetProfileContentLanguagePayload!
     @cost(weight: "10")
@@ -1472,6 +1474,17 @@ type ProfileStory {
   values: String
 }
 
+type ProfileSummaryPrompt {
+  version: Int!
+  instructions: String!
+}
+
+type ProfileSummarySuggestion {
+  status: ProfileSummaryStatus!
+  summary: String
+  error: String
+}
+
 type ProfileTranslation {
   id: Int!
   language: Language!
@@ -1762,6 +1775,11 @@ type StatusChangeNotFoundError implements Error {
 type SuggestProfileSkillWordingPayload {
   result: ProfileSkillWordingSuggestion
   errors: [SuggestProfileSkillWordingError!]
+}
+
+type SuggestProfileSummaryPayload {
+  result: ProfileSummarySuggestion
+  errors: [SuggestProfileSummaryError!]
 }
 
 type SuggestSkillCleanupPayload {
@@ -2289,6 +2307,8 @@ union SetSkillCategoryTranslationError =
 union SetSkillTranslationError = SkillNotFoundError | InvalidSkillCleanupError
 
 union SuggestProfileSkillWordingError = UnknownLlmModelError | AiSafetyError
+
+union SuggestProfileSummaryError = UnknownLlmModelError | AiSafetyError
 
 union SuggestSkillCleanupError = UnknownLlmModelError | AiSafetyError
 
@@ -3525,6 +3545,11 @@ input SuggestProfileSkillWordingInput {
   requestId: UUID
 }
 
+input SuggestProfileSummaryInput {
+  model: String
+  requestId: UUID
+}
+
 input SuggestSkillCleanupInput {
   model: String
   requestId: UUID
@@ -3964,6 +3989,11 @@ enum ProfileSection {
 }
 
 enum ProfileSkillWordingStatus {
+  SUCCEEDED
+  FAILED
+}
+
+enum ProfileSummaryStatus {
   SUCCEEDED
   FAILED
 }
