@@ -96,7 +96,7 @@ public static class ProfileTranslationMutations
         return language;
     }
 
-    private static async Task CheckLanguageAsync(Language language, AppDbContext db, CancellationToken ct)
+    internal static async Task CheckLanguageAsync(Language language, AppDbContext db, CancellationToken ct)
     {
         if (language == (await db.Profiles.SingleAsync(ct)).ContentLanguage)
             throw new InvalidProfileException("A translation can't be in the language the profile is written in.");
