@@ -26,13 +26,15 @@ public static class TailoredCvDraftFromProfileQueries
         return new TailoredCvContent(
             Summary: translation?.Summary ?? profile.Summary,
             Experiences: [.. profile.Experiences.Select(e => new TailoredCvExperience(
-                e.Employer, e.Title, e.StartMonth, e.EndMonth, Bullets(e.Bullets), e.Id, Place(e.Location)))],
+                e.Employer, e.Title, e.StartMonth, e.EndMonth, Bullets(e.Bullets), e.Id, Place(e.Location),
+                Technologies: TailoredCvLanguageText.Technologies(e.Skills, profile, language)))],
             Educations: [.. profile.Educations.Select(e => new TailoredCvEducation(
                 e.School, e.Degree, e.Field, e.StartMonth, e.EndMonth, Bullets(e.Bullets), e.Id, Place(e.Location)))],
             Certifications: [.. profile.Certifications.Select(c => new TailoredCvCertification(
                 c.Name, c.Issuer, c.IssuedMonth, c.ExpiresMonth, c.Url, Bullets(c.Bullets), c.Id))],
             Projects: [.. profile.Projects.Select(p => new TailoredCvProject(
-                p.Name, p.Url, p.StartMonth, p.EndMonth, Bullets(p.Bullets), p.Id, Place(p.Location)))],
+                p.Name, p.Url, p.StartMonth, p.EndMonth, Bullets(p.Bullets), p.Id, Place(p.Location), Kind: p.Kind,
+                Technologies: TailoredCvLanguageText.Technologies(p.Skills, profile, language)))],
             Skills: [.. profile.Skills.Select(s => new TailoredCvSkill(s.Skill.NameIn(language), s.Level, s.SkillId, s.Skill.CategoryId))],
             Languages: [.. profile.Languages.Select(l => new TailoredCvLanguage(l.Name, l.Written, l.Spoken))],
             FullName: profile.FullName,

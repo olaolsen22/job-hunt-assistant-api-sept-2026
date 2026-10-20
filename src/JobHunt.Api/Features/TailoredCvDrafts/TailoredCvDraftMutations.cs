@@ -10,7 +10,7 @@ namespace JobHunt.Api.Features.TailoredCvDrafts;
 public record TailoredCvBulletInput(string Text, int? SourceBulletId = null);
 public record TailoredCvExperienceInput(string Employer, string Title, DateOnly? StartMonth, DateOnly? EndMonth,
     List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null, string? Location = null,
-    string? Paragraph = null);
+    string? Paragraph = null, List<string>? Technologies = null);
 public record TailoredCvEducationInput(string School, string? Degree, string? Field, DateOnly? StartMonth,
     DateOnly? EndMonth, List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null, string? Location = null,
     string? Paragraph = null);
@@ -19,7 +19,7 @@ public record TailoredCvCertificationInput(string Name, string? Issuer, DateOnly
     string? Paragraph = null);
 public record TailoredCvProjectInput(string Name, string? Url, DateOnly? StartMonth, DateOnly? EndMonth,
     List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null, string? Location = null,
-    string? Paragraph = null);
+    string? Paragraph = null, ProjectKind? Kind = null, List<string>? Technologies = null);
 public record TailoredCvSkillInput(string Name, int? Level, int? SourceSkillId = null, int? CategoryId = null);
 public record TailoredCvLanguageInput(string Name, LanguageProficiency? Written, LanguageProficiency? Spoken);
 // A null Language means the listing's posting language, or English when the listing has none.

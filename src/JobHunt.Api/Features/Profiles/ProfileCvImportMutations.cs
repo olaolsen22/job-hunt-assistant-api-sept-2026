@@ -111,8 +111,9 @@ public static class ProfileCvImportMutations
                 var entry = input.Id is { } id ? profile.Projects.FirstOrDefault(e => e.Id == id)
                     ?? throw new ProfileEntryNotFoundException("Project", id)
                     : new ProfileProject { UserId = profile.UserId, ProfileId = profile.Id };
+                // The import format has no kind: an updated project keeps the one the user chose.
                 await ProfileEntryMutations.ApplyAsync(entry, input.Name, input.Url, input.Location,
-                    input.StartMonth, input.EndMonth, input.SkillNames ?? [], db, ct);
+                    input.StartMonth, input.EndMonth, entry.Kind, input.SkillNames ?? [], db, ct);
                 ApplyBullets(entry.Bullets, input.Bullets, profile.UserId, path);
                 if (input.Id is null) db.ProfileProjects.Add(entry);
             }

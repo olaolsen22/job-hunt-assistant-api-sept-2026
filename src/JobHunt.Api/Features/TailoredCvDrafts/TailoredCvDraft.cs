@@ -55,9 +55,10 @@ public record TailoredCvBullet(string Text, int? SourceBulletId = null);
 // One style for the whole CV, so entries print consistently: as bullets or as one paragraph each.
 public enum TailoredCvContentStyle { Bullets, Paragraph }
 // Location is display text such as "Lagos, Nigeria"; the guidance favours City, Country for foreign roles.
+// Technologies are the names printed under the entry in the developer order: where the skills were used.
 public record TailoredCvExperience(string Employer, string Title, DateOnly? StartMonth, DateOnly? EndMonth,
     List<TailoredCvBullet> Bullets, int? SourceEntryId = null, string? Location = null,
-    string? Paragraph = null);
+    string? Paragraph = null, List<string>? Technologies = null);
 public record TailoredCvEducation(string School, string? Degree, string? Field, DateOnly? StartMonth,
     DateOnly? EndMonth, List<TailoredCvBullet> Bullets, int? SourceEntryId = null, string? Location = null,
     string? Paragraph = null);
@@ -66,7 +67,7 @@ public record TailoredCvCertification(string Name, string? Issuer, DateOnly? Iss
     string? Paragraph = null);
 public record TailoredCvProject(string Name, string? Url, DateOnly? StartMonth, DateOnly? EndMonth,
     List<TailoredCvBullet> Bullets, int? SourceEntryId = null, string? Location = null,
-    string? Paragraph = null);
+    string? Paragraph = null, ProjectKind? Kind = null, List<string>? Technologies = null);
 // CategoryId is copied from the skill lookup so one CV can override it; the PDF reads the category's current name,
 // so renaming a category updates every draft. List order is relevance order and prints as is.
 public record TailoredCvSkill(string Name, int? Level, int? SourceSkillId = null, int? CategoryId = null);

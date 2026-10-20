@@ -15,7 +15,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
     private const string Analyze = """
         mutation ($listingId: Int!, $section: TailoredCvSection!, $sourceEntryId: Int) {
           analyzeTailoredCvSection(input: { listingId: $listingId, section: $section, sourceEntryId: $sourceEntryId }) {
-            result { status section sourceEntryId selectedBulletIds selectedSkillIds summary paragraph error }
+            result { status section sourceEntryId selectedBulletIds selectedSkillIds summary paragraph technologies error }
             errors { __typename ... on Error { message } }
           }
         }
@@ -62,6 +62,8 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
         Assert.Equal(new[] { bulletId }, result.GetProperty("selectedBulletIds").EnumerateArray().Select(v => v.GetInt32()));
         Assert.Equal("Built the React service and improved reliability.", result.GetProperty("paragraph").GetString());
+        // No technologySkillIds in the answer: no suggestion, so the UI keeps the entry's list.
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("technologies").ValueKind);
         var prompt = string.Join("\n", factory.Llm.LastMessages.Select(m => m.Text));
         Assert.Contains("Allowed Employer", prompt);
         Assert.Contains("Build React services", prompt);
@@ -153,6 +155,8 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Equal("Graduated with honors.", result.GetProperty("paragraph").GetString());
         Assert.Equal(new[] { bulletId }, result.GetProperty("selectedBulletIds").EnumerateArray().Select(v => v.GetInt32()));
         Assert.Contains("Allowed School", string.Join("\n", factory.Llm.LastMessages.Select(m => m.Text)));
+        Assert.Contains("always select at least its most relevant one", factory.Llm.LastMessages[0].Text);
+        Assert.Contains("never drop them", factory.Llm.LastMessages[0].Text);
     }
 
     [Fact]
@@ -173,6 +177,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
 
         Assert.Equal(new[] { second, first }, result.GetProperty("selectedSkillIds").EnumerateArray().Select(v => v.GetInt32()));
         Assert.Contains("most relevant first", factory.Llm.LastMessages[0].Text);
+        Assert.Contains("\"usedInWork\":false,\"usedInProjects\":false", factory.Llm.LastMessages[1].Text);
     }
 
     [Fact]
@@ -205,6 +210,12 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
               }
             }
             """);
+        await ProfileEntryTests.AddExperienceAsync(client, employer: "Summary Context Employer", start: "2019-04-01");
+        await client.GraphQLAsync("""
+            mutation { addProfileEducation(input: { school: "Summary Context School", startMonth: "2015-08-01", endMonth: "2018-06-01" }) {
+              profileEducation { id }
+            } }
+            """);
         var listingId = await CreateListingAsync(client, "Vue developer", "Build Vue applications", ["Vue"]);
         factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant,
             "{\"summary\":\"Frontend developer focused on Vue applications.\"}"));
@@ -214,6 +225,10 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
         Assert.Equal("Frontend developer focused on Vue applications.", result.GetProperty("summary").GetString());
         Assert.Contains("Builds Vue applications", string.Join("\n", factory.Llm.LastMessages.Select(m => m.Text)));
+        Assert.Contains("\"employer\":\"Summary Context Employer\",\"startMonth\":\"2019-04-01\"", factory.Llm.LastMessages[1].Text);
+        Assert.Contains("Summary Context School", factory.Llm.LastMessages[1].Text);
+        Assert.Contains("years alone are not", factory.Llm.LastMessages[0].Text);
+        Assert.Contains("never claim it", factory.Llm.LastMessages[0].Text);
     }
 
     [Fact]
@@ -240,6 +255,110 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Contains("Write in Norwegian (bokmål)", messages);
         Assert.Contains("Bygger Vue-applikasjoner", messages);
         Assert.DoesNotContain("Builds Vue applications", messages);
+    }
+
+    [Fact]
+    public async Task ExperienceAnalysis_NorwegianListing_SendsTranslatedBulletsAndAsksForNorwegianParagraph()
+    {
+        var client = await factory.GetGuestClientAsync();
+        var experience = await ProfileEntryTests.AddExperienceAsync(client, employer: "Paragraph Employer", skills: []);
+        var entryId = experience.GetProperty("id").GetInt32();
+        var bulletId = (await client.GraphQLAsync("""
+            mutation ($entryId: Int!) {
+              addProfileBullet(input: { kind: EXPERIENCE, entryId: $entryId, text: "Built payment services" }) { profileBullet { id } }
+            }
+            """, new { entryId })).GetProperty("addProfileBullet").GetProperty("profileBullet").GetProperty("id").GetInt32();
+        await client.GraphQLAsync("""
+            mutation ($bulletId: Int!) {
+              setProfileBulletTranslation(input: { bulletId: $bulletId, language: NORWEGIAN, text: "Bygde betalingstjenester" }) {
+                profileBulletTranslation { id }
+              }
+            }
+            """, new { bulletId });
+        var listingId = await CreateListingAsync(client, "Utvikler", "Bygg betalingstjenester", [], "NORWEGIAN");
+        factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant,
+            $$"""{"selectedBulletIds":[{{bulletId}}],"paragraph":"Bygde betalingstjenester."}"""));
+
+        var result = (await AnalyzeAsync(client, listingId, "EXPERIENCE", entryId)).GetProperty("result");
+
+        Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
+        Assert.Equal(new[] { bulletId }, result.GetProperty("selectedBulletIds").EnumerateArray().Select(v => v.GetInt32()));
+        Assert.Contains("Write the paragraph in Norwegian (bokmål)", factory.Llm.LastMessages[0].Text.ReplaceLineEndings(" "));
+        Assert.Contains("Bygde betalingstjenester", factory.Llm.LastMessages[1].Text);
+        Assert.DoesNotContain("Built payment services", factory.Llm.LastMessages[1].Text);
+    }
+
+    [Fact]
+    public async Task ExperienceAnalysis_ReturnsChosenTechnologiesInTheDraftLanguage_OnlyFromTheEntry()
+    {
+        var client = await factory.GetGuestClientAsync();
+        var g = Guid.NewGuid().ToString("N");
+        var experience = await ProfileEntryTests.AddExperienceAsync(client, employer: $"Tech {g}", skills: [$"Unit{g}", $"Docker{g}"]);
+        var entryId = experience.GetProperty("id").GetInt32();
+        await ProfileEntryTests.AddExperienceAsync(client, employer: $"Other {g}", skills: [$"Other{g}"]);
+        var skills = (await client.GraphQLAsync("{ profile { experiences { skills { id name } } } }"))
+            .GetProperty("profile").GetProperty("experiences").EnumerateArray()
+            .SelectMany(e => e.GetProperty("skills").EnumerateArray()).DistinctBy(s => s.GetProperty("id").GetInt32())
+            .ToDictionary(s => s.GetProperty("name").GetString()!, s => s.GetProperty("id").GetInt32());
+        await client.GraphQLAsync("""
+            mutation ($skillId: Int!, $name: String!) {
+              setSkillTranslation(input: { skillId: $skillId, language: NORWEGIAN, name: $name }) { skill { id } }
+            }
+            """, new { skillId = skills[$"Unit{g}"], name = $"Enhet{g}" });
+        var otherSkillId = skills[$"Other{g}"];
+        var listingId = await CreateListingAsync(client, "Utvikler", "Bygg tjenester", [], "NORWEGIAN");
+
+        factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant,
+            $$"""{"selectedBulletIds":[],"paragraph":null,"technologySkillIds":[{{skills[$"Unit{g}"]}}]}"""));
+        var result = (await AnalyzeAsync(client, listingId, "EXPERIENCE", entryId)).GetProperty("result");
+
+        Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
+        Assert.Equal([$"Enhet{g}"], result.GetProperty("technologies").EnumerateArray().Select(t => t.GetString()));
+        Assert.Contains("technologySkillIds", factory.Llm.LastMessages[0].Text);
+        Assert.Contains($"Enhet{g}", factory.Llm.LastMessages[1].Text);
+
+        factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant,
+            $$"""{"selectedBulletIds":[],"paragraph":null,"technologySkillIds":[{{otherSkillId}}]}"""));
+        var foreign = (await AnalyzeAsync(client, listingId, "EXPERIENCE", entryId)).GetProperty("result");
+
+        Assert.Equal("FAILED", foreign.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task ExternalPreview_FillsMissingProjectKindAndTechnologiesFromTheSourceProject()
+    {
+        var client = await factory.GetGuestClientAsync();
+        var skill = $"Preview{Guid.NewGuid():N}";
+        var projectId = (await client.GraphQLAsync("""
+            mutation ($skill: String!) { addProfileProject(input: { name: "Preview kind", kind: PERSONAL, skillNames: [$skill] }) { profileProject { id } } }
+            """, new { skill })).GetProperty("addProfileProject").GetProperty("profileProject").GetProperty("id").GetInt32();
+        var listingId = await CreateListingAsync(client, "Developer", "Build software", []);
+        var json = JsonSerializer.Serialize(new
+        {
+            schemaVersion = 1,
+            content = new
+            {
+                projects = new object[]
+                {
+                    new { sourceEntryId = projectId, name = "Preview kind", bullets = Array.Empty<object>() },
+                    new { sourceEntryId = projectId, name = "Preview kind", technologies = Array.Empty<string>(), bullets = Array.Empty<object>() },
+                },
+            },
+        });
+
+        var payload = (await client.GraphQLAsync("""
+            mutation ($listingId: Int!, $json: String!) {
+              previewTailoredCvDraft(input: { listingId: $listingId, json: $json }) {
+                candidate { content { projects { kind technologies } } } errors { __typename }
+              }
+            }
+            """, new { listingId, json })).GetProperty("previewTailoredCvDraft");
+
+        var projects = payload.GetProperty("candidate").GetProperty("content").GetProperty("projects");
+        Assert.Equal("PERSONAL", projects[0].GetProperty("kind").GetString());
+        Assert.Equal([skill], projects[0].GetProperty("technologies").EnumerateArray().Select(t => t.GetString()));
+        // An empty list was the model's choice, not an omission.
+        Assert.Equal(0, projects[1].GetProperty("technologies").GetArrayLength());
     }
 
     [Fact]
@@ -318,6 +437,12 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Contains("https://tailored-cv-analysis.example/", instructions);
         Assert.Contains("open its url", instructions);
         Assert.Contains("core professional", instructions);
+        Assert.Contains("complete timeline", instructions);
+        Assert.Contains("never leave paragraph null", instructions);
+        Assert.Contains("such as Norwegian", instructions);
+        Assert.Contains("every paragraph in that", instructions);
+        Assert.Contains("do not turn \"helped\" into \"led\"", instructions);
+        Assert.Contains("never claim it", instructions);
         Assert.True(instructions.IndexOf("Go developer", StringComparison.Ordinal)
             < instructions.IndexOf("Prompt Employer", StringComparison.Ordinal));
         Assert.DoesNotContain("PRIVATE_", instructions, StringComparison.Ordinal);

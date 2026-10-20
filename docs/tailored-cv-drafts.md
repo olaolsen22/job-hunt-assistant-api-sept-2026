@@ -33,11 +33,12 @@ query ($listingId: Int!) {
         location
         startMonth
         endMonth
+        technologies
         bullets { sourceBulletId text }
       }
       educations { sourceEntryId school degree field location startMonth endMonth bullets { sourceBulletId text } }
       certifications { sourceEntryId name issuer issuedMonth expiresMonth url bullets { sourceBulletId text } }
-      projects { sourceEntryId name url location startMonth endMonth bullets { sourceBulletId text } }
+      projects { sourceEntryId name kind url location startMonth endMonth technologies bullets { sourceBulletId text } }
       skills { sourceSkillId name level }
       languages { name written spoken }
     }
@@ -50,7 +51,10 @@ The query returns `null` when the listing has no draft or is not owned by the si
 `language` (`ENGLISH`/`NORWEGIAN`) decides the PDF's headings, contact labels, and date words. Saving with
 `language: null` uses the listing's `postingLanguage`, or English when it has none. Norwegian follows NAV's CV:
 E-post / Telefon / Adresse / Fødselsdato, then Sammendrag, Arbeidsforhold, Utdanning, Kurs og sertifiseringer,
-Prosjekter, Språk, Kompetanser, Lenker, Referanser; dates read `Juni 2015 - Nåværende`. Languages use NAV's
+Prosjekter, Språk, Kompetanser, Lenker, Referanser; dates read `Juni 2015 - Nåværende`. A certification shows
+validity, not a period: `Mai 2022, gyldig til Mai 2025` / `May 2022, valid until May 2025`, or `Gyldig til …`
+alone. A project's `kind` (`WORK`, `PERSONAL`, `COURSEWORK`, `OPEN_SOURCE`, from the profile project) prints
+where an experience shows its employer: `Personlig prosjekt | Oslo, Norge`. Languages use NAV's
 written/spoken scale (`BEGINNER`, `GOOD`, `VERY_GOOD`, `NATIVE`). `referencesOnRequest` adds a closing
 "Referanser: Oppgis ved forespørsel." line. Entry `location` is display text such as `Lagos, Nigeria`.
 The UI fills draft bullets/summary from profile translations in the draft language where they exist; both
@@ -64,9 +68,19 @@ toggle (e.g. "Developer layout"); neither AI path sets it.
 | `STANDARD` | Summary, experience, education, courses/certifications, projects, languages, skills, links, references |
 | `DEVELOPER` | Links as labelled contact lines (`GitHub: https://…`, no Links heading), summary, skills, experience, projects, education, courses/certifications, languages, references |
 
+`DEVELOPER` also uses the IT headings `Teknisk kompetanse` / `Technical skills` and `Utvalgte prosjekter` /
+`Selected projects`, and prints each experience's and project's `technologies` as a labelled line under its
+title lines (`Teknologier: C#, ASP.NET Core`). `STANDARD` ignores `technologies`. The profile prefill fills
+`technologies` with every skill tagged on the entry (draft language, higher profile level first); analysis or
+the user trims it to what the listing needs. On save, `null` stays `null`.
+
 AI suggestions keep the candidate's own wording: summaries start from the profile headline/summary and
 paragraphs match the voice of the selected bullets, with preference for bullets that show contribution and
-results. Formatting rationale: [norwegian-cv-formatting.md](norwegian-cv-formatting.md).
+results. Both AI paths write paragraphs and the summary in the draft language from translated bullets, add no
+metrics, keep claims as strong as their source (team vs own part, no "helped" → "led"), claim no seniority or
+management the job titles don't show, and never imply a missing listing skill through a similar tool: the real
+adjacent evidence appears under its own name. Norwegian IT CV research: content (19 Oct 2026) and skills
+guide (20 Oct 2026). Formatting rationale: [norwegian-cv-formatting.md](norwegian-cv-formatting.md).
 
 ## Analyze a draft with the API key
 
@@ -75,13 +89,15 @@ The API can analyze one profile section at a time. For work experience, educatio
 ```graphql
 mutation ($input: AnalyzeTailoredCvSectionInput!) {
   analyzeTailoredCvSection(input: $input) {
-    result { status section sourceEntryId selectedBulletIds selectedSkillIds summary error }
+    result { status section sourceEntryId selectedBulletIds selectedSkillIds summary paragraph technologies error }
     errors { __typename ... on Error { message } }
   }
 }
 ```
 
-Sections are `EXPERIENCE`, `EDUCATION`, `PROJECT`, `SKILLS`, and `SUMMARY`. `analyzeAllTailoredCv(input:{listingId, model})` runs one request per work experience, then each education entry, then each project, followed by skills and summary; it returns a result for each section. Both analysis mutations accept an optional `model` selection ID from `llmModels`; omitted uses the effective default. Each attempted call is logged against its actual provider and credential. AI analysis does not save the draft.
+Sections are `EXPERIENCE`, `EDUCATION`, `PROJECT`, `SKILLS`, and `SUMMARY`. Experience and project results
+also carry `technologies`: the entry's own skills (draft-language names, most relevant first) the model chose
+for the listing; `null` means no suggestion, so keep the entry's current list. `analyzeAllTailoredCv(input:{listingId, model})` runs one request per work experience, then each education entry, then each project, followed by skills and summary; it returns a result for each section. Both analysis mutations accept an optional `model` selection ID from `llmModels`; omitted uses the effective default. Each attempted call is logged against its actual provider and credential. AI analysis does not save the draft.
 
 Configure personal keys through the [provider-key API](llm-provider-keys.md). Credential rejection, rate limiting, timeout, and provider errors return readable failed section results; no automatic key/provider fallback occurs. The UI can prompt users to switch models or update/remove the key. Shared Gemini is used only when a Gemini selection has no personal Gemini key.
 
@@ -100,7 +116,8 @@ mutation ($input: PreviewTailoredCvDraftInput!) {
 }
 ```
 
-The preview validates JSON shape and that source IDs belong to the signed-in user's profile. It returns normalized candidate content without writing anything. The UI displays the candidate for review/editing; only the explicit `saveTailoredCvDraft` mutation above persists it. Pasted JSON is never stored.
+The preview validates JSON shape and that source IDs belong to the signed-in user's profile. A project's
+missing `kind` and an entry's missing `technologies` are filled from its source entry (`[]` is kept). It returns normalized candidate content without writing anything. The UI displays the candidate for review/editing; only the explicit `saveTailoredCvDraft` mutation above persists it. Pasted JSON is never stored.
 
 ## Save or replace the draft
 
@@ -121,4 +138,4 @@ Send the complete edited candidate in `content`, including contact fields the us
 
 ## Selection guidance
 
-Skills analysis returns listing-relevant skills plus the candidate's core professional stack (about 12-20), not only listing keywords. All sections are told to surface supported evidence of themes the listing emphasises (for example AI-powered features), and the summary sees experience and project bullets. The external prompt (version 9) puts the listing, including its `url`, first and asks a browsing-capable AI to read the full posting when the stored listing is incomplete.
+Skills analysis returns listing-relevant skills plus the candidate's core professional stack (usually about 12-20), not only listing keywords; it sees whether each skill was used in work (`usedInWork`) or projects (`usedInProjects`), keeps foundational skills such as Git, SQL, testing and CI/CD when the listing wants them, and includes an unused skill only when the listing asks for it. All sections are told to surface supported evidence of themes the listing emphasises (for example AI-powered features), keeping AI tool use apart from building AI features. Bullet selection prefers the kind of work the listing emphasises (API, platform, senior). The summary sees experience (with employer and dates), education and project bullets. The external prompt (version 11) puts the listing, including its `url`, first and asks a browsing-capable AI to read the full posting when the stored listing is incomplete.

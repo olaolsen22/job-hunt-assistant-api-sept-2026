@@ -13,7 +13,7 @@ public record TailoredCvExternalPrompt(int Version, string Instructions);
 [QueryType]
 public static class TailoredCvExternalPromptQueries
 {
-    public const int Version = 10;
+    public const int Version = 11;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseUpper, allowIntegerValues: false) },
@@ -54,7 +54,7 @@ public static class TailoredCvExternalPromptQueries
                 {
                     e.Id, e.Employer, e.Title, e.StartMonth, e.EndMonth,
                     Location = e.Location is { } l ? new { l.City, l.CountryCode } : null,
-                    Skills = e.Skills.Select(s => s.Name),
+                    Skills = e.Skills.Select(s => s.NameIn(language)),
                     Bullets = e.Bullets.Select(b => new { b.Id, Text = BulletText(b) }),
                 }),
                 Educations = profile.Educations.Select(e => new
@@ -70,9 +70,9 @@ public static class TailoredCvExternalPromptQueries
                 }),
                 Projects = profile.Projects.Select(e => new
                 {
-                    e.Id, e.Name, e.Url, e.StartMonth, e.EndMonth,
+                    e.Id, e.Name, e.Kind, e.Url, e.StartMonth, e.EndMonth,
                     Location = e.Location is { } l ? new { l.City, l.CountryCode } : null,
-                    Skills = e.Skills.Select(s => s.Name),
+                    Skills = e.Skills.Select(s => s.NameIn(language)),
                     Bullets = e.Bullets.Select(b => new { b.Id, Text = BulletText(b) }),
                 }),
                 Skills = profile.Skills.Select(s => new { Id = s.SkillId, Name = s.Skill.NameIn(language), s.Level, s.Skill.CategoryId }),
@@ -101,27 +101,31 @@ public static class TailoredCvExternalPromptQueries
             For experience, education, certification, and project bullets, include their sourceEntryId and sourceBulletId
             and preserve the exact original bullet text. For every experience, education, certification, and project
             with selected bullets, also return a concise natural paragraph based only on those bullet facts; rephrase or
-            combine facts, but do not infer facts or invent achievements. Set content.contentStyle to BULLETS by
-            default so the user can choose the presentation for the whole CV. Omit irrelevant entries and bullets. Do not present the
+            combine facts, but do not infer facts or invent achievements; never leave paragraph null on an entry
+            with selected bullets. {{TailoredCvAnalyzer.ListingTermGuidance}} Set content.contentStyle to BULLETS by default so the user can choose the
+            presentation for the whole CV. {{TailoredCvAnalyzer.CoverageGuidance}} {{TailoredCvAnalyzer.LanguageEvidenceGuidance}}
+            Omit irrelevant bullets, and projects or certifications that are irrelevant. Do not present the
             same work in full under both an experience and a project, and never present a personal or school project
-            as employment. Select profile skills by sourceSkillId: {{TailoredCvAnalyzer.SkillSelectionGuidance}}
+            as employment. Copy each project's kind from the profile (null when it has none). For every experience and
+            project, set "technologies" to the names, exactly as supplied in its skills, of {{TailoredCvAnalyzer.TechnologiesGuidance}} Select profile skills by sourceSkillId: {{TailoredCvAnalyzer.SkillSelectionGuidance}}
             Copy each skill's categoryId from the
             profile; only when it is null, suggest one using the rule below. Include languages
             only when present in the profile. Write a concise listing-specific summary from supported profile facts,
             starting from the profile's own headline and summary and adjusting their emphasis rather than rewriting them,
-            or null when there is not enough evidence. {{TailoredCvAnalyzer.VoiceGuidance}} This applies to the summary
-            and paragraphs. Follow Norwegian CV guidance for an ordinary job application. {{TailoredCvAnalyzer.BulletSelectionGuidance}}
+            or null when there is not enough evidence. {{TailoredCvAnalyzer.SeniorityGuidance}}
+            For the summary and paragraphs: {{TailoredCvAnalyzer.VoiceGuidance}} {{TailoredCvAnalyzer.HonestClaimsGuidance}}
+            {{TailoredCvAnalyzer.GapGuidance}} Follow Norwegian CV guidance for an ordinary job application. {{TailoredCvAnalyzer.BulletSelectionGuidance}}
             Order experiences, educations, certifications, and projects newest first (ongoing entries first). The CV language is {{TailoredCvLanguageText.Name(language)}}:
-            set "language" to "{{(language == Language.Norwegian ? "NORWEGIAN" : "ENGLISH")}}" and write the summary in that language as 2-3 short
-            sentences of plain text without Markdown, at most 280 characters so it fits three lines, reusing the listing's terminology only where the profile supports it.
+            set "language" to "{{(language == Language.Norwegian ? "NORWEGIAN" : "ENGLISH")}}" and write the summary and every paragraph in that
+            language, the summary as 2-3 short sentences of plain text without Markdown, at most 280 characters so it fits three lines, reusing the listing's terminology only where the profile supports it.
             Copy bullet text exactly as supplied even if it is in another language; the user translates it in the UI.
             For an entry with a location, set "location" to "City, Country" with the country name in the CV language,
             or just the country when the city is null. Copy language names and written/spoken levels from the profile.
             Skill categoryId: the id of the profile's skillCategories entry whose name and description fit the skill,
             or null for anything that fits none (licences, certifications, trade and service skills) and when unsure.
             Never invent category ids.
-            Do not output full name, contact details, location, links, references, date of birth, nationality, work
-            authorization, hobbies, or job-search preferences. The user fills contact fields in the UI.
+            Do not output the candidate's full name, contact details, home address, links, references, date of birth,
+            nationality, work authorization, hobbies, or job-search preferences. The user fills contact fields in the UI.
 
             Required JSON shape:
             {
@@ -130,10 +134,10 @@ public static class TailoredCvExternalPromptQueries
                 "language": "ENGLISH",
                 "contentStyle": "BULLETS",
                 "summary": null,
-                "experiences": [{"sourceEntryId": 1, "employer": "Example", "title": "Developer", "location": "Lagos, Nigeria", "startMonth": "2024-01-01", "endMonth": null, "paragraph": "Concise paragraph based only on the selected bullet facts.", "bullets": [{"sourceBulletId": 2, "text": "Original profile bullet"}]}],
+                "experiences": [{"sourceEntryId": 1, "employer": "Example", "title": "Developer", "location": "Lagos, Nigeria", "startMonth": "2024-01-01", "endMonth": null, "paragraph": "Concise paragraph based only on the selected bullet facts.", "technologies": ["TypeScript"], "bullets": [{"sourceBulletId": 2, "text": "Original profile bullet"}]}],
                 "educations": [{"sourceEntryId": 3, "school": "Example University", "degree": "MSc", "field": "Computer Science", "location": null, "startMonth": "2020-01-01", "endMonth": "2022-01-01", "paragraph": null, "bullets": []}],
                 "certifications": [{"sourceEntryId": 4, "name": "Certification", "issuer": "Issuer", "issuedMonth": "2024-01-01", "expiresMonth": null, "url": null, "paragraph": null, "bullets": []}],
-                "projects": [{"sourceEntryId": 5, "name": "Project", "url": null, "location": null, "startMonth": null, "endMonth": null, "paragraph": null, "bullets": []}],
+                "projects": [{"sourceEntryId": 5, "name": "Project", "kind": "PERSONAL", "url": null, "location": null, "startMonth": null, "endMonth": null, "paragraph": null, "technologies": [], "bullets": []}],
                 "skills": [{"sourceSkillId": 6, "name": "TypeScript", "level": 5, "categoryId": 7}],
                 "languages": [{"name": "English", "written": "NATIVE", "spoken": "NATIVE"}]
               }

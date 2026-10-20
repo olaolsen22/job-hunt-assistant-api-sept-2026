@@ -4,6 +4,7 @@ using System.Text.Json;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Profiles;
+using JobHunt.Api.Features.Skills;
 using Microsoft.EntityFrameworkCore;
 using Location = JobHunt.Api.Features.Locations.Location;
 
@@ -29,7 +30,7 @@ public static class TailoredCvDraftValidation
         var content = new TailoredCvContent(input.Summary?.Trim(),
             input.Experiences?.Select(e => new TailoredCvExperience(CleanRequired(e.Employer), CleanRequired(e.Title), e.StartMonth,
                 e.EndMonth, (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
-                CleanOptional(e.Location), CleanOptional(e.Paragraph))).ToList(),
+                CleanOptional(e.Location), CleanOptional(e.Paragraph), CleanNames(e.Technologies))).ToList(),
             input.Educations?.Select(e => new TailoredCvEducation(CleanRequired(e.School), CleanOptional(e.Degree), CleanOptional(e.Field),
                 e.StartMonth, e.EndMonth, (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
                 CleanOptional(e.Location), CleanOptional(e.Paragraph))).ToList(),
@@ -38,7 +39,7 @@ public static class TailoredCvDraftValidation
                 CleanOptional(e.Paragraph))).ToList(),
             input.Projects?.Select(e => new TailoredCvProject(CleanRequired(e.Name), CleanOptional(e.Url), e.StartMonth, e.EndMonth,
                 (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
-                CleanOptional(e.Location), CleanOptional(e.Paragraph))).ToList(),
+                CleanOptional(e.Location), CleanOptional(e.Paragraph), e.Kind, CleanNames(e.Technologies))).ToList(),
             input.Skills?.Select(s => new TailoredCvSkill(CleanRequired(s.Name), s.Level, s.SourceSkillId, s.CategoryId)).ToList(),
             input.Languages?.Select(l => new TailoredCvLanguage(CleanRequired(l.Name), l.Written, l.Spoken)).ToList(),
             CleanOptional(input.FullName), CleanOptional(input.Headline), CleanOptional(input.Email), CleanOptional(input.Phone), CleanOptional(input.Address),
@@ -187,6 +188,28 @@ public static class TailoredCvDraftValidation
         };
     }
 
+    // Only for the external preview: the model may leave out details it was told to copy. On save, null is the
+    // user's choice and stays.
+    public static async Task<TailoredCvContent> FillMissingSourceDetailsAsync(TailoredCvContent content,
+        AppDbContext db, CancellationToken ct)
+    {
+        if (!(content.Experiences ?? []).Any(e => e.SourceEntryId is not null && e.Technologies is null)
+            && !(content.Projects ?? []).Any(p => p.SourceEntryId is not null && (p.Kind is null || p.Technologies is null)))
+            return content;
+        var profile = await ProfileQueries.LoadAsync(db, ct);
+        var experiences = profile.Experiences.ToDictionary(e => e.Id);
+        var projects = profile.Projects.ToDictionary(p => p.Id);
+        List<string> Technologies(List<Skill> skills) =>
+            TailoredCvLanguageText.Technologies(skills, profile, content.Language);
+        return content with
+        {
+            Experiences = content.Experiences?.Select(e => e.Technologies is null && e.SourceEntryId is { } id
+                && experiences.GetValueOrDefault(id) is { } source ? e with { Technologies = Technologies(source.Skills) } : e).ToList(),
+            Projects = content.Projects?.Select(p => p.SourceEntryId is { } id && projects.GetValueOrDefault(id) is { } source
+                ? p with { Kind = p.Kind ?? source.Kind, Technologies = p.Technologies ?? Technologies(source.Skills) } : p).ToList(),
+        };
+    }
+
     // "City, Country" per the CV guidance (docs/norwegian-cv-formatting.md).
     internal static string FormatPlace(Location location, Language language)
     {
@@ -220,6 +243,11 @@ public static class TailoredCvDraftValidation
         ValidateFields(c.Educations?.SelectMany(e => new[] { e.School, e.Degree, e.Field, e.Location }), "educations");
         ValidateFields(c.Certifications?.SelectMany(e => new[] { e.Name, e.Issuer }), "certifications");
         ValidateFields(c.Projects?.SelectMany(e => new[] { e.Name, e.Location }), "projects");
+        // Same cap as the skills list: a prefill can hold every skill tagged on an entry.
+        foreach (var e in c.Experiences ?? []) Limit(e.Technologies, MaxSkills, "experiences.technologies");
+        foreach (var e in c.Projects ?? []) Limit(e.Technologies, MaxSkills, "projects.technologies");
+        ValidateFields(c.Experiences?.SelectMany(e => e.Technologies ?? []), "experiences.technologies");
+        ValidateFields(c.Projects?.SelectMany(e => e.Technologies ?? []), "projects.technologies");
         ValidateFields(c.Skills?.Select(s => s.Name), "skills");
         if (c.Languages?.Any(l => Blank(l.Name) || l.Name.Length > ProfileLanguage.MaxNameLength) == true)
             throw Invalid("languages", $"name is required and at most {ProfileLanguage.MaxNameLength} characters");
@@ -290,6 +318,8 @@ public static class TailoredCvDraftValidation
     }
 
     private static string CleanRequired(string? value) => value?.Trim() ?? "";
+    private static List<string>? CleanNames(List<string>? values) => values?.Select(v => v?.Trim())
+        .Where(v => !string.IsNullOrEmpty(v)).Select(v => v!).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     private static string? CleanOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     private static bool Blank(string? value) => string.IsNullOrWhiteSpace(value);
     private static InvalidTailoredCvDraftException Invalid(string path, string message) =>

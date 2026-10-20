@@ -1259,6 +1259,9 @@ namespace JobHunt.Api.Migrations
                     b.Property<DateOnly?>("EndMonth")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Kind")
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("LocationId")
                         .HasColumnType("INTEGER");
 
