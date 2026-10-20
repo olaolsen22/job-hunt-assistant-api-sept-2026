@@ -15,7 +15,7 @@ public record ListingParsePrompt(int Version, string Instructions);
 public static partial class ListingParsePromptQueries
 {
     // Bump whenever the prompt or output shape changes; the server-side parse cache keys on it.
-    public const int Version = 12;
+    public const int Version = 13;
 
     // Separate from Version: the quick prompt changes on its own schedule.
     public const int QuickVersion = 7;
@@ -118,12 +118,8 @@ public static partial class ListingParsePromptQueries
                 - …
               Short phrases, not full sentences. Blank line between sections.
 
-            skills: concrete technologies, tools, methods, certifications and licences (e.g. "Truckførerbevis", "Førerkort klasse B").
-              Only names that appear in the posting.
-              Skip personality traits ("team player", "selvgående", "strukturert").
-              Skip broad fields, role areas and generic activities ("Backend Development", "Frontend Development",
-              "API Development", "Fullstack", "Debugging", "Software Development", "systemutvikling"): they describe
-              the job, not a skill. Name the languages, frameworks and tools behind them instead (C#, React, REST).
+            skills: only names that appear in the posting. Prefer a short list of clear skills over every term in the ad.
+            {{SkillRules.Describe("  ")}}
               level, the higher of years and wording:
                 1 basic         "basic knowledge", "grunnleggende kjennskap"
                 2 familiar      < 2 years, "familiarity with", "kjennskap til", "some exposure"
