@@ -39,6 +39,8 @@ public class ProfileSummaryTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
         Assert.Equal("Vue developer who ships.", result.GetProperty("summary").GetString());
         Assert.Equal(ProfileSummaryPromptQueries.Instructions(Language.English, external: false), factory.Llm.LastMessages[0].Text);
+        Assert.Contains("years alone are not seniority", factory.Llm.LastMessages[0].Text);
+        Assert.DoesNotContain("at what level", factory.Llm.LastMessages[0].Text);
         Assert.Contains("Summary Employer", factory.Llm.LastMessages[1].Text);
         Assert.Contains("Old summary", factory.Llm.LastMessages[1].Text);
         Assert.DoesNotContain("Foreign Summary Employer", factory.Llm.LastMessages[1].Text);

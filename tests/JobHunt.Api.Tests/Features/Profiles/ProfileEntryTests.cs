@@ -264,6 +264,23 @@ public class ProfileEntryTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task Project_Kind_IsSetReplacedAndClearedWhenLeftOut()
+    {
+        var client = await factory.GetGuestClientAsync();
+        var id = (await client.GraphQLAsync("""
+            mutation { addProfileProject(input: { name: "Kind project", kind: PERSONAL, skillNames: [] }) { profileProject { id kind } } }
+            """)).GetProperty("addProfileProject").GetProperty("profileProject").GetProperty("id").GetInt32();
+        async Task<JsonElement> UpdateAsync(string kind) => (await client.GraphQLAsync($$"""
+            mutation ($id: Int!) { updateProfileProject(input: { id: $id, name: "Kind project", {{kind}} skillNames: [] }) { profileProject { kind } } }
+            """, new { id })).GetProperty("updateProfileProject").GetProperty("profileProject").GetProperty("kind");
+
+        Assert.Equal("PERSONAL", (await client.GraphQLAsync("{ profile { projects { id kind } } }")).GetProperty("profile")
+            .GetProperty("projects").EnumerateArray().Single(p => p.GetProperty("id").GetInt32() == id).GetProperty("kind").GetString());
+        Assert.Equal("OPEN_SOURCE", (await UpdateAsync("kind: OPEN_SOURCE,")).GetString());
+        Assert.Equal(JsonValueKind.Null, (await UpdateAsync("")).ValueKind);
+    }
+
+    [Fact]
     public async Task Entries_AreOrdered_CurrentFirst_UndatedLast()
     {
         var client = await factory.GetGuestClientAsync();

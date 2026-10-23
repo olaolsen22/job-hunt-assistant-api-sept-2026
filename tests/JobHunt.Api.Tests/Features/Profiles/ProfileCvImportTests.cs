@@ -14,7 +14,7 @@ public class ProfileCvImportTests(ApiFactory factory) : IClassFixture<ApiFactory
             experiences{id employer title startMonth endMonth location{id} skills{name} bullets{id text position translations{isStale text}}}
             educations{id school startMonth bullets{id text position}}
             certifications{id name bullets{id text position}}
-            projects{id name url location{id} skills{name} bullets{id text position translations{isStale text}}}
+            projects{id name kind url location{id} skills{name} bullets{id text position translations{isStale text}}}
             skills{skill{name} level} languages{name written spoken}
             translations{language summary isSummaryStale}
           }
@@ -88,11 +88,16 @@ public class ProfileCvImportTests(ApiFactory factory) : IClassFixture<ApiFactory
         await client.GraphQLAsync("""
             mutation{setProfileTranslation(input:{language:NORWEGIAN,summary:"Sammendrag"}){profileTranslation{language}}}
             """);
+        await client.GraphQLAsync("""
+            mutation($id:Int!,$name:String!){updateProfileProject(input:{id:$id,name:$name,kind:WORK,skillNames:[]}){profileProject{id}}}
+            """, new { id, name });
         var changed = (await Save(new { contentLanguage = "ENGLISH", basics = new { summary = "Updated source summary" },
             projects = new[] { new { id, name = name + " edited", bullets = new object[] { new { id = bulletId, text = "Edited" }, new { text = "Appended" } } } } })).GetProperty("profile");
         var updated = changed.GetProperty("projects").EnumerateArray().Single(p => p.GetProperty("id").GetInt32() == id);
         var bullets = updated.GetProperty("bullets");
         Assert.Equal(3, bullets.GetArrayLength());
+        // The import format has no kind, so re-importing keeps the user's choice.
+        Assert.Equal("WORK", updated.GetProperty("kind").GetString());
         Assert.Equal(bulletId, bullets[0].GetProperty("id").GetInt32());
         Assert.Equal(keepId, bullets[1].GetProperty("id").GetInt32());
         Assert.Equal("Keep", bullets[1].GetProperty("text").GetString());

@@ -119,6 +119,7 @@ builder.Services.AddScoped<ProfileCvParser>();
 builder.Services.AddScoped<SkillCleanupSuggester>();
 builder.Services.AddScoped<ProfileSkillWordingSuggester>();
 builder.Services.AddScoped<ProfileSummarySuggester>();
+builder.Services.AddScoped<ProfileTranslationSuggester>();
 builder.Services.AddScoped<TailoredCvAnalyzer>();
 builder.Services.AddScoped<CoverLetterGenerator>();
 TailoredCvPdfFonts.EnsureRegistered();

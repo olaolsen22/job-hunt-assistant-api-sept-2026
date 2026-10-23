@@ -325,6 +325,74 @@ public class TailoredCvDraftTests(ApiFactory factory) : IClassFixture<ApiFactory
     }
 
     [Fact]
+    public async Task FromProfile_PrefillsProjectKindAndTranslatedTechnologies_StrongestFirst()
+    {
+        var client = await factory.GetGuestClientAsync();
+        var g = Guid.NewGuid().ToString("N");
+        var name = $"Kind {g}";
+        var skills = (await client.GraphQLAsync("""
+            mutation ($name: String!, $skillNames: [String!]!) {
+              addProfileProject(input: { name: $name, kind: COURSEWORK, skillNames: $skillNames }) { profileProject { skills { id name } } }
+            }
+            """, new { name, skillNames = new[] { $"Alpha{g}", $"Beta{g}", $"Gamma{g}" } }))
+            .GetProperty("addProfileProject").GetProperty("profileProject").GetProperty("skills").EnumerateArray()
+            .ToDictionary(s => s.GetProperty("name").GetString()!, s => s.GetProperty("id").GetInt32());
+        await client.GraphQLAsync("""
+            mutation ($name: String!) { setProfileSkill(input: { name: $name, level: 5 }) { profileSkill { level } } }
+            """, new { name = $"Gamma{g}" });
+        await client.GraphQLAsync("""
+            mutation ($skillId: Int!, $name: String!) {
+              setSkillTranslation(input: { skillId: $skillId, language: NORWEGIAN, name: $name }) { skill { id } }
+            }
+            """, new { skillId = skills[$"Alpha{g}"], name = $"Alfa{g}" });
+        var listingId = await CreateListingAsync(client, "NORWEGIAN");
+
+        var data = await client.GraphQLAsync("""
+            query ($listingId: Int!) { tailoredCvDraftFromProfile(listingId: $listingId) { projects { name kind technologies } } }
+            """, new { listingId });
+
+        var project = data.GetProperty("tailoredCvDraftFromProfile").GetProperty("projects").EnumerateArray()
+            .Single(p => p.GetProperty("name").GetString() == name);
+        Assert.Equal("COURSEWORK", project.GetProperty("kind").GetString());
+        Assert.Equal([$"Gamma{g}", $"Alfa{g}", $"Beta{g}"],
+            project.GetProperty("technologies").EnumerateArray().Select(t => t.GetString()));
+    }
+
+    [Fact]
+    public async Task Save_CleansTechnologies_AndKeepsNullAsTheUsersChoice()
+    {
+        var client = await factory.GetGuestClientAsync();
+        var entryId = (await ProfileEntryTests.AddExperienceAsync(client, employer: "Tech Co", skills: ["Go"]))
+            .GetProperty("id").GetInt32();
+        var listingId = await CreateListingAsync(client);
+
+        var data = await client.GraphQLAsync("""
+            mutation ($listingId: Int!, $content: TailoredCvContentInput!) {
+              saveTailoredCvDraft(input: { listingId: $listingId, content: $content }) {
+                tailoredCvDraft { content { experiences { technologies } } }
+                errors { __typename ... on Error { message } }
+              }
+            }
+            """, new
+        {
+            listingId,
+            content = new
+            {
+                experiences = new object[]
+                {
+                    new { employer = "Tech Co", title = "Dev", technologies = new[] { " C# ", "c#", "", ".NET" }, bullets = Array.Empty<object>() },
+                    new { sourceEntryId = entryId, employer = "Tech Co", title = "Dev", bullets = Array.Empty<object>() },
+                },
+            },
+        });
+
+        var experiences = data.GetProperty("saveTailoredCvDraft").GetProperty("tailoredCvDraft")
+            .GetProperty("content").GetProperty("experiences");
+        Assert.Equal(["C#", ".NET"], experiences[0].GetProperty("technologies").EnumerateArray().Select(t => t.GetString()));
+        Assert.Equal(JsonValueKind.Null, experiences[1].GetProperty("technologies").ValueKind);
+    }
+
+    [Fact]
     public async Task FromProfile_RejectsAnotherUsersListing()
     {
         var owner = await factory.GetOwnerClientAsync();

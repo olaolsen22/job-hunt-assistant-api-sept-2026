@@ -10,7 +10,7 @@ public record SkillCleanupPrompt(int Version, string Instructions);
 [QueryType]
 public static class SkillCleanupPromptQueries
 {
-    public const int Version = 4;
+    public const int Version = 5;
 
     public static async Task<SkillCleanupPrompt> GetSkillCleanupPromptAsync(AppDbContext db, CancellationToken ct) =>
         new(Version, $"{Instructions}\n{JsonReply.ExternalCodeBlock}\n\n{await SkillListAsync(db, ct)}");
@@ -60,10 +60,8 @@ public static class SkillCleanupPromptQueries
         the skill's name after your operations. Leave out skills that fit no category (licences, certifications, trade
         and service skills) and skills you are unsure about. Never invent category names or change an existing category.
 
-        Removals: ids of entries that are not skills: broad fields and role areas ("Backend Development",
-        "Frontend Development", "API Development", "Fullstack", "Software Development", "systemutvikling"),
-        generic activities ("Debugging", "Problem solving") and personality traits ("Team player", "Selvgående").
-        Keep concrete technologies, tools, methods, certifications and licences, and real trade or service skills.
+        Removals: ids of entries that are not skills.
+        {{SkillRules.Describe()}}
         reason is one short English phrase. An id in removals must not appear in operations. When unsure, keep it.
 
         Return {"operations": [], "translations": [], "categories": [], "removals": []} when nothing needs a change.

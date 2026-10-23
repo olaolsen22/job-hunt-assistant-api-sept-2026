@@ -148,6 +148,8 @@ type Query {
   profile: Profile! @cost(weight: "10")
   profileSkillWordingPrompt: ProfileSkillWordingPrompt! @cost(weight: "10")
   profileSummaryPrompt: ProfileSummaryPrompt! @cost(weight: "10")
+  profileTranslationPrompt(language: Language!): ProfileTranslationPrompt!
+    @cost(weight: "10")
   skillCategories(
     "Returns the first _n_ elements from the list."
     first: Int
@@ -379,6 +381,10 @@ type Mutation {
     @cost(weight: "10")
   deleteProfileTranslation(input: DeleteProfileTranslationInput!): DeleteProfileTranslationPayload!
     @cost(weight: "10")
+  suggestProfileTranslation(input: SuggestProfileTranslationInput!): SuggestProfileTranslationPayload!
+    @cost(weight: "10")
+  applyProfileTranslation(input: ApplyProfileTranslationInput!): ApplyProfileTranslationPayload!
+    @cost(weight: "10")
   createSkillCategory(input: CreateSkillCategoryInput!): CreateSkillCategoryPayload!
     @cost(weight: "10")
   updateSkillCategory(input: UpdateSkillCategoryInput!): UpdateSkillCategoryPayload!
@@ -488,6 +494,11 @@ type AnalyzeTailoredCvSectionPayload {
 type ApplyProfileSkillWordingPayload {
   profile: Profile
   errors: [ApplyProfileSkillWordingError!]
+}
+
+type ApplyProfileTranslationPayload {
+  profile: Profile
+  errors: [ApplyProfileTranslationError!]
 }
 
 type ApplyToListingPayload {
@@ -1424,6 +1435,7 @@ type ProfileLink {
 type ProfileProject {
   id: Int!
   name: String!
+  kind: ProjectKind
   url: String
   location: Location
   startMonth: LocalDate
@@ -1495,6 +1507,23 @@ type ProfileTranslation {
   isMachine: Boolean!
   isHeadlineStale: Boolean!
   isSummaryStale: Boolean!
+}
+
+type ProfileTranslationDraft {
+  bullets: [ProfileBulletText!]!
+  headline: String
+  summary: String
+}
+
+type ProfileTranslationPrompt {
+  version: Int!
+  instructions: String!
+}
+
+type ProfileTranslationSuggestion {
+  status: ProfileTranslationStatus!
+  translation: ProfileTranslationDraft
+  error: String
 }
 
 type ProviderKeyError implements Error {
@@ -1782,6 +1811,11 @@ type SuggestProfileSummaryPayload {
   errors: [SuggestProfileSummaryError!]
 }
 
+type SuggestProfileTranslationPayload {
+  result: ProfileTranslationSuggestion
+  errors: [SuggestProfileTranslationError!]
+}
+
 type SuggestSkillCleanupPayload {
   result: SkillCleanupSuggestion
   errors: [SuggestSkillCleanupError!]
@@ -1801,6 +1835,7 @@ type TailoredCvAnalysisResult {
   error: String
   errorCode: String
   paragraph: String
+  technologies: [String!]
 }
 
 type TailoredCvBullet {
@@ -1872,6 +1907,7 @@ type TailoredCvExperience {
   sourceEntryId: Int
   location: String
   paragraph: String
+  technologies: [String!]
 }
 
 type TailoredCvExternalCandidate {
@@ -1904,6 +1940,8 @@ type TailoredCvProject {
   sourceEntryId: Int
   location: String
   paragraph: String
+  kind: ProjectKind
+  technologies: [String!]
 }
 
 type TailoredCvSkill {
@@ -2125,6 +2163,10 @@ union ApplyProfileSkillWordingError =
   | ProfileEntryNotFoundError
   | InvalidProfileError
 
+union ApplyProfileTranslationError =
+  | ProfileEntryNotFoundError
+  | InvalidProfileError
+
 union ApplyToListingError =
   | ListingNotFoundError
   | InvalidStatusTransitionError
@@ -2310,6 +2352,11 @@ union SuggestProfileSkillWordingError = UnknownLlmModelError | AiSafetyError
 
 union SuggestProfileSummaryError = UnknownLlmModelError | AiSafetyError
 
+union SuggestProfileTranslationError =
+  | UnknownLlmModelError
+  | AiSafetyError
+  | InvalidProfileError
+
 union SuggestSkillCleanupError = UnknownLlmModelError | AiSafetyError
 
 union UndoStatusChangeError =
@@ -2438,6 +2485,7 @@ input AddProfileProjectInput {
   location: LocationInput
   startMonth: LocalDate
   endMonth: LocalDate
+  kind: ProjectKind
   skillNames: [String!]!
 }
 
@@ -2486,6 +2534,13 @@ input ApplicationStatusOperationFilterInput {
 }
 
 input ApplyProfileSkillWordingInput {
+  bullets: [ProfileBulletTextInput!]!
+  headline: String
+  summary: String
+}
+
+input ApplyProfileTranslationInput {
+  language: Language!
   bullets: [ProfileBulletTextInput!]!
   headline: String
   summary: String
@@ -3550,6 +3605,12 @@ input SuggestProfileSummaryInput {
   requestId: UUID
 }
 
+input SuggestProfileTranslationInput {
+  language: Language!
+  model: String
+  requestId: UUID
+}
+
 input SuggestSkillCleanupInput {
   model: String
   requestId: UUID
@@ -3613,6 +3674,7 @@ input TailoredCvExperienceInput {
   sourceEntryId: Int
   location: String
   paragraph: String
+  technologies: [String!]
 }
 
 input TailoredCvLanguageInput {
@@ -3635,6 +3697,8 @@ input TailoredCvProjectInput {
   sourceEntryId: Int
   location: String
   paragraph: String
+  kind: ProjectKind
+  technologies: [String!]
 }
 
 input TailoredCvSkillInput {
@@ -3778,6 +3842,7 @@ input UpdateProfileProjectInput {
   location: LocationInput
   startMonth: LocalDate
   endMonth: LocalDate
+  kind: ProjectKind
   skillNames: [String!]!
 }
 
@@ -3996,6 +4061,18 @@ enum ProfileSkillWordingStatus {
 enum ProfileSummaryStatus {
   SUCCEEDED
   FAILED
+}
+
+enum ProfileTranslationStatus {
+  SUCCEEDED
+  FAILED
+}
+
+enum ProjectKind {
+  WORK
+  PERSONAL
+  COURSEWORK
+  OPEN_SOURCE
 }
 
 enum Schedule {

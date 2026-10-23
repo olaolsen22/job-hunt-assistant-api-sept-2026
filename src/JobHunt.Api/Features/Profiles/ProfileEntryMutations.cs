@@ -126,11 +126,11 @@ public static class ProfileEntryMutations
     [Error<InvalidLocationException>]
     public static async Task<ProfileProject> AddProfileProjectAsync(
         string name, string? url, LocationInput? location, DateOnly? startMonth, DateOnly? endMonth,
-        List<string> skillNames, AppDbContext db, CancellationToken ct)
+        ProjectKind? kind, List<string> skillNames, AppDbContext db, CancellationToken ct)
     {
         var profile = await db.Profiles.SingleAsync(ct);
         var project = new ProfileProject { UserId = profile.UserId, ProfileId = profile.Id };
-        await ApplyAsync(project, name, url, location, startMonth, endMonth, skillNames, db, ct);
+        await ApplyAsync(project, name, url, location, startMonth, endMonth, kind, skillNames, db, ct);
         db.ProfileProjects.Add(project);
         await db.SaveChangesAsync(ct);
         return project;
@@ -141,11 +141,11 @@ public static class ProfileEntryMutations
     [Error<InvalidLocationException>]
     public static async Task<ProfileProject> UpdateProfileProjectAsync(
         int id, string name, string? url, LocationInput? location, DateOnly? startMonth, DateOnly? endMonth,
-        List<string> skillNames, AppDbContext db, CancellationToken ct)
+        ProjectKind? kind, List<string> skillNames, AppDbContext db, CancellationToken ct)
     {
         var project = await db.ProfileProjects.Include(p => p.Skills).Include(p => p.Bullets).FirstOrDefaultAsync(p => p.Id == id, ct)
             ?? throw new ProfileEntryNotFoundException("Project", id);
-        await ApplyAsync(project, name, url, location, startMonth, endMonth, skillNames, db, ct);
+        await ApplyAsync(project, name, url, location, startMonth, endMonth, kind, skillNames, db, ct);
         await db.SaveChangesAsync(ct);
         ProfileQueries.SortBullets(project.Bullets);
         return project;
@@ -209,10 +209,12 @@ public static class ProfileEntryMutations
 
     internal static async Task ApplyAsync(
         ProfileProject project, string name, string? url, LocationInput? location, DateOnly? startMonth,
-        DateOnly? endMonth, List<string> skillNames, AppDbContext db, CancellationToken ct)
+        DateOnly? endMonth, ProjectKind? kind, List<string> skillNames, AppDbContext db, CancellationToken ct)
     {
         project.Name = Required(name, "Name");
         project.Url = Url(url);
+        // Full replace like location: leaving it out clears it.
+        project.Kind = kind;
         // Full replace, like the profile's own location: leaving it out clears it.
         if (location is null)
             project.LocationId = null;

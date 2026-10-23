@@ -17,7 +17,7 @@ public class ListingParsePromptTests(ApiFactory factory) : IClassFixture<ApiFact
         var guestPrompt = (await guest.GraphQLAsync(query)).GetProperty("listingParsePrompt");
 
         var instructions = ownerPrompt.GetProperty("instructions").GetString()!;
-        Assert.Equal(12, ownerPrompt.GetProperty("version").GetInt32());
+        Assert.Equal(13, ownerPrompt.GetProperty("version").GetInt32());
         Assert.Contains("\"trainingProgram\"", instructions);
         Assert.Contains("\"ON_PASS\"", instructions);
         Assert.Contains("partner companies", instructions);
@@ -37,7 +37,8 @@ public class ListingParsePromptTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Contains("hjemmekontor", instructions, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Sist endret", instructions);
         Assert.Contains("i dag", instructions);
-        Assert.Contains("Only names that appear in the posting", instructions);
+        Assert.Contains("only names that appear in the posting", instructions);
+        Assert.Contains("Grafana, not \"Monitoring\"", instructions);
         Assert.DoesNotContain("Don't guess", instructions);
         Assert.DoesNotContain("Not from years alone", instructions);
         Assert.Contains(jobRole, instructions);

@@ -53,7 +53,7 @@ public class TailoredCvPdfRendererTests
         AssertInOrder(text, "E-post: ola@example.com", "Telefon: +47 123 45 678",
             "Adresse: Storgata 1, 0155 Oslo", "Fødselsdato: 15.06.1990", "Sammendrag");
         foreach (var value in new[] { "Mars 2021 - Nåværende", "Januar 2018 - Februar 2021", "August 2014 - Juni 2018",
-                     "Mai 2022 - Mai 2025", "Januar 2020 - Juni 2020", "Acme AS | Lagos, Nigeria", "MSc, CS",
+                     "Mai 2022, gyldig til Mai 2025", "Januar 2020 - Juni 2020", "Acme AS | Lagos, Nigeria", "MSc, CS",
                      "Oppgis ved forespørsel." })
             Assert.Contains(value, text);
 
@@ -72,7 +72,7 @@ public class TailoredCvPdfRendererTests
             "Languages", "Skills", "Links", "References");
         AssertInOrder(text, "Email: ola@example.com", "Phone: +47 123 45 678",
             "Address: Storgata 1, 0155 Oslo", "Date of birth: 15 June 1990");
-        foreach (var value in new[] { "March 2021 - Present", "January 2018 - February 2021",
+        foreach (var value in new[] { "March 2021 - Present", "January 2018 - February 2021", "May 2022, valid until May 2025",
                      "Written: Native (first language)", "Spoken: Good", "Available on request." })
             Assert.Contains(value, text);
         Assert.Contains("•", text);
@@ -86,9 +86,30 @@ public class TailoredCvPdfRendererTests
     {
         var text = ExtractText(FullDraft(Language.Norwegian) with { SectionOrder = TailoredCvSectionOrder.Developer });
 
-        AssertInOrder(text, "E-post: ola@example.com", "GitHub: https://github.com/ola", "Sammendrag", "Kompetanser",
-            "Arbeidsforhold", "Prosjekter", "Utdanning", "Kurs og sertifiseringer", "Språk", "Referanser");
+        AssertInOrder(text, "E-post: ola@example.com", "GitHub: https://github.com/ola", "Sammendrag", "Teknisk kompetanse",
+            "Arbeidsforhold", "Utvalgte prosjekter", "Utdanning", "Kurs og sertifiseringer", "Språk", "Referanser");
         Assert.DoesNotContain("Lenker", text);
+        Assert.DoesNotContain("Kompetanser", text);
+    }
+
+    [Theory]
+    [InlineData(TailoredCvSectionOrder.Developer, true)]
+    [InlineData(TailoredCvSectionOrder.Standard, false)]
+    public void Render_TechnologiesLine_OnlyInDeveloperOrder(TailoredCvSectionOrder order, bool shown)
+    {
+        var content = new TailoredCvContent(Language: Language.Norwegian, SectionOrder: order,
+            Experiences: [new TailoredCvExperience("Acme AS", "Utvikler", new DateOnly(2021, 1, 1), null,
+                [new TailoredCvBullet("Bygde API-er")], Technologies: ["C#", "ASP.NET Core"])],
+            Projects: [new TailoredCvProject("Expense tracker", null, null, null, [new TailoredCvBullet("Bygde appen")],
+                Technologies: ["Vue"])]);
+
+        var text = ExtractText(content);
+
+        if (shown)
+            AssertInOrder(text, "Acme AS", "Bygde API-er", "Teknologier: C#, ASP.NET Core",
+                "Expense tracker", "Bygde appen", "Teknologier: Vue");
+        else
+            Assert.DoesNotContain("Teknologier", text);
     }
 
     // The starter categories in their SortOrder, with ids 1-8.
@@ -191,13 +212,25 @@ public class TailoredCvPdfRendererTests
         Assert.Contains("efficient office", text);
     }
 
+    [Theory]
+    [InlineData(Language.Norwegian, "Personlig prosjekt | Oslo, Norge")]
+    [InlineData(Language.English, "Personal project | Oslo, Norway")]
+    public void Render_ProjectKind_ShowsWhereAnExperienceShowsItsEmployer(Language language, string line)
+    {
+        var place = language == Language.Norwegian ? "Oslo, Norge" : "Oslo, Norway";
+        var content = new TailoredCvContent(Language: language, Projects:
+            [new TailoredCvProject("Expense tracker", null, null, null, [], Location: place, Kind: ProjectKind.Personal)]);
+
+        AssertInOrder(ExtractText(content), "Expense tracker", line);
+    }
+
     [Fact]
     public void Render_CertificationWithOnlyExpiry_IncludesDate()
     {
         var content = new TailoredCvContent(Language: Language.Norwegian, Certifications:
             [new TailoredCvCertification("Certificate", null, null, new DateOnly(2027, 4, 1), null, [])]);
 
-        Assert.Contains("Utløper April 2027", ExtractText(content));
+        Assert.Contains("Gyldig til April 2027", ExtractText(content));
     }
 
     [Fact]

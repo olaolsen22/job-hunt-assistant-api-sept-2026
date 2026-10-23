@@ -51,8 +51,9 @@ public static class TailoredCvPdfRenderer
                             AddLabelledLine(column, link.Label, link.Url);
                         AddTextSection(column, t.Summary, content.Summary);
                         AddGroupedSkillsSection(column, content.Skills, categories ?? [], content.Language, t);
-                        AddExperienceSection(column, content.ContentStyle, content.Experiences, t);
-                        AddProjectSection(column, content.ContentStyle, content.Projects, t);
+                        AddExperienceSection(column, content.ContentStyle, content.Experiences, t, showTechnologies: true);
+                        AddProjectSection(column, t.SelectedProjects, content.ContentStyle, content.Projects, t,
+                            showTechnologies: true);
                         AddEducationSection(column, content.ContentStyle, content.Educations, t);
                         AddCertificationSection(column, content.ContentStyle, content.Certifications, t);
                         AddLanguagesSection(column, content.Languages, t);
@@ -63,7 +64,7 @@ public static class TailoredCvPdfRenderer
                         AddExperienceSection(column, content.ContentStyle, content.Experiences, t);
                         AddEducationSection(column, content.ContentStyle, content.Educations, t);
                         AddCertificationSection(column, content.ContentStyle, content.Certifications, t);
-                        AddProjectSection(column, content.ContentStyle, content.Projects, t);
+                        AddProjectSection(column, t.Projects, content.ContentStyle, content.Projects, t);
                         AddLanguagesSection(column, content.Languages, t);
                         AddSkillsSection(column, content.Skills, t);
                         AddLinksSection(column, content.Links, t);
@@ -168,12 +169,14 @@ public static class TailoredCvPdfRenderer
         }
     }
 
-    private static void AddExperienceSection(ColumnDescriptor column, TailoredCvContentStyle style, List<TailoredCvExperience>? experiences, CvText t) =>
+    private static void AddExperienceSection(ColumnDescriptor column, TailoredCvContentStyle style,
+        List<TailoredCvExperience>? experiences, CvText t, bool showTechnologies = false) =>
         AddEntrySection(column, t.Experience, experiences, (entry, experience) =>
         {
             AddEntryHeader(entry, experience.Title, JoinPlace(experience.Employer, experience.Location),
                 t.FormatRange(experience.StartMonth, experience.EndMonth));
             AddContent(entry, style, experience.Paragraph, experience.Bullets);
+            if (showTechnologies) AddTechnologies(entry, experience.Technologies, t);
         });
 
     private static void AddEducationSection(ColumnDescriptor column, TailoredCvContentStyle style, List<TailoredCvEducation>? educations, CvText t) =>
@@ -191,11 +194,12 @@ public static class TailoredCvPdfRenderer
     private static void AddCertificationSection(ColumnDescriptor column, TailoredCvContentStyle style, List<TailoredCvCertification>? certifications, CvText t) =>
         AddEntrySection(column, t.Certifications, certifications, (entry, certification) =>
         {
+            // Validity, not a period: "Mai 2022 - Mai 2025" would read like two years of study.
             var dates = (certification.IssuedMonth, certification.ExpiresMonth) switch
             {
-                ({ } issued, { } expires) => $"{t.FormatMonth(issued)} - {t.FormatMonth(expires)}",
+                ({ } issued, { } expires) => $"{t.FormatMonth(issued)}, {t.ValidUntil.ToLowerInvariant()} {t.FormatMonth(expires)}",
                 ({ } issued, null) => t.FormatMonth(issued),
-                (null, { } expiry) => $"{t.Expires} {t.FormatMonth(expiry)}",
+                (null, { } expiry) => $"{t.ValidUntil} {t.FormatMonth(expiry)}",
                 _ => null,
             };
             AddEntryHeader(entry, certification.Name, certification.Issuer, dates);
@@ -204,13 +208,17 @@ public static class TailoredCvPdfRenderer
             AddContent(entry, style, certification.Paragraph, certification.Bullets);
         });
 
-    private static void AddProjectSection(ColumnDescriptor column, TailoredCvContentStyle style, List<TailoredCvProject>? projects, CvText t) =>
-        AddEntrySection(column, t.Projects, projects, (entry, project) =>
+    private static void AddProjectSection(ColumnDescriptor column, string heading, TailoredCvContentStyle style,
+        List<TailoredCvProject>? projects, CvText t, bool showTechnologies = false) =>
+        AddEntrySection(column, heading, projects, (entry, project) =>
         {
-            AddEntryHeader(entry, project.Name, project.Location, t.FormatRange(project.StartMonth, project.EndMonth));
+            // The kind sits where an experience shows its employer, so a personal project never reads as a job.
+            AddEntryHeader(entry, project.Name, JoinPlace(t.ProjectKindName(project.Kind), project.Location),
+                t.FormatRange(project.StartMonth, project.EndMonth));
             if (!string.IsNullOrWhiteSpace(project.Url))
                 entry.Item().Text(project.Url);
             AddContent(entry, style, project.Paragraph, project.Bullets);
+            if (showTechnologies) AddTechnologies(entry, project.Technologies, t);
         });
 
     // NAV's layout: the language name, then written and spoken levels on their own lines.
@@ -245,7 +253,7 @@ public static class TailoredCvPdfRenderer
                 Names: string.Join(", ", g.Select(s => s.Name))));
         column.Item().EnsureSpace(MinTextSectionStart).Column(section =>
         {
-            AddHeading(section, t.Skills);
+            AddHeading(section, t.TechnicalSkills);
             foreach (var (label, names) in lines)
                 AddLabelledText(section, label, names);
         });
@@ -255,6 +263,15 @@ public static class TailoredCvPdfRenderer
     private static void AddLinksSection(ColumnDescriptor column, List<TailoredCvLink>? links, CvText t) =>
         AddEntrySection(column, t.Links, links, (entry, link) => AddLabelledText(entry, link.Label, link.Url),
             entrySpacing: 0);
+
+    // Developer CVs: where the listed skills were used, closing the entry. Muted and not bold, so it doesn't
+    // compete with the bold title or read as a second heading.
+    private static void AddTechnologies(ColumnDescriptor entry, List<string>? technologies, CvText t)
+    {
+        if (technologies is { Count: > 0 })
+            entry.Item().PaddingTop(2).Text($"{t.Technologies}: {string.Join(", ", technologies)}")
+                .FontColor(Colors.Grey.Darken2);
+    }
 
     // A paragraph falls back to the joined bullet texts when none was written.
     private static void AddContent(ColumnDescriptor entry, TailoredCvContentStyle style, string? paragraph,
@@ -286,23 +303,27 @@ public static class TailoredCvPdfRenderer
             .PaddingBottom(2).Text(text).FontSize(13).Bold();
 }
 
-// Fixed CV wording per language. Norwegian follows NAV: capitalised months ("Juni 2015") and "Nåværende".
+// Fixed CV wording per language. Norwegian follows NAV: capitalised months ("Juni 2015") and "Nåværende". The
+// developer order uses the IT headings Norwegian developer guidance uses (Teknisk kompetanse, Utvalgte prosjekter).
 internal sealed record CvText(
     string Summary, string Experience, string Education, string Certifications, string Projects,
     string Languages, string Skills, string Links, string References, string ReferencesOnRequest,
+    string TechnicalSkills, string SelectedProjects, string Technologies,
     string Email, string Phone, string Address, string DateOfBirth,
-    string Present, string Expires, string Written, string Spoken,
+    string Present, string ValidUntil, string Written, string Spoken,
     string OtherSkills,
-    string[] Months, string[] Levels, bool NumericDates, Dictionary<string, string> LanguageNames)
+    string[] Months, string[] Levels, string[] ProjectKinds, bool NumericDates, Dictionary<string, string> LanguageNames)
 {
     private static readonly CvText English = new(
         "Summary", "Experience", "Education", "Courses and certifications", "Projects",
         "Languages", "Skills", "Links", "References", "Available on request.",
+        "Technical skills", "Selected projects", "Technologies",
         "Email", "Phone", "Address", "Date of birth",
-        "Present", "Expires", "Written", "Spoken",
+        "Present", "Valid until", "Written", "Spoken",
         "Other",
         ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
         ["Beginner", "Good", "Very good", "Native (first language)"],
+        ["Work project", "Personal project", "Coursework", "Open source"],
         NumericDates: false,
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -313,11 +334,13 @@ internal sealed record CvText(
     private static readonly CvText Norwegian = new(
         "Sammendrag", "Arbeidsforhold", "Utdanning", "Kurs og sertifiseringer", "Prosjekter",
         "Språk", "Kompetanser", "Lenker", "Referanser", "Oppgis ved forespørsel.",
+        "Teknisk kompetanse", "Utvalgte prosjekter", "Teknologier",
         "E-post", "Telefon", "Adresse", "Fødselsdato",
-        "Nåværende", "Utløper", "Skriftlig", "Muntlig",
+        "Nåværende", "Gyldig til", "Skriftlig", "Muntlig",
         "Annet",
         ["Januar", "Februar", "Mars", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Desember"],
         ["Nybegynner", "Godt", "Veldig godt", "Førstespråk (morsmål)"],
+        ["Arbeidsprosjekt", "Personlig prosjekt", "Studieprosjekt", "Åpen kildekode"],
         NumericDates: true,
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -343,6 +366,8 @@ internal sealed record CvText(
     }
 
     public string Proficiency(LanguageProficiency level) => Levels[(int)level];
+
+    public string? ProjectKindName(ProjectKind? kind) => kind is { } k ? ProjectKinds[(int)k] : null;
 
     // Common names stored in the other language read naturally; anything else prints as entered.
     public string LanguageName(string name) => LanguageNames.GetValueOrDefault(name.Trim(), name);

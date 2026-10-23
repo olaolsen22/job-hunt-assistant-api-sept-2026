@@ -57,6 +57,9 @@ public class ProfileCertification
     public List<ProfileBullet> Bullets { get; set; } = [];
 }
 
+// Readers must be able to tell professional work from coursework and personal projects (Norwegian CV guidance).
+public enum ProjectKind { Work, Personal, Coursework, OpenSource }
+
 public class ProfileProject
 {
     public int Id { get; set; }
@@ -64,6 +67,8 @@ public class ProfileProject
     public int ProfileId { get; set; }
     public Profile Profile { get; set; } = null!;
     public string Name { get; set; } = null!;
+    // Null = not stated (older and imported projects).
+    public ProjectKind? Kind { get; set; }
     public string? Url { get; set; }
     public int? LocationId { get; set; }
     public Location? Location { get; set; }

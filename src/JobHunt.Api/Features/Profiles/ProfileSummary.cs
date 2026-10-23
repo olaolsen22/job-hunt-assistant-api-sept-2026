@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.AiSafeguards;
 using JobHunt.Api.Features.LlmModels;
@@ -22,11 +23,15 @@ public record ProfileSummarySuggestion(ProfileSummaryStatus Status, string? Summ
 [QueryType]
 public static class ProfileSummaryPromptQueries
 {
-    public const int Version = 1;
+    public const int Version = 2;
     // Same cap as a tailored CV summary: about three lines in the PDF.
     public const int MaxLength = TailoredCvDraftValidation.MaxSummaryLength;
 
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseUpper) },
+    };
 
     public static async Task<ProfileSummaryPrompt> GetProfileSummaryPromptAsync(AppDbContext db, CancellationToken ct) =>
         new(Version, $"{Instructions(await LanguageAsync(db, ct), external: true)}\n\n{await ContentAsync(db, ct)}");
@@ -55,7 +60,7 @@ public static class ProfileSummaryPromptQueries
             }).ToList(),
             Projects = p.Projects.Select(x => new
             {
-                x.Name, x.StartMonth, x.EndMonth,
+                x.Name, x.Kind, x.StartMonth, x.EndMonth,
                 Skills = x.Skills.Select(s => s.Name).ToList(),
                 Bullets = x.Bullets.OrderBy(b => b.Position).Select(b => b.Text).ToList(),
             }).ToList(),
@@ -77,11 +82,14 @@ public static class ProfileSummaryPromptQueries
         {"summary": "..."}
 
         Rules:
-        - Say who the candidate is and at what level, their core strengths and domain, one or two concrete things
-          they have built or solved, and the direction their target roles point to.
+        - Say who the candidate is, their role and specialization as their job titles show it, their core strengths
+          and domain, one or two concrete things they have built or solved, and the direction their target roles
+          point to.
         - Use only facts in the profile. Do not add skills, seniority, years, achievements, or qualifications it
           does not support. Count years only from the experience dates.
         - If the profile has a summary, keep what still holds and improve it rather than starting over.
+        - {{TailoredCvAnalyzer.SeniorityGuidance.ReplaceLineEndings(" ")}}
+        - {{TailoredCvAnalyzer.HonestClaimsGuidance.ReplaceLineEndings(" ")}}
         - Favour concrete evidence over a list of technology names.
         - {{TailoredCvAnalyzer.VoiceGuidance.ReplaceLineEndings(" ")}}
         - 3 short sentences of plain text (no Markdown, headings, or lists), at most {{MaxLength}} characters
