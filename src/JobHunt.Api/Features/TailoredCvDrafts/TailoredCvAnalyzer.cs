@@ -308,10 +308,14 @@ public class TailoredCvAnalyzer(
         where the source supports it. An intention to learn is not a skill.
         """;
 
-    // The skills section is the inventory; an entry names only the technologies that show where they were used.
+    // The skills section is the inventory; an entry's line only shows where technologies were used. Practices and
+    // AI coding assistants read as mistakes under a "Technologies" label and belong in the paragraph instead.
     internal const string TechnologiesGuidance = """
-        the entry's own skills that are relevant to the listing or central to the selected work, most relevant
-        first; not the whole list, and never a skill the entry does not have.
+        at most 6 of the entry's own skills that are concrete technologies (languages, frameworks, libraries,
+        platforms, databases, developer tools) the selected bullets show were used, most relevant to the listing
+        first. Never include practices, methods, or soft skills such as TDD, code review, CI, testing, or
+        architecture, nor AI coding assistants; leave those to the paragraph. Never include a skill only because
+        the listing names it, or one the entry does not have.
         """;
 
     internal const string ListingTermGuidance = """

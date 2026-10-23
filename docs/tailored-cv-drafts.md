@@ -69,8 +69,8 @@ toggle (e.g. "Developer layout"); neither AI path sets it.
 | `DEVELOPER` | Links as labelled contact lines (`GitHub: https://…`, no Links heading), summary, skills, experience, projects, education, courses/certifications, languages, references |
 
 `DEVELOPER` also uses the IT headings `Teknisk kompetanse` / `Technical skills` and `Utvalgte prosjekter` /
-`Selected projects`, and prints each experience's and project's `technologies` as a labelled line under its
-title lines (`Teknologier: C#, ASP.NET Core`). `STANDARD` ignores `technologies`. The profile prefill fills
+`Selected projects`, and prints each experience's and project's `technologies` as a muted, non-bold line
+after its content (`Teknologier: C#, ASP.NET Core`). `STANDARD` ignores `technologies`. The profile prefill fills
 `technologies` with every skill tagged on the entry (draft language, higher profile level first); analysis or
 the user trims it to what the listing needs. On save, `null` stays `null`.
 
@@ -96,8 +96,9 @@ mutation ($input: AnalyzeTailoredCvSectionInput!) {
 ```
 
 Sections are `EXPERIENCE`, `EDUCATION`, `PROJECT`, `SKILLS`, and `SUMMARY`. Experience and project results
-also carry `technologies`: the entry's own skills (draft-language names, most relevant first) the model chose
-for the listing; `null` means no suggestion, so keep the entry's current list. `analyzeAllTailoredCv(input:{listingId, model})` runs one request per work experience, then each education entry, then each project, followed by skills and summary; it returns a result for each section. Both analysis mutations accept an optional `model` selection ID from `llmModels`; omitted uses the effective default. Each attempted call is logged against its actual provider and credential. AI analysis does not save the draft.
+also carry `technologies`: at most 6 of the entry's own skills (draft-language names, most relevant first) that
+are concrete technologies the selected bullets show were used, never practices such as TDD or code review, AI
+coding assistants, or a skill picked only because the listing names it; `null` means no suggestion, so keep the entry's current list. `analyzeAllTailoredCv(input:{listingId, model})` runs one request per work experience, then each education entry, then each project, followed by skills and summary; it returns a result for each section. Both analysis mutations accept an optional `model` selection ID from `llmModels`; omitted uses the effective default. Each attempted call is logged against its actual provider and credential. AI analysis does not save the draft.
 
 Configure personal keys through the [provider-key API](llm-provider-keys.md). Credential rejection, rate limiting, timeout, and provider errors return readable failed section results; no automatic key/provider fallback occurs. The UI can prompt users to switch models or update/remove the key. Shared Gemini is used only when a Gemini selection has no personal Gemini key.
 

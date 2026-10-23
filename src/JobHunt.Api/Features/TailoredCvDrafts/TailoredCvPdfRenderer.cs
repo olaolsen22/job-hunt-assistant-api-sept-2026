@@ -175,8 +175,8 @@ public static class TailoredCvPdfRenderer
         {
             AddEntryHeader(entry, experience.Title, JoinPlace(experience.Employer, experience.Location),
                 t.FormatRange(experience.StartMonth, experience.EndMonth));
-            if (showTechnologies) AddTechnologies(entry, experience.Technologies, t);
             AddContent(entry, style, experience.Paragraph, experience.Bullets);
+            if (showTechnologies) AddTechnologies(entry, experience.Technologies, t);
         });
 
     private static void AddEducationSection(ColumnDescriptor column, TailoredCvContentStyle style, List<TailoredCvEducation>? educations, CvText t) =>
@@ -217,8 +217,8 @@ public static class TailoredCvPdfRenderer
                 t.FormatRange(project.StartMonth, project.EndMonth));
             if (!string.IsNullOrWhiteSpace(project.Url))
                 entry.Item().Text(project.Url);
-            if (showTechnologies) AddTechnologies(entry, project.Technologies, t);
             AddContent(entry, style, project.Paragraph, project.Bullets);
+            if (showTechnologies) AddTechnologies(entry, project.Technologies, t);
         });
 
     // NAV's layout: the language name, then written and spoken levels on their own lines.
@@ -264,14 +264,13 @@ public static class TailoredCvPdfRenderer
         AddEntrySection(column, t.Links, links, (entry, link) => AddLabelledText(entry, link.Label, link.Url),
             entrySpacing: 0);
 
-    // Developer CVs: where the listed skills were used, as a labelled line under the entry's title lines.
+    // Developer CVs: where the listed skills were used, closing the entry. Muted and not bold, so it doesn't
+    // compete with the bold title or read as a second heading.
     private static void AddTechnologies(ColumnDescriptor entry, List<string>? technologies, CvText t)
     {
-        if (technologies is not { Count: > 0 })
-            return;
-        AddLabelledText(entry, t.Technologies, string.Join(", ", technologies));
-        // Same gap as between the title lines and the content.
-        entry.Item().Height(3);
+        if (technologies is { Count: > 0 })
+            entry.Item().PaddingTop(2).Text($"{t.Technologies}: {string.Join(", ", technologies)}")
+                .FontColor(Colors.Grey.Darken2);
     }
 
     // A paragraph falls back to the joined bullet texts when none was written.

@@ -106,8 +106,8 @@ public class TailoredCvPdfRendererTests
         var text = ExtractText(content);
 
         if (shown)
-            AssertInOrder(text, "Acme AS", "Teknologier: C#, ASP.NET Core", "Bygde API-er",
-                "Expense tracker", "Teknologier: Vue", "Bygde appen");
+            AssertInOrder(text, "Acme AS", "Bygde API-er", "Teknologier: C#, ASP.NET Core",
+                "Expense tracker", "Bygde appen", "Teknologier: Vue");
         else
             Assert.DoesNotContain("Teknologier", text);
     }
