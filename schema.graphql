@@ -7,6 +7,8 @@ type Query {
   listingParsePrompt: ListingParsePrompt! @cost(weight: "10")
   listingQuickParsePrompt: ListingParsePrompt! @cost(weight: "10")
   llmCallLimits: [LlmCallLimit!]! @cost(weight: "10")
+  applicationAnswerExternalPrompt(questionId: Int!): ApplicationAnswerExternalPrompt!
+    @cost(weight: "10")
   companyParsePrompt: CompanyParsePrompt! @cost(weight: "10")
   companies(
     search: String
@@ -229,6 +231,16 @@ type Mutation {
     @cost(weight: "10")
   setLlmCallLimit(input: SetLlmCallLimitInput!): SetLlmCallLimitPayload!
     @cost(weight: "10")
+  generateApplicationAnswer(input: GenerateApplicationAnswerInput!): GenerateApplicationAnswerPayload!
+    @cost(weight: "10")
+  previewApplicationAnswer(input: PreviewApplicationAnswerInput!): PreviewApplicationAnswerPayload!
+    @cost(weight: "10")
+  addApplicationQuestion(input: AddApplicationQuestionInput!): AddApplicationQuestionPayload!
+    @cost(weight: "10")
+  updateApplicationQuestion(input: UpdateApplicationQuestionInput!): UpdateApplicationQuestionPayload!
+    @cost(weight: "10")
+  deleteApplicationQuestion(input: DeleteApplicationQuestionInput!): DeleteApplicationQuestionPayload!
+    @cost(weight: "10")
   applyToListing(input: ApplyToListingInput!): ApplyToListingPayload!
     @cost(weight: "10")
   recordOutcome(input: RecordOutcomeInput!): RecordOutcomePayload!
@@ -244,6 +256,8 @@ type Mutation {
   deleteInterview(input: DeleteInterviewInput!): DeleteInterviewPayload!
     @cost(weight: "10")
   createCompanies(input: CreateCompaniesInput!): CreateCompaniesPayload!
+    @cost(weight: "10")
+  updateCompanyDetails(input: UpdateCompanyDetailsInput!): UpdateCompanyDetailsPayload!
     @cost(weight: "10")
   setCompanyFavorite(input: SetCompanyFavoriteInput!): SetCompanyFavoritePayload!
     @cost(weight: "10")
@@ -426,6 +440,11 @@ type Mutation {
     @cost(weight: "10")
 }
 
+type AddApplicationQuestionPayload {
+  applicationQuestion: ApplicationQuestion
+  errors: [AddApplicationQuestionError!]
+}
+
 type AddContactPayload {
   contact: Contact
   errors: [AddContactError!]
@@ -489,6 +508,40 @@ type AnalyzeAllTailoredCvPayload {
 type AnalyzeTailoredCvSectionPayload {
   result: TailoredCvAnalysisResult
   errors: [AnalyzeTailoredCvSectionError!]
+}
+
+type ApplicationAnswerCandidate {
+  answer: String!
+  length: Int!
+  overLimit: Boolean!
+}
+
+type ApplicationAnswerExternalPrompt {
+  version: Int!
+  instructions: String!
+}
+
+type ApplicationAnswerGenerationResult {
+  status: ApplicationAnswerGenerationStatus!
+  candidate: ApplicationAnswerCandidate
+  error: String
+  errorCode: String
+}
+
+type ApplicationQuestion {
+  id: Int!
+  listingId: Int!
+  listing: Listing!
+  question: String!
+  charLimit: Int
+  answer: String
+  notes: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type ApplicationQuestionNotFoundError implements Error {
+  message: String!
 }
 
 type ApplyProfileSkillWordingPayload {
@@ -556,6 +609,18 @@ type Company {
   notes: String
   locations: [CompanyLocation!]!
   contacts: [Contact!]!
+  orgNumber: String
+  websiteUrl: String
+  careersUrl: String
+  linkedInUrl: String
+  kind: CompanyKind
+  sizeBand: CompanySize
+  foundedYear: Int
+  description: String
+  workMode: WorkMode
+  workingLanguage: Language
+  researchedAt: DateTime
+  skills: [CompanySkill!]!
 }
 
 type CompanyLocation {
@@ -577,6 +642,14 @@ type CompanyParsePrompt {
 type CompanyResult {
   company: Company!
   created: Boolean!
+  filled: Boolean!
+}
+
+type CompanySkill {
+  companyId: Int!
+  company: Company!
+  skillId: Int!
+  skill: Skill!
 }
 
 type Contact {
@@ -672,6 +745,11 @@ type DailyUsage {
 type DashboardWidgetState {
   widget: DashboardWidgetKind!
   isShown: Boolean!
+}
+
+type DeleteApplicationQuestionPayload {
+  id: Int
+  errors: [DeleteApplicationQuestionError!]
 }
 
 type DeleteContactPayload {
@@ -800,6 +878,11 @@ type DuplicateSkillCategoryError implements Error {
   existingCategoryId: Int!
 }
 
+type GenerateApplicationAnswerPayload {
+  result: ApplicationAnswerGenerationResult
+  errors: [GenerateApplicationAnswerError!]
+}
+
 type GenerateCoverLetterDocumentPayload {
   document: Document
   errors: [GenerateCoverLetterDocumentError!]
@@ -861,6 +944,10 @@ type InterviewNotFoundError implements Error {
 }
 
 type InvalidApplicationError implements Error {
+  message: String!
+}
+
+type InvalidApplicationQuestionError implements Error {
   message: String!
 }
 
@@ -998,11 +1085,15 @@ type JobRolesEdge {
 }
 
 type Listing {
-  dueOn: LocalDate!
+  dueOn: LocalDate
   statusHistory(order: [StatusChangeSortInput!] @cost(weight: "10")): [StatusChange!]!
   interviews(order: [InterviewSortInput!] @cost(weight: "10")): [Interview!]!
+  applicationQuestions(
+    order: [ApplicationQuestionSortInput!] @cost(weight: "10")
+  ): [ApplicationQuestion!]!
+  kind: ListingKind!
   deadlineType: DeadlineType!
-  postedOn: LocalDate!
+  postedOn: LocalDate
   deadlineOn: LocalDate
   id: Int!
   title: String!
@@ -1015,7 +1106,7 @@ type Listing {
   schedule: Schedule
   workMode: WorkMode
   description: String
-  url: String!
+  url: String
   postingLanguage: Language
   createdAt: DateTime!
   updatedAt: DateTime!
@@ -1204,6 +1295,11 @@ type ParseProfileCvPayload {
 type ParseUrlPayload {
   parseJob: ParseJob
   errors: [ParseUrlError!]
+}
+
+type PreviewApplicationAnswerPayload {
+  candidate: ApplicationAnswerCandidate
+  errors: [PreviewApplicationAnswerError!]
 }
 
 type PreviewCoverLetterDraftPayload {
@@ -1971,6 +2067,16 @@ type UnknownLlmModelError implements Error {
   message: String!
 }
 
+type UpdateApplicationQuestionPayload {
+  applicationQuestion: ApplicationQuestion
+  errors: [UpdateApplicationQuestionError!]
+}
+
+type UpdateCompanyDetailsPayload {
+  company: Company
+  errors: [UpdateCompanyDetailsError!]
+}
+
 type UpdateCompanyPayload {
   company: Company
   errors: [UpdateCompanyError!]
@@ -2117,6 +2223,10 @@ interface Error {
   message: String!
 }
 
+union AddApplicationQuestionError =
+  | ListingNotFoundError
+  | InvalidApplicationQuestionError
+
 union AddContactError =
   | CompanyNotFoundError
   | InvalidContactError
@@ -2189,6 +2299,8 @@ union CreateListingError =
 
 union CreateSkillCategoryError = InvalidSkillCategoryError
 
+union DeleteApplicationQuestionError = ApplicationQuestionNotFoundError
+
 union DeleteContactError = ContactNotFoundError
 
 union DeleteDocumentError = DocumentNotFoundError | DocumentSentError
@@ -2222,6 +2334,12 @@ union DeleteSkillError = SkillNotFoundError | SkillInUseError
 union DeleteSkillTranslationError = SkillNotFoundError
 
 union DeleteWritingSampleError = WritingSampleNotFoundError
+
+union GenerateApplicationAnswerError =
+  | ApplicationQuestionNotFoundError
+  | InvalidCoverLetterError
+  | UnknownLlmModelError
+  | AiSafetyError
 
 union GenerateCoverLetterDocumentError =
   | ListingNotFoundError
@@ -2272,6 +2390,10 @@ union ParseUrlError =
   | InvalidParseRequestError
   | UnknownLlmModelError
   | AiSafetyError
+
+union PreviewApplicationAnswerError =
+  | ApplicationQuestionNotFoundError
+  | InvalidApplicationQuestionError
 
 union PreviewCoverLetterDraftError =
   | ListingNotFoundError
@@ -2364,6 +2486,12 @@ union UndoStatusChangeError =
   | InvalidStatusTransitionError
   | DuplicateListingError
 
+union UpdateApplicationQuestionError =
+  | ApplicationQuestionNotFoundError
+  | InvalidApplicationQuestionError
+
+union UpdateCompanyDetailsError = CompanyNotFoundError | InvalidCompanyError
+
 union UpdateCompanyError =
   | CompanyNotFoundError
   | InvalidCompanyError
@@ -2434,6 +2562,14 @@ union UpdateWritingSampleError =
   | WritingSampleNotFoundError
 
 union UploadDocumentError = ListingNotFoundError | InvalidDocumentError
+
+input AddApplicationQuestionInput {
+  listingId: Int!
+  question: String!
+  charLimit: Int
+  answer: String
+  notes: String
+}
 
 input AddContactInput {
   companyId: Int!
@@ -2526,6 +2662,32 @@ input AnalyzeTailoredCvSectionInput {
   requestId: UUID
 }
 
+input ApplicationQuestionFilterInput {
+  and: [ApplicationQuestionFilterInput!]
+  or: [ApplicationQuestionFilterInput!]
+  id: IntOperationFilterInput
+  listingId: IntOperationFilterInput
+  listing: ListingFilterInput
+  question: StringOperationFilterInput
+  charLimit: IntOperationFilterInput
+  answer: StringOperationFilterInput
+  notes: StringOperationFilterInput
+  createdAt: DateTimeOperationFilterInput
+  updatedAt: DateTimeOperationFilterInput
+}
+
+input ApplicationQuestionSortInput {
+  id: SortEnumType @cost(weight: "10")
+  listingId: SortEnumType @cost(weight: "10")
+  listing: ListingSortInput @cost(weight: "10")
+  question: SortEnumType @cost(weight: "10")
+  charLimit: SortEnumType @cost(weight: "10")
+  answer: SortEnumType @cost(weight: "10")
+  notes: SortEnumType @cost(weight: "10")
+  createdAt: SortEnumType @cost(weight: "10")
+  updatedAt: SortEnumType @cost(weight: "10")
+}
+
 input ApplicationStatusOperationFilterInput {
   eq: ApplicationStatus @cost(weight: "10")
   neq: ApplicationStatus @cost(weight: "10")
@@ -2570,6 +2732,20 @@ input ClearProfileSectionsInput {
   sections: [ProfileSection!]!
 }
 
+input CompanyDetailsInput {
+  orgNumber: String
+  websiteUrl: String
+  careersUrl: String
+  linkedInUrl: String
+  kind: CompanyKind
+  sizeBand: CompanySize
+  foundedYear: Int
+  description: String
+  workMode: WorkMode
+  workingLanguage: Language
+  skills: [String!]!
+}
+
 input CompanyFilterInput {
   and: [CompanyFilterInput!]
   or: [CompanyFilterInput!]
@@ -2582,12 +2758,35 @@ input CompanyFilterInput {
   notes: StringOperationFilterInput
   locations: ListFilterInputTypeOfCompanyLocationFilterInput
   contacts: ListFilterInputTypeOfContactFilterInput
+  orgNumber: StringOperationFilterInput
+  websiteUrl: StringOperationFilterInput
+  careersUrl: StringOperationFilterInput
+  linkedInUrl: StringOperationFilterInput
+  kind: NullableOfCompanyKindOperationFilterInput
+  sizeBand: NullableOfCompanySizeOperationFilterInput
+  foundedYear: IntOperationFilterInput
+  description: StringOperationFilterInput
+  workMode: NullableOfWorkModeOperationFilterInput
+  workingLanguage: NullableOfLanguageOperationFilterInput
+  researchedAt: DateTimeOperationFilterInput
+  skills: ListFilterInputTypeOfCompanySkillFilterInput
 }
 
 input CompanyInput {
   name: String!
   industryName: String
   locations: [LocationInput!]!
+  orgNumber: String
+  websiteUrl: String
+  careersUrl: String
+  linkedInUrl: String
+  kind: CompanyKind
+  sizeBand: CompanySize
+  foundedYear: Int
+  description: String
+  workMode: WorkMode
+  workingLanguage: Language
+  skills: [String!]
 }
 
 input CompanyLocationFilterInput {
@@ -2599,6 +2798,15 @@ input CompanyLocationFilterInput {
   location: LocationFilterInput
 }
 
+input CompanySkillFilterInput {
+  and: [CompanySkillFilterInput!]
+  or: [CompanySkillFilterInput!]
+  companyId: IntOperationFilterInput
+  company: CompanyFilterInput
+  skillId: IntOperationFilterInput
+  skill: SkillFilterInput
+}
+
 input CompanySortInput {
   id: SortEnumType @cost(weight: "10")
   name: SortEnumType @cost(weight: "10")
@@ -2607,6 +2815,17 @@ input CompanySortInput {
   favoritedAt: SortEnumType @cost(weight: "10")
   avoidedAt: SortEnumType @cost(weight: "10")
   notes: SortEnumType @cost(weight: "10")
+  orgNumber: SortEnumType @cost(weight: "10")
+  websiteUrl: SortEnumType @cost(weight: "10")
+  careersUrl: SortEnumType @cost(weight: "10")
+  linkedInUrl: SortEnumType @cost(weight: "10")
+  kind: SortEnumType @cost(weight: "10")
+  sizeBand: SortEnumType @cost(weight: "10")
+  foundedYear: SortEnumType @cost(weight: "10")
+  description: SortEnumType @cost(weight: "10")
+  workMode: SortEnumType @cost(weight: "10")
+  workingLanguage: SortEnumType @cost(weight: "10")
+  researchedAt: SortEnumType @cost(weight: "10")
 }
 
 input ContactFilterInput {
@@ -2690,6 +2909,10 @@ input DeadlineTypeOperationFilterInput {
   neq: DeadlineType @cost(weight: "10")
   in: [DeadlineType!] @cost(weight: "10")
   nin: [DeadlineType!] @cost(weight: "10")
+}
+
+input DeleteApplicationQuestionInput {
+  id: Int!
 }
 
 input DeleteContactInput {
@@ -2782,6 +3005,12 @@ input DocumentKindOperationFilterInput {
   neq: DocumentKind @cost(weight: "10")
   in: [DocumentKind!] @cost(weight: "10")
   nin: [DocumentKind!] @cost(weight: "10")
+}
+
+input GenerateApplicationAnswerInput {
+  questionId: Int!
+  model: String
+  requestId: UUID
 }
 
 input GenerateCoverLetterDocumentInput {
@@ -2895,10 +3124,24 @@ input LanguageOperationFilterInput {
   nin: [Language!] @cost(weight: "10")
 }
 
+input ListFilterInputTypeOfApplicationQuestionFilterInput {
+  all: ApplicationQuestionFilterInput @cost(weight: "10")
+  none: ApplicationQuestionFilterInput @cost(weight: "10")
+  some: ApplicationQuestionFilterInput @cost(weight: "10")
+  any: Boolean @cost(weight: "10")
+}
+
 input ListFilterInputTypeOfCompanyLocationFilterInput {
   all: CompanyLocationFilterInput @cost(weight: "10")
   none: CompanyLocationFilterInput @cost(weight: "10")
   some: CompanyLocationFilterInput @cost(weight: "10")
+  any: Boolean @cost(weight: "10")
+}
+
+input ListFilterInputTypeOfCompanySkillFilterInput {
+  all: CompanySkillFilterInput @cost(weight: "10")
+  none: CompanySkillFilterInput @cost(weight: "10")
+  some: CompanySkillFilterInput @cost(weight: "10")
   any: Boolean @cost(weight: "10")
 }
 
@@ -2986,6 +3229,7 @@ input ListingFilterInput {
   or: [ListingFilterInput!]
   id: IntOperationFilterInput
   title: StringOperationFilterInput
+  kind: ListingKindOperationFilterInput
   companyId: IntOperationFilterInput
   company: CompanyFilterInput
   jobRoleId: IntOperationFilterInput
@@ -3015,6 +3259,7 @@ input ListingFilterInput {
   statusHistory: ListFilterInputTypeOfStatusChangeFilterInput
   interviews: ListFilterInputTypeOfInterviewFilterInput
   contacts: ListFilterInputTypeOfListingContactFilterInput
+  applicationQuestions: ListFilterInputTypeOfApplicationQuestionFilterInput
   trainingProgram: TrainingProgramFilterInput
 }
 
@@ -3027,8 +3272,8 @@ input ListingInput {
   schedule: Schedule
   workMode: WorkMode
   description: String
-  url: String!
-  postedOn: LocalDate!
+  url: String
+  postedOn: LocalDate
   deadlineType: DeadlineType! = UNSPECIFIED
   deadlineOn: LocalDate
   postingLanguage: Language
@@ -3040,6 +3285,14 @@ input ListingInput {
   trainingProgram: TrainingProgramInput
   jobRoleCategoryName: String
   reanalyzed: Boolean! = false
+  kind: ListingKind! = VACANCY
+}
+
+input ListingKindOperationFilterInput {
+  eq: ListingKind @cost(weight: "10")
+  neq: ListingKind @cost(weight: "10")
+  in: [ListingKind!] @cost(weight: "10")
+  nin: [ListingKind!] @cost(weight: "10")
 }
 
 input ListingLanguageFilterInput {
@@ -3090,6 +3343,7 @@ input ListingSkillInput {
 input ListingSortInput {
   id: SortEnumType @cost(weight: "10")
   title: SortEnumType @cost(weight: "10")
+  kind: SortEnumType @cost(weight: "10")
   companyId: SortEnumType @cost(weight: "10")
   company: CompanySortInput @cost(weight: "10")
   jobRoleId: SortEnumType @cost(weight: "10")
@@ -3188,6 +3442,20 @@ input NullableOfCefrLevelOperationFilterInput {
   nin: [CefrLevel] @cost(weight: "10")
 }
 
+input NullableOfCompanyKindOperationFilterInput {
+  eq: CompanyKind @cost(weight: "10")
+  neq: CompanyKind @cost(weight: "10")
+  in: [CompanyKind] @cost(weight: "10")
+  nin: [CompanyKind] @cost(weight: "10")
+}
+
+input NullableOfCompanySizeOperationFilterInput {
+  eq: CompanySize @cost(weight: "10")
+  neq: CompanySize @cost(weight: "10")
+  in: [CompanySize] @cost(weight: "10")
+  nin: [CompanySize] @cost(weight: "10")
+}
+
 input NullableOfEmploymentTypeOperationFilterInput {
   eq: EmploymentType @cost(weight: "10")
   neq: EmploymentType @cost(weight: "10")
@@ -3246,6 +3514,11 @@ input ParseUrlInput {
   url: String!
   model: String
   requestId: UUID
+}
+
+input PreviewApplicationAnswerInput {
+  questionId: Int!
+  json: String!
 }
 
 input PreviewCoverLetterDraftInput {
@@ -3744,6 +4017,19 @@ input UndoStatusChangeInput {
   listingId: Int!
 }
 
+input UpdateApplicationQuestionInput {
+  id: Int!
+  question: String!
+  charLimit: Int
+  answer: String
+  notes: String
+}
+
+input UpdateCompanyDetailsInput {
+  id: Int!
+  details: CompanyDetailsInput!
+}
+
 input UpdateCompanyInput {
   id: Int!
   name: String!
@@ -3919,6 +4205,11 @@ input WritingSampleSortInput {
   updatedAt: SortEnumType @cost(weight: "10")
 }
 
+enum ApplicationAnswerGenerationStatus {
+  SUCCEEDED
+  FAILED
+}
+
 enum ApplicationOutcome {
   OFFER
   ACCEPTED
@@ -3943,6 +4234,23 @@ enum CefrLevel {
   B2
   C1
   C2
+}
+
+enum CompanyKind {
+  PRODUCT
+  CONSULTANCY
+  IN_HOUSE
+  PUBLIC_SECTOR
+  AGENCY
+  STARTUP
+}
+
+enum CompanySize {
+  MICRO
+  SMALL
+  MEDIUM
+  LARGE
+  ENTERPRISE
 }
 
 enum CoverLetterGenerationStatus {
@@ -4007,6 +4315,12 @@ enum LinkKind {
   LINKEDIN
   PORTFOLIO
   OTHER
+}
+
+enum ListingKind {
+  VACANCY
+  OPEN_INVITATION
+  UNSOLICITED
 }
 
 enum LlmKeySource {

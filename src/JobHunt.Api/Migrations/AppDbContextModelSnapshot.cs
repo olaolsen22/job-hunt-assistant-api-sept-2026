@@ -108,6 +108,47 @@ namespace JobHunt.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("JobHunt.Api.Features.ApplicationQuestions.ApplicationQuestion", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Answer")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("CharLimit")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ListingId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Question")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ListingId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("ApplicationQuestions");
+                });
+
             modelBuilder.Entity("JobHunt.Api.Features.Applications.Interview", b =>
                 {
                     b.Property<int>("Id")
@@ -253,11 +294,26 @@ namespace JobHunt.Api.Migrations
                     b.Property<DateTime?>("AvoidedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("CareersUrl")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("FavoritedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("FoundedYear")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("IndustryId")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("Kind")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LinkedInUrl")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -270,8 +326,27 @@ namespace JobHunt.Api.Migrations
                     b.Property<string>("Notes")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("OrgNumber")
+                        .HasMaxLength(9)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ResearchedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SizeBand")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("UserId")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WebsiteUrl")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WorkMode")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WorkingLanguage")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -280,6 +355,10 @@ namespace JobHunt.Api.Migrations
 
                     b.HasIndex("UserId", "NormalizedName")
                         .IsUnique();
+
+                    b.HasIndex("UserId", "OrgNumber")
+                        .IsUnique()
+                        .HasFilter("\"OrgNumber\" IS NOT NULL");
 
                     b.ToTable("Companies");
                 });
@@ -297,6 +376,21 @@ namespace JobHunt.Api.Migrations
                     b.HasIndex("LocationId");
 
                     b.ToTable("CompanyLocations");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.Companies.CompanySkill", b =>
+                {
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SkillId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("CompanyId", "SkillId");
+
+                    b.HasIndex("SkillId");
+
+                    b.ToTable("CompanySkills");
                 });
 
             modelBuilder.Entity("JobHunt.Api.Features.Contacts.Contact", b =>
@@ -607,11 +701,15 @@ namespace JobHunt.Api.Migrations
                     b.Property<int>("JobRoleId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("NormalizedTitle")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<DateOnly>("PostedOn")
+                    b.Property<DateOnly?>("PostedOn")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("PostingLanguage")
@@ -641,7 +739,6 @@ namespace JobHunt.Api.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Url")
-                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<string>("UserId")
@@ -1877,6 +1974,23 @@ namespace JobHunt.Api.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("JobHunt.Api.Features.ApplicationQuestions.ApplicationQuestion", b =>
+                {
+                    b.HasOne("JobHunt.Api.Features.Listings.Listing", "Listing")
+                        .WithMany("ApplicationQuestions")
+                        .HasForeignKey("ListingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("JobHunt.Api.Features.Auth.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Listing");
+                });
+
             modelBuilder.Entity("JobHunt.Api.Features.Applications.Interview", b =>
                 {
                     b.HasOne("JobHunt.Api.Features.Listings.Listing", "Listing")
@@ -1944,6 +2058,25 @@ namespace JobHunt.Api.Migrations
                     b.Navigation("Company");
 
                     b.Navigation("Location");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.Companies.CompanySkill", b =>
+                {
+                    b.HasOne("JobHunt.Api.Features.Companies.Company", "Company")
+                        .WithMany("Skills")
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("JobHunt.Api.Features.Skills.Skill", "Skill")
+                        .WithMany()
+                        .HasForeignKey("SkillId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Company");
+
+                    b.Navigation("Skill");
                 });
 
             modelBuilder.Entity("JobHunt.Api.Features.Contacts.Contact", b =>
@@ -2662,10 +2795,14 @@ namespace JobHunt.Api.Migrations
                     b.Navigation("Contacts");
 
                     b.Navigation("Locations");
+
+                    b.Navigation("Skills");
                 });
 
             modelBuilder.Entity("JobHunt.Api.Features.Listings.Listing", b =>
                 {
+                    b.Navigation("ApplicationQuestions");
+
                     b.Navigation("Contacts");
 
                     b.Navigation("Documents");

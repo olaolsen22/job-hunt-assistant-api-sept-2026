@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using JobHunt.Api.Features.AiSafeguards;
+using JobHunt.Api.Features.ApplicationQuestions;
 using JobHunt.Api.Features.Applications;
 using JobHunt.Api.Features.Auth;
 using JobHunt.Api.Features.Companies;
@@ -37,6 +38,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
     public DbSet<TrainingProgram> TrainingPrograms => Set<TrainingProgram>();
     public DbSet<Company> Companies => Set<Company>();
     public DbSet<CompanyLocation> CompanyLocations => Set<CompanyLocation>();
+    public DbSet<CompanySkill> CompanySkills => Set<CompanySkill>();
     public DbSet<Contact> Contacts => Set<Contact>();
     public DbSet<ListingContact> ListingContacts => Set<ListingContact>();
     public DbSet<Industry> Industries => Set<Industry>();
@@ -72,6 +74,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
     public DbSet<TailoredCvDraft> TailoredCvDrafts => Set<TailoredCvDraft>();
     public DbSet<WritingSample> WritingSamples => Set<WritingSample>();
     public DbSet<CoverLetterDraft> CoverLetterDrafts => Set<CoverLetterDraft>();
+    public DbSet<ApplicationQuestion> ApplicationQuestions => Set<ApplicationQuestion>();
 
     // Null outside a request (startup, seeding), so the user filters below then match nothing.
     public string? CurrentUserId => httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -97,6 +100,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
         modelBuilder.Entity<TrainingProgram>().HasQueryFilter(t => t.Listing.UserId == CurrentUserId);
         modelBuilder.Entity<Company>().HasQueryFilter(c => c.UserId == CurrentUserId);
         modelBuilder.Entity<CompanyLocation>().HasQueryFilter(l => l.Company.UserId == CurrentUserId);
+        modelBuilder.Entity<CompanySkill>().HasQueryFilter(s => s.Company.UserId == CurrentUserId);
         modelBuilder.Entity<Contact>().HasQueryFilter(c => c.UserId == CurrentUserId);
         modelBuilder.Entity<ListingContact>().HasQueryFilter(c => c.Listing.UserId == CurrentUserId);
         modelBuilder.Entity<Industry>().HasQueryFilter(i => i.UserId == CurrentUserId);
@@ -134,5 +138,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
         modelBuilder.Entity<TailoredCvDraft>().HasQueryFilter(d => d.UserId == CurrentUserId);
         modelBuilder.Entity<WritingSample>().HasQueryFilter(s => s.UserId == CurrentUserId);
         modelBuilder.Entity<CoverLetterDraft>().HasQueryFilter(d => d.UserId == CurrentUserId);
+        modelBuilder.Entity<ApplicationQuestion>().HasQueryFilter(q => q.UserId == CurrentUserId);
     }
 }
