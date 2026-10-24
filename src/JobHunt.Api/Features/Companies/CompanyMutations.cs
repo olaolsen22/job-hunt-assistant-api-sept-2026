@@ -1,6 +1,9 @@
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Applications;
+using JobHunt.Api.Features.Contacts;
 using JobHunt.Api.Features.Industries;
+using JobHunt.Api.Features.Listings;
+using JobHunt.Api.Features.Skills;
 // Hot Chocolate also has a global Location type (a position in a query document).
 using JobHunt.Api.Features.Locations;
 using Location = JobHunt.Api.Features.Locations.Location;
@@ -9,10 +12,25 @@ using Microsoft.EntityFrameworkCore;
 namespace JobHunt.Api.Features.Companies;
 
 // Same shape as the AI's company rows, so the UI can pass parsed JSON straight through.
-public record CompanyInput(string Name, string? IndustryName, List<LocationInput> Locations);
+// The research fields default to empty so name-only rows keep working.
+public record CompanyInput(
+    string Name, string? IndustryName, List<LocationInput> Locations,
+    string? OrgNumber = null, string? WebsiteUrl = null, string? CareersUrl = null, string? LinkedInUrl = null,
+    CompanyKind? Kind = null, CompanySize? SizeBand = null, int? FoundedYear = null, string? Description = null,
+    WorkMode? WorkMode = null, Language? WorkingLanguage = null, List<string>? Skills = null)
+{
+    internal CompanyDetailsInput Details() => new(OrgNumber, WebsiteUrl, CareersUrl, LinkedInUrl,
+        Kind, SizeBand, FoundedYear, Description, WorkMode, WorkingLanguage, Skills ?? []);
+}
 
-// Created is false when the name already existed: that company is returned untouched.
-public record CompanyResult(Company Company, bool Created);
+public record CompanyDetailsInput(
+    string? OrgNumber, string? WebsiteUrl, string? CareersUrl, string? LinkedInUrl,
+    CompanyKind? Kind, CompanySize? SizeBand, int? FoundedYear, string? Description,
+    WorkMode? WorkMode, Language? WorkingLanguage, List<string> Skills);
+
+// Created is false when the company already existed (same org.nr or name). Filled says whether any of its
+// empty fields were filled from the row; fields that already had a value are never overwritten.
+public record CompanyResult(Company Company, bool Created, bool Filled);
 
 public class InvalidCompanyException(string message) : Exception(message);
 
@@ -23,14 +41,19 @@ public static class CompanyMutations
 {
     // Well above the ~30 rows a pasted quick-add list produces, far below what one transaction minds.
     private const int MaxBatchSize = 100;
+    private const int MaxDescriptionLength = 500;
+    private const int MaxUrlLength = 2048;
+    private const int MaxSkills = 50;
+    private const int MaxSkillNameLength = 100;
 
     // All or nothing: every row is validated and resolved before anything is added, then one SaveChanges.
-    // An existing name (or a repeat in the batch) returns that company as is; update it with updateCompany.
+    // A row matching an existing company (org.nr first, then name) or an earlier row only fills that
+    // company's empty fields, so research can be pasted again without undoing manual edits.
     [Error<InvalidCompanyException>]
     [Error<InvalidLocationException>]
     [UseMutationConvention(PayloadFieldName = "results")]
     public static async Task<List<CompanyResult>> CreateCompaniesAsync(
-        List<CompanyInput> companies, AppDbContext db, CancellationToken ct)
+        List<CompanyInput> companies, AppDbContext db, TimeProvider time, CancellationToken ct)
     {
         if (companies.Count is 0 or > MaxBatchSize)
             throw new InvalidCompanyException($"Send between 1 and {MaxBatchSize} companies.");
@@ -38,25 +61,44 @@ public static class CompanyMutations
             throw new InvalidCompanyException("Every company needs a name.");
 
         // Resolved for every row, even ones that turn out to exist, so a bad country code always fails the batch.
+        var now = time.GetUtcNow().UtcDateTime;
         var lookups = new CompanyLookups(db);
-        var rows = new List<(CompanyInput Input, string NormalizedName, Industry? Industry, List<Location> Locations)>();
+        var rows = new List<(CompanyInput Input, string NormalizedName, CompanyDetailsInput Details,
+            Industry? Industry, List<Location> Locations, List<Skill> Skills)>();
         foreach (var input in companies)
-            rows.Add((input, Names.Normalize(input.Name),
+        {
+            var details = Clean(input.Details(), now.Year);
+            rows.Add((input, Names.Normalize(input.Name), details,
                 await lookups.IndustryAsync(input.IndustryName, ct),
-                await lookups.LocationsAsync(input.Locations, ct)));
+                await lookups.LocationsAsync(input.Locations, ct),
+                await lookups.SkillsAsync(details.Skills, ct)));
+        }
 
         var names = rows.Select(r => r.NormalizedName).Distinct().ToList();
-        var known = await db.Companies
+        var orgNumbers = rows.Select(r => r.Details.OrgNumber).OfType<string>().Distinct().ToList();
+        var existing = await db.Companies
             .Include(c => c.Industry).Include(c => c.Locations).ThenInclude(l => l.Location)
-            .Where(c => names.Contains(c.NormalizedName))
-            .ToDictionaryAsync(c => c.NormalizedName, ct);
+            .Include(c => c.Skills).ThenInclude(s => s.Skill)
+            .Where(c => names.Contains(c.NormalizedName) || orgNumbers.Contains(c.OrgNumber!))
+            .ToListAsync(ct);
+        var byName = existing.ToDictionary(c => c.NormalizedName);
+        var byOrgNumber = existing.Where(c => c.OrgNumber is not null).ToDictionary(c => c.OrgNumber!);
 
         var results = new List<CompanyResult>();
         foreach (var row in rows)
         {
-            if (known.TryGetValue(row.NormalizedName, out var company))
+            var org = row.Details.OrgNumber;
+            if ((org is not null && byOrgNumber.TryGetValue(org, out var company))
+                || byName.TryGetValue(row.NormalizedName, out company))
             {
-                results.Add(new CompanyResult(company, false));
+                // An org.nr reaching here is unused (or it would have matched above), so filling it can't clash.
+                var filled = Fill(company, row.Details, row.Industry, row.Locations, row.Skills);
+                if (filled)
+                {
+                    company.ResearchedAt = now;
+                    if (company.OrgNumber is not null) byOrgNumber[company.OrgNumber] = company;
+                }
+                results.Add(new CompanyResult(company, false, filled));
                 continue;
             }
             company = new Company
@@ -64,15 +106,138 @@ public static class CompanyMutations
                 UserId = db.CurrentUserId!,
                 Name = row.Input.Name.Trim(),
                 NormalizedName = row.NormalizedName,
-                Industry = row.Industry,
-                Locations = row.Locations.Select(l => new CompanyLocation { Location = l }).ToList(),
             };
+            var researched = Fill(company, row.Details, row.Industry, row.Locations, row.Skills);
+            if (researched) company.ResearchedAt = now;
             db.Companies.Add(company);
-            known[row.NormalizedName] = company;
-            results.Add(new CompanyResult(company, true));
+            byName[row.NormalizedName] = company;
+            if (org is not null) byOrgNumber[org] = company;
+            results.Add(new CompanyResult(company, true, false));
         }
         await db.SaveChangesAsync(ct);
         return results;
+    }
+
+    // Full replace of the research fields, for editing them by hand. Separate from updateCompany for the same
+    // reason as setCompanyNotes: clients that only send name, industry and locations mustn't wipe these.
+    [Error<CompanyNotFoundException>]
+    [Error<InvalidCompanyException>]
+    public static async Task<Company> UpdateCompanyDetailsAsync(
+        int id, CompanyDetailsInput details, AppDbContext db, TimeProvider time, CancellationToken ct)
+    {
+        details = Clean(details, time.GetUtcNow().Year);
+        var company = await db.Companies.Include(c => c.Skills).ThenInclude(s => s.Skill)
+                .FirstOrDefaultAsync(c => c.Id == id, ct)
+            ?? throw new CompanyNotFoundException(id);
+        if (details.OrgNumber is { } org
+            && await db.Companies.AnyAsync(c => c.OrgNumber == org && c.Id != id, ct))
+            throw new InvalidCompanyException($"Another company already has org.nr {org}.");
+
+        company.OrgNumber = details.OrgNumber;
+        company.WebsiteUrl = details.WebsiteUrl;
+        company.CareersUrl = details.CareersUrl;
+        company.LinkedInUrl = details.LinkedInUrl;
+        company.Kind = details.Kind;
+        company.SizeBand = details.SizeBand;
+        company.FoundedYear = details.FoundedYear;
+        company.Description = details.Description;
+        company.WorkMode = details.WorkMode;
+        company.WorkingLanguage = details.WorkingLanguage;
+
+        // Diff like updateCompany's locations: re-adding a kept skill would clash with the join row being deleted.
+        var wanted = await new CompanyLookups(db).SkillsAsync(details.Skills, ct);
+        company.Skills.RemoveAll(cs => !wanted.Contains(cs.Skill));
+        foreach (var skill in wanted.Where(w => company.Skills.All(cs => cs.Skill != w)))
+            company.Skills.Add(new CompanySkill { Skill = skill });
+
+        await db.SaveChangesAsync(ct);
+        return company;
+    }
+
+    // Sets only what is empty on the company; returns whether anything changed.
+    private static bool Fill(Company company, CompanyDetailsInput details, Industry? industry,
+        List<Location> locations, List<Skill> skills)
+    {
+        var filled = false;
+        company.Industry = Blank(company.Industry, industry, ref filled);
+        company.OrgNumber = Blank(company.OrgNumber, details.OrgNumber, ref filled);
+        company.WebsiteUrl = Blank(company.WebsiteUrl, details.WebsiteUrl, ref filled);
+        company.CareersUrl = Blank(company.CareersUrl, details.CareersUrl, ref filled);
+        company.LinkedInUrl = Blank(company.LinkedInUrl, details.LinkedInUrl, ref filled);
+        company.Kind = Blank(company.Kind, details.Kind, ref filled);
+        company.SizeBand = Blank(company.SizeBand, details.SizeBand, ref filled);
+        company.FoundedYear = Blank(company.FoundedYear, details.FoundedYear, ref filled);
+        company.Description = Blank(company.Description, details.Description, ref filled);
+        company.WorkMode = Blank(company.WorkMode, details.WorkMode, ref filled);
+        company.WorkingLanguage = Blank(company.WorkingLanguage, details.WorkingLanguage, ref filled);
+        // Lists count as blank only when empty, so a hand-picked set is never merged with research.
+        if (company.Locations.Count == 0 && locations.Count > 0)
+        {
+            company.Locations.AddRange(locations.Select(l => new CompanyLocation { Location = l }));
+            filled = true;
+        }
+        if (company.Skills.Count == 0 && skills.Count > 0)
+        {
+            company.Skills.AddRange(skills.Select(s => new CompanySkill { Skill = s }));
+            filled = true;
+        }
+        return filled;
+    }
+
+    private static T Blank<T>(T current, T incoming, ref bool filled)
+    {
+        if (current is not null || incoming is null) return current;
+        filled = true;
+        return incoming;
+    }
+
+    // Trims, blanks to null, and validates; shared by createCompanies rows and updateCompanyDetails.
+    private static CompanyDetailsInput Clean(CompanyDetailsInput details, int currentYear)
+    {
+        var orgNumber = ContactMutations.Clean(details.OrgNumber)?.Replace(" ", "");
+        if (orgNumber is not null && !IsOrgNumber(orgNumber))
+            throw new InvalidCompanyException($"\"{details.OrgNumber!.Trim()}\" is not a valid Norwegian org.nr.");
+        if (details.FoundedYear is < 1800 || details.FoundedYear > currentYear)
+            throw new InvalidCompanyException($"Founded year must be between 1800 and {currentYear}.");
+        var description = ContactMutations.Clean(details.Description);
+        if (description?.Length > MaxDescriptionLength)
+            throw new InvalidCompanyException($"The description is longer than {MaxDescriptionLength} characters.");
+
+        var skills = details.Skills.Select(ContactMutations.Clean).OfType<string>().DistinctBy(Names.Normalize).ToList();
+        if (skills.Count > MaxSkills)
+            throw new InvalidCompanyException($"A company can list at most {MaxSkills} skills.");
+        if (skills.FirstOrDefault(s => s.Length > MaxSkillNameLength) is { } longSkill)
+            throw new InvalidCompanyException($"Skill \"{longSkill[..20]}…\" is longer than {MaxSkillNameLength} characters.");
+
+        return details with
+        {
+            OrgNumber = orgNumber,
+            WebsiteUrl = Url(details.WebsiteUrl, "Website"),
+            CareersUrl = Url(details.CareersUrl, "Careers page"),
+            LinkedInUrl = Url(details.LinkedInUrl, "LinkedIn"),
+            Description = description,
+            Skills = skills,
+        };
+    }
+
+    // http(s) only: the UI renders these as links, and a javascript: URL would run on click.
+    private static string? Url(string? value, string field)
+    {
+        var url = ContactMutations.Clean(value);
+        if (url is not null && (url.Length > MaxUrlLength
+            || !Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https")))
+            throw new InvalidCompanyException($"{field} must be an http(s) link.");
+        return url;
+    }
+
+    // Brønnøysund mod-11: weights 3 2 7 6 5 4 3 2 on the first eight digits; remainder 1 is never issued.
+    internal static bool IsOrgNumber(string value)
+    {
+        if (value.Length != 9 || !value.All(char.IsAsciiDigit)) return false;
+        int[] weights = [3, 2, 7, 6, 5, 4, 3, 2];
+        var remainder = weights.Select((w, i) => w * (value[i] - '0')).Sum() % 11;
+        var check = remainder == 0 ? 0 : 11 - remainder;
+        return check != 10 && check == value[8] - '0';
     }
 
     [Error<CompanyNotFoundException>]
@@ -160,6 +325,7 @@ internal class CompanyLookups(AppDbContext db)
 {
     private readonly Dictionary<string, Industry> industries = [];
     private readonly Dictionary<string, Location> locations = [];
+    private readonly Dictionary<string, Skill> skills = [];
 
     public async Task<Industry?> IndustryAsync(string? name, CancellationToken ct)
     {
@@ -170,6 +336,19 @@ internal class CompanyLookups(AppDbContext db)
         var industry = await db.Industries.FirstOrDefaultAsync(i => i.NormalizedName == normalizedName, ct)
             ?? new Industry { UserId = db.CurrentUserId!, Name = name.Trim(), NormalizedName = normalizedName };
         return industries[normalizedName] = industry;
+    }
+
+    // Shares skill ids with listings and the profile. Names arrive cleaned and distinct.
+    public async Task<List<Skill>> SkillsAsync(List<string> names, CancellationToken ct)
+    {
+        var missing = names.Select(Names.Normalize).Where(n => !skills.ContainsKey(n)).ToList();
+        foreach (var skill in await db.Skills.Where(s => missing.Contains(s.NormalizedName)).ToListAsync(ct))
+            skills[skill.NormalizedName] = skill;
+        return names.Select(name => skills.TryGetValue(Names.Normalize(name), out var known) ? known
+            : skills[Names.Normalize(name)] = new Skill
+            {
+                UserId = db.CurrentUserId!, Name = name, NormalizedName = Names.Normalize(name),
+            }).ToList();
     }
 
     // Repeats within one list collapse into one location.

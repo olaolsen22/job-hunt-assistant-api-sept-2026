@@ -203,7 +203,7 @@ public class CompanyTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
-    public async Task CreateCompanies_WithExistingName_ReturnsItUnchanged()
+    public async Task CreateCompanies_WithExistingName_FillsOnlyEmptyFields()
     {
         var client = await factory.GetOwnerClientAsync();
         var name = ListingTests.Unique("Ørsted");
@@ -219,7 +219,7 @@ public class CompanyTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.False(result.GetProperty("created").GetBoolean());
         Assert.Equal(id, result.GetProperty("company").GetProperty("id").GetInt32());
         Assert.Equal("Energy", result.GetProperty("company").GetProperty("industry").GetProperty("name").GetString());
-        Assert.Empty(result.GetProperty("company").GetProperty("locations").EnumerateArray());
+        Assert.Equal(["Bergen"], Cities(result.GetProperty("company")));
         Assert.Equal(1, await CountAsync(client, name));
     }
 
@@ -343,6 +343,276 @@ public class CompanyTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.True(guestResult.GetProperty("created").GetBoolean());
         Assert.NotEqual(ownerResult.GetProperty("company").GetProperty("id").GetInt32(),
             guestResult.GetProperty("company").GetProperty("id").GetInt32());
+    }
+
+    private const string CreateResearched = """
+        mutation ($companies: [CompanyInput!]!) {
+          createCompanies(input: { companies: $companies }) {
+            results {
+              created filled
+              company {
+                id name notes favoritedAt orgNumber websiteUrl careersUrl linkedInUrl kind sizeBand foundedYear
+                description workMode workingLanguage researchedAt industry { name } skills { skill { id name } }
+              }
+            }
+            errors { __typename }
+          }
+        }
+        """;
+
+    private const string UpdateDetails = """
+        mutation ($id: Int!, $details: CompanyDetailsInput!) {
+          updateCompanyDetails(input: { id: $id, details: $details }) {
+            company { orgNumber websiteUrl kind foundedYear description skills { skill { name } } }
+            errors { __typename }
+          }
+        }
+        """;
+
+    // A random org.nr that passes the mod-11 check, so tests sharing the DB never collide.
+    internal static string OrgNumber()
+    {
+        int[] weights = [3, 2, 7, 6, 5, 4, 3, 2];
+        while (true)
+        {
+            var digits = Random.Shared.Next(80_000_000, 99_999_999).ToString();
+            var remainder = weights.Select((w, i) => w * (digits[i] - '0')).Sum() % 11;
+            var check = remainder == 0 ? 0 : 11 - remainder;
+            if (check != 10) return digits + check;
+        }
+    }
+
+    private static object Researched(string name, string? orgNumber = null, string[]? skills = null,
+        string? websiteUrl = "https://acme.example", int? foundedYear = 2010) => new
+    {
+        name, industryName = (string?)null, locations = Array.Empty<object>(), orgNumber, websiteUrl,
+        careersUrl = "https://acme.example/jobs", linkedInUrl = (string?)null, kind = "CONSULTANCY",
+        sizeBand = "MEDIUM", foundedYear, description = " Builds things. ", workMode = "HYBRID",
+        workingLanguage = "NORWEGIAN", skills = skills ?? [],
+    };
+
+    private static List<JsonElement> Results(JsonElement data) =>
+        data.GetProperty("createCompanies").GetProperty("results").EnumerateArray().ToList();
+
+    private static string[] SkillNames(JsonElement company) =>
+        company.GetProperty("skills").EnumerateArray()
+            .Select(s => s.GetProperty("skill").GetProperty("name").GetString()!).Order().ToArray();
+
+    [Fact]
+    public async Task CreateCompanies_WithResearch_SavesAllFields()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var name = ListingTests.Unique("Acme");
+        var org = OrgNumber();
+        var skill = ListingTests.Unique("Kotlin");
+
+        var data = await client.GraphQLAsync(CreateResearched, new
+        {
+            companies = new[] { Researched(name, $"{org[..3]} {org[3..6]} {org[6..]}", [skill, skill.ToLowerInvariant(), " "]) },
+        });
+        var result = Results(data).Single();
+        var company = result.GetProperty("company");
+
+        Assert.True(result.GetProperty("created").GetBoolean());
+        Assert.Equal(org, company.GetProperty("orgNumber").GetString());
+        Assert.Equal("https://acme.example", company.GetProperty("websiteUrl").GetString());
+        Assert.Equal("CONSULTANCY", company.GetProperty("kind").GetString());
+        Assert.Equal("MEDIUM", company.GetProperty("sizeBand").GetString());
+        Assert.Equal(2010, company.GetProperty("foundedYear").GetInt32());
+        Assert.Equal("Builds things.", company.GetProperty("description").GetString());
+        Assert.Equal("HYBRID", company.GetProperty("workMode").GetString());
+        Assert.Equal("NORWEGIAN", company.GetProperty("workingLanguage").GetString());
+        Assert.NotEqual(JsonValueKind.Null, company.GetProperty("researchedAt").ValueKind);
+        Assert.Equal([skill], SkillNames(company));
+    }
+
+    [Fact]
+    public async Task CreateCompanies_OnExistingCompany_FillsOnlyBlanks()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var name = ListingTests.Unique("Acme");
+        var id = await CompanyIdAsync(client, name);
+        await NotesAsync(client, id, "Mine");
+        await FavoriteAsync(client, id, true);
+        await client.GraphQLAsync(UpdateDetails, new
+        {
+            id, details = new { websiteUrl = "https://mine.example", foundedYear = 1999, skills = Array.Empty<string>() },
+        });
+        var skill = ListingTests.Unique("Go");
+
+        var data = await client.GraphQLAsync(CreateResearched, new
+        {
+            companies = new[] { Researched(name.ToUpperInvariant(), OrgNumber(), [skill]) },
+        });
+        var result = Results(data).Single();
+        var company = result.GetProperty("company");
+
+        Assert.False(result.GetProperty("created").GetBoolean());
+        Assert.True(result.GetProperty("filled").GetBoolean());
+        Assert.Equal(id, company.GetProperty("id").GetInt32());
+        Assert.Equal(name, company.GetProperty("name").GetString());
+        Assert.Equal("Mine", company.GetProperty("notes").GetString());
+        Assert.NotEqual(JsonValueKind.Null, company.GetProperty("favoritedAt").ValueKind);
+        Assert.Equal("https://mine.example", company.GetProperty("websiteUrl").GetString());
+        Assert.Equal(1999, company.GetProperty("foundedYear").GetInt32());
+        Assert.Equal("https://acme.example/jobs", company.GetProperty("careersUrl").GetString());
+        Assert.Equal("CONSULTANCY", company.GetProperty("kind").GetString());
+        Assert.Equal([skill], SkillNames(company));
+        Assert.NotEqual(JsonValueKind.Null, company.GetProperty("researchedAt").ValueKind);
+
+        // Pasting the same research again has nothing left to fill.
+        var again = Results(await client.GraphQLAsync(CreateResearched, new
+        {
+            companies = new[] { Researched(name, null, [ListingTests.Unique("Rust")]) },
+        })).Single();
+        Assert.False(again.GetProperty("filled").GetBoolean());
+        Assert.Equal([skill], SkillNames(again.GetProperty("company")));
+    }
+
+    [Fact]
+    public async Task CreateCompanies_MatchesByOrgNumberBeforeName()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var (name, renamed) = (ListingTests.Unique("Acme"), ListingTests.Unique("Acme Norge"));
+        var org = OrgNumber();
+        var id = Results(await client.GraphQLAsync(CreateResearched, new { companies = new[] { Researched(name, org) } }))
+            .Single().GetProperty("company").GetProperty("id").GetInt32();
+
+        var data = await client.GraphQLAsync(CreateResearched, new
+        {
+            companies = new[] { Researched(renamed, org), Researched(ListingTests.Unique("Other"), org) },
+        });
+        var results = Results(data);
+
+        Assert.All(results, r => Assert.False(r.GetProperty("created").GetBoolean()));
+        Assert.All(results, r => Assert.Equal(id, r.GetProperty("company").GetProperty("id").GetInt32()));
+        Assert.Equal(0, await CountAsync(client, renamed));
+    }
+
+    [Fact]
+    public async Task CreateCompanies_ByNameWithOtherOrgNumber_KeepsTheExistingOne()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var name = ListingTests.Unique("Acme");
+        var org = OrgNumber();
+        await client.GraphQLAsync(CreateResearched, new { companies = new[] { Researched(name, org) } });
+
+        var result = Results(await client.GraphQLAsync(CreateResearched, new
+        {
+            companies = new[] { Researched(name, OrgNumber()) },
+        })).Single();
+
+        Assert.False(result.GetProperty("filled").GetBoolean());
+        Assert.Equal(org, result.GetProperty("company").GetProperty("orgNumber").GetString());
+    }
+
+    [Fact]
+    public async Task CreateCompanies_SharesSkillsWithListingsAndBatchRows()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var skill = ListingTests.Unique("Kubernetes");
+        var created = await client.GraphQLAsync(CreateResearched, new { companies = new[] { Researched(ListingTests.Unique("Seed"), null, [skill]) } });
+        var skillId = Results(created).Single().GetProperty("company").GetProperty("skills")[0]
+            .GetProperty("skill").GetProperty("id").GetInt32();
+        var fresh = ListingTests.Unique("Terraform");
+
+        var results = Results(await client.GraphQLAsync(CreateResearched, new
+        {
+            companies = new[]
+            {
+                Researched(ListingTests.Unique("A"), null, [skill.ToUpperInvariant(), fresh]),
+                Researched(ListingTests.Unique("B"), null, [fresh.ToLowerInvariant()]),
+            },
+        }));
+
+        int SkillId(JsonElement result, string name) => result.GetProperty("company").GetProperty("skills").EnumerateArray()
+            .Single(s => string.Equals(s.GetProperty("skill").GetProperty("name").GetString(), name, StringComparison.OrdinalIgnoreCase))
+            .GetProperty("skill").GetProperty("id").GetInt32();
+        Assert.Equal(skillId, SkillId(results[0], skill));
+        Assert.Equal(SkillId(results[0], fresh), SkillId(results[1], fresh));
+    }
+
+    [Theory]
+    [InlineData("123456789", "https://acme.example", 2010)]
+    [InlineData(null, "javascript:alert(1)", 2010)]
+    [InlineData(null, "https://acme.example", 1700)]
+    [InlineData(null, "https://acme.example", 3000)]
+    public async Task CreateCompanies_WithInvalidResearch_SavesNothing(string? orgNumber, string websiteUrl, int foundedYear)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var marker = Guid.NewGuid().ToString("N");
+
+        var data = await client.GraphQLAsync(CreateResearched, new
+        {
+            companies = new[] { Researched($"{marker} 1"), Researched($"{marker} 2", orgNumber, null, websiteUrl, foundedYear) },
+        });
+
+        Assert.Equal("InvalidCompanyError",
+            data.GetProperty("createCompanies").GetProperty("errors")[0].GetProperty("__typename").GetString());
+        Assert.Equal(0, await CountAsync(client, marker));
+    }
+
+    [Fact]
+    public async Task CreateCompanies_DoesNotMatchAnotherUsersOrgNumber()
+    {
+        var owner = await factory.GetOwnerClientAsync();
+        var other = await factory.GetSecondOwnerClientAsync();
+        var name = ListingTests.Unique("Acme");
+        var org = OrgNumber();
+        var ownerId = Results(await owner.GraphQLAsync(CreateResearched, new { companies = new[] { Researched(name, org) } }))
+            .Single().GetProperty("company").GetProperty("id").GetInt32();
+
+        var result = Results(await other.GraphQLAsync(CreateResearched, new { companies = new[] { Researched(name, org) } })).Single();
+
+        Assert.True(result.GetProperty("created").GetBoolean());
+        Assert.NotEqual(ownerId, result.GetProperty("company").GetProperty("id").GetInt32());
+    }
+
+    [Fact]
+    public async Task UpdateCompanyDetails_ReplacesFieldsAndSkills()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var id = await CompanyIdAsync(client, ListingTests.Unique("Acme"));
+        var (kept, dropped, added) = (ListingTests.Unique("C#"), ListingTests.Unique("Java"), ListingTests.Unique("F#"));
+        var org = OrgNumber();
+        await client.GraphQLAsync(UpdateDetails, new
+        {
+            id, details = new { orgNumber = org, kind = "PRODUCT", description = "Old", skills = new[] { kept, dropped } },
+        });
+
+        var data = await client.GraphQLAsync(UpdateDetails, new
+        {
+            id, details = new { websiteUrl = "https://acme.example", foundedYear = 2001, skills = new[] { kept, added } },
+        });
+        var company = data.GetProperty("updateCompanyDetails").GetProperty("company");
+
+        Assert.Equal(JsonValueKind.Null, company.GetProperty("orgNumber").ValueKind);
+        Assert.Equal(JsonValueKind.Null, company.GetProperty("kind").ValueKind);
+        Assert.Equal(JsonValueKind.Null, company.GetProperty("description").ValueKind);
+        Assert.Equal("https://acme.example", company.GetProperty("websiteUrl").GetString());
+        Assert.Equal(2001, company.GetProperty("foundedYear").GetInt32());
+        Assert.Equal(new[] { added, kept }.Order(), SkillNames(company));
+    }
+
+    [Fact]
+    public async Task UpdateCompanyDetails_WithTakenOrgNumberOrMissingCompany_ReturnsErrors()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var org = OrgNumber();
+        await client.GraphQLAsync(CreateResearched, new { companies = new[] { Researched(ListingTests.Unique("Taken"), org) } });
+        var id = await CompanyIdAsync(client, ListingTests.Unique("Acme"));
+
+        var taken = await client.GraphQLAsync(UpdateDetails, new { id, details = new { orgNumber = org, skills = Array.Empty<string>() } });
+        var missing = await client.GraphQLAsync(UpdateDetails, new { id = int.MaxValue, details = new { skills = Array.Empty<string>() } });
+        var otherUser = await (await factory.GetSecondOwnerClientAsync()).GraphQLAsync(UpdateDetails,
+            new { id, details = new { skills = Array.Empty<string>() } });
+
+        Assert.Equal("InvalidCompanyError",
+            taken.GetProperty("updateCompanyDetails").GetProperty("errors")[0].GetProperty("__typename").GetString());
+        Assert.Equal("CompanyNotFoundError",
+            missing.GetProperty("updateCompanyDetails").GetProperty("errors")[0].GetProperty("__typename").GetString());
+        Assert.Equal("CompanyNotFoundError",
+            otherUser.GetProperty("updateCompanyDetails").GetProperty("errors")[0].GetProperty("__typename").GetString());
     }
 
     private static JsonElement Single(JsonElement data) =>

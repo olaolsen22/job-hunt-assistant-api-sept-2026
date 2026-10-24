@@ -42,11 +42,14 @@ public class CompanyParsingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var guestPrompt = (await guest.GraphQLAsync(Prompt)).GetProperty("companyParsePrompt");
 
         var instructions = ownerPrompt.GetProperty("instructions").GetString()!;
-        Assert.Equal(1, ownerPrompt.GetProperty("version").GetInt32());
+        Assert.Equal(2, ownerPrompt.GetProperty("version").GetInt32());
         Assert.Contains("ONE JSON array", instructions);
         Assert.Contains("<posting>", instructions);
         Assert.Contains("ISO 3166-1", instructions);
         Assert.Contains(industry, instructions);
+        Assert.Contains("\"orgNumber\"", instructions);
+        Assert.Contains("\"PRODUCT\" | \"CONSULTANCY\" | \"IN_HOUSE\"", instructions);
+        Assert.Contains("\"skills\": string[]", instructions);
         Assert.DoesNotContain(industry, guestPrompt.GetProperty("instructions").GetString());
     }
 
