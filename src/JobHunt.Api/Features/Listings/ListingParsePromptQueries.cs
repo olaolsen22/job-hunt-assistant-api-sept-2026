@@ -15,10 +15,10 @@ public record ListingParsePrompt(int Version, string Instructions);
 public static partial class ListingParsePromptQueries
 {
     // Bump whenever the prompt or output shape changes; the server-side parse cache keys on it.
-    public const int Version = 13;
+    public const int Version = 14;
 
     // Separate from Version: the quick prompt changes on its own schedule.
-    public const int QuickVersion = 7;
+    public const int QuickVersion = 8;
 
     // Keeps the prompt short (and cheap on the API-key path) for users with many roles/skills.
     private const int MaxNames = 100;
@@ -45,6 +45,7 @@ public static partial class ListingParsePromptQueries
             # Output
             {
               "title": string,              // short job title in natural English
+              "kind": "VACANCY" | "OPEN_INVITATION",
               "companyName": string,
               "jobRoleName": string,        // core role in English, no seniority or tech: "Backend Developer", "Warehouse Worker"
               "jobRoleCategoryName": string | null,
@@ -89,6 +90,7 @@ public static partial class ListingParsePromptQueries
               page has one, otherwise the ad's heading. Translate it if the ad isn't in English. Keep seniority and
               specialty; drop company, location, workload/employment type, slogans and duplicate bilingual variants.
               "Senior systemutvikler .NET – Oslo, 100 % fast" → "Senior .NET Developer".
+            {{KindRule}}
             companyName: as the company calls itself, without legal suffixes (AS, ASA, AB, GmbH, Ltd, Inc).
             seniority: a word in the title or text wins (Senior, Junior, Lead, "Trainee" = JUNIOR). Otherwise infer from the experience asked for:
               0–1 years or graduate → JUNIOR, 2–4 years → MID, 5+ years or "erfaren"/"experienced" → SENIOR,
@@ -182,6 +184,7 @@ public static partial class ListingParsePromptQueries
             # Output
             [{
               "title": string,              // short job title in natural English
+              "kind": "VACANCY" | "OPEN_INVITATION",
               "companyName": string,
               "jobRoleName": string,        // core role in English, no seniority or tech: "Backend Developer", "Warehouse Worker"
               "jobRoleCategoryName": string | null,
@@ -203,6 +206,7 @@ public static partial class ListingParsePromptQueries
               page has one, otherwise the ad's heading. Translate it if the ad isn't in English. Keep seniority and
               specialty; drop company, location, workload/employment type, slogans and duplicate bilingual variants.
               "Senior systemutvikler .NET – Oslo, 100 % fast" → "Senior .NET Developer".
+            {{KindRule}}
             jobRoleName: reuse an existing role when it means the same thing, otherwise the standard English job title.
               Existing job roles: {{NameList(jobRoles)}}
             companyName: as the company calls itself, without legal suffixes (AS, ASA, AB, GmbH, Ltd, Inc).
@@ -223,6 +227,13 @@ public static partial class ListingParsePromptQueries
         return new ListingParsePrompt(QuickVersion, instructions);
     }
 
+    // Parsed text always comes from a page, so UNSOLICITED (no page at all) is never offered.
+    private const string KindRule = """
+        kind: OPEN_INVITATION when the page invites open applications or a talent pool instead of advertising one position
+          ("åpen søknad", "open application", "general application", "talent pool", "interessebank"); then title names the
+          field it invites, without "open application". Otherwise VACANCY.
+        """;
+
     private static async Task<string> CategoryInstructionsAsync(AppDbContext db, CancellationToken ct)
     {
         var categories = await db.JobRoleCategories.OrderBy(c => c.Name).Select(c => c.Name).ToListAsync(ct);
@@ -240,7 +251,7 @@ public static partial class ListingParsePromptQueries
 
     // Built from the C# enums, so the prompt can't offer a value the schema doesn't have.
     // Same PascalCase → UPPER_SNAKE conversion Hot Chocolate applies (FixedTerm → FIXED_TERM).
-    private static string Values<TEnum>() where TEnum : struct, Enum =>
+    internal static string Values<TEnum>() where TEnum : struct, Enum =>
         string.Join(" | ", Enum.GetNames<TEnum>().Select(n => $"\"{WordBoundary().Replace(n, "_").ToUpperInvariant()}\""));
 
     private static string NameList(List<string> names) => names.Count == 0 ? "(none yet)" : string.Join(", ", names);

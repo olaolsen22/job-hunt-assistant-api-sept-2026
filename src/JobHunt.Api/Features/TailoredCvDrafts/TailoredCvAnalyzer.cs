@@ -49,7 +49,7 @@ public class TailoredCvAnalyzer(
         int? sourceEntryId, ResolvedLlmModel model, AppDbContext db, CancellationToken ct)
     {
         var listing = await db.Listings.AsNoTracking()
-            .Include(l => l.Company).Include(l => l.JobRole)
+            .Include(l => l.Company).ThenInclude(c => c.Skills).ThenInclude(s => s.Skill).Include(l => l.JobRole)
             .Include(l => l.Skills).ThenInclude(s => s.Skill)
             .Include(l => l.Languages)
             .FirstOrDefaultAsync(l => l.Id == listingId, ct)
@@ -130,10 +130,11 @@ public class TailoredCvAnalyzer(
             throw new InvalidTailoredCvAnalysisException("sourceEntryId is only valid for an experience, education or project section.");
         var job = new
         {
-            listing.Title, Company = listing.Company.Name, JobRole = listing.JobRole.Name,
+            listing.Kind, listing.Title, Company = listing.Company.Name, JobRole = listing.JobRole.Name,
             listing.Description,
             Skills = listing.Skills.Select(s => new { s.Skill.Name, s.Level, s.MinYears, s.IsRequired }),
             Languages = listing.Languages.Select(l => new { l.Language, l.Level, l.IsRequired }),
+            CompanyResearch = new { listing.Company.Description, Skills = listing.Company.Skills.Select(s => s.Skill.Name) },
         };
         return section switch
         {
@@ -250,6 +251,9 @@ public class TailoredCvAnalyzer(
         Identify the themes the listing emphasises, such as AI-powered features, LLMs, cloud or accessibility, and
         actively surface supported evidence of them; never invent it. Keep using AI tools, such as coding
         assistants, distinct from building AI features or machine learning; never present one as the other.
+        An UNSOLICITED listing (open application, no posting) has no requirements: take the themes from its job role and
+        companyResearch, the employer's described work and stack, instead. For OPEN_INVITATION the description is the
+        work profile the employer invites open applications for.
         """;
 
     // A CV is read as the candidate's overall profile too: a listing-only keyword list hides their core stack.

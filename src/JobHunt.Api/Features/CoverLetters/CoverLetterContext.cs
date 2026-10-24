@@ -12,14 +12,14 @@ namespace JobHunt.Api.Features.CoverLetters;
 
 // Header is a complete letter without a body: every path (prefill, AI, external, paste) starts from it, so only the
 // body and wording come from the model or the paste, never names, contact details or dates.
-public record CoverLetterPromptContext(string Json, Language Language, CoverLetterContent Header);
+public record CoverLetterPromptContext(string Json, Language Language, ListingKind Kind, CoverLetterContent Header);
 
 // Shared by the built-in and external paths, so both send the model exactly the same allowlisted data.
 public static class CoverLetterContext
 {
     public const int MaxContextLength = 100_000;
     private const int SampleBudget = 12_000;
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    internal static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseUpper, allowIntegerValues: false) },
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -40,13 +40,19 @@ public static class CoverLetterContext
         {
             Listing = new
             {
-                listing.Title, Company = listing.Company.Name, Industry = listing.Company.Industry?.Name,
+                listing.Kind, listing.Title, Company = listing.Company.Name, Industry = listing.Company.Industry?.Name,
                 JobRole = listing.JobRole.Name, listing.Url, listing.Seniority, listing.EmploymentType,
                 listing.WorkMode, Locations = listing.Locations.Select(l => new { l.Location.City, l.Location.CountryCode }),
                 listing.Description,
                 Skills = listing.Skills.Select(s => new { s.Skill.Name, s.Level, s.MinYears, s.IsRequired }),
                 Languages = listing.Languages.Select(l => new { l.Language, l.Level, l.IsRequired }),
                 Recipient = header.RecipientName,
+            },
+            // Published facts about the employer: the basis of an open application, motivation for any other.
+            CompanyResearch = new
+            {
+                listing.Company.Kind, listing.Company.SizeBand, listing.Company.Description, listing.Company.WebsiteUrl,
+                listing.Company.CareersUrl, Skills = listing.Company.Skills.Select(s => s.Skill.Name),
             },
             // The user's own research and impressions: often the best source of a specific, truthful motivation.
             Notes = new
@@ -71,13 +77,14 @@ public static class CoverLetterContext
         var json = JsonSerializer.Serialize(context, JsonOptions);
         if (json.Length > MaxContextLength)
             throw new InvalidCoverLetterException($"Prompt context must be at most {MaxContextLength} characters.");
-        return new(json, language, header);
+        return new(json, language, listing.Kind, header);
     }
 
     private static async Task<Sources> LoadAsync(int listingId, AppDbContext db, TimeProvider time, CancellationToken ct)
     {
         var listing = await db.Listings.AsNoTracking()
             .Include(l => l.Company).ThenInclude(c => c.Industry)
+            .Include(l => l.Company).ThenInclude(c => c.Skills).ThenInclude(s => s.Skill)
             .Include(l => l.JobRole)
             .Include(l => l.Skills).ThenInclude(s => s.Skill)
             .Include(l => l.Languages)
@@ -105,7 +112,9 @@ public static class CoverLetterContext
             Date: DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime),
             Organization: listing.Company.Name,
             RecipientName: contact,
-            Subject: norwegian ? $"Søknad på stilling som {listing.Title}" : $"Application for the position of {listing.Title}",
+            Subject: listing.Kind != ListingKind.Vacancy
+                ? norwegian ? $"Åpen søknad – {listing.Title}" : $"Open application – {listing.Title}"
+                : norwegian ? $"Søknad på stilling som {listing.Title}" : $"Application for the position of {listing.Title}",
             // Norwegian letters go straight from subject to body, as in the published examples.
             Greeting: norwegian ? null : contact is null ? "Dear hiring team," : $"Dear {contact},",
             Closing: norwegian ? "Vennlig hilsen" : "Kind regards");

@@ -54,8 +54,9 @@ public static class ParseMutations
             {
                 // Model validation retains its precedence; historical receipt replay does not re-fetch sources.
                 var resolved = await models.ResolveAsync(model, db, ct);
-                url = await db.Listings.Where(l => l.Id == listingId).Select(l => l.Url).FirstOrDefaultAsync(ct)
-                    ?? throw new ListingNotFoundException(listingId);
+                var listing = await db.Listings.Where(l => l.Id == listingId).Select(l => new { l.Url })
+                    .FirstOrDefaultAsync(ct) ?? throw new ListingNotFoundException(listingId);
+                url = listing.Url ?? throw new InvalidParseRequestException("This application has no page to analyze.");
                 return resolved;
             }, async resolved =>
             {

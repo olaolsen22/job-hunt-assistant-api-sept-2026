@@ -25,7 +25,7 @@ public static class TailoredCvExternalPromptQueries
         int listingId, AppDbContext db, CancellationToken ct)
     {
         var listing = await db.Listings.AsNoTracking()
-            .Include(l => l.Company).Include(l => l.JobRole)
+            .Include(l => l.Company).ThenInclude(c => c.Skills).ThenInclude(s => s.Skill).Include(l => l.JobRole)
             .Include(l => l.Skills).ThenInclude(s => s.Skill)
             .Include(l => l.Languages)
             .FirstOrDefaultAsync(l => l.Id == listingId, ct)
@@ -39,10 +39,11 @@ public static class TailoredCvExternalPromptQueries
         // Listing first and separate from the profile, so it is easy to spot in the pasted prompt.
         var listingJson = JsonSerializer.Serialize(new
         {
-            listing.Title, Company = listing.Company.Name, JobRole = listing.JobRole.Name, listing.Url,
+            listing.Kind, listing.Title, Company = listing.Company.Name, JobRole = listing.JobRole.Name, listing.Url,
             listing.Description,
             Skills = listing.Skills.Select(s => new { s.Skill.Name, s.Level, s.MinYears, s.IsRequired }),
             Languages = listing.Languages.Select(l => new { l.Language, l.Level, l.IsRequired }),
+            CompanyResearch = new { listing.Company.Description, Skills = listing.Company.Skills.Select(s => s.Skill.Name) },
         }, JsonOptions);
         var context = new
         {

@@ -8,7 +8,7 @@ namespace JobHunt.Api.Features.Listings;
 [QueryType]
 public static class ListingQueries
 {
-    // Undated ads still close; treat them as due this long after posting.
+    // Undated ads still close; treat them as due this long after posting. Unsolicited applications never do.
     private const int AsapDays = 14;
     private const int UnspecifiedDays = 30;
 
@@ -17,14 +17,15 @@ public static class ListingQueries
     private static readonly Expression<Func<Listing, ListingWithDue>> WithDue = l => new ListingWithDue
     {
         Listing = l,
-        Due = l.DeadlineType == DeadlineType.Date ? l.DeadlineOn!.Value
-            : l.DeadlineType == DeadlineType.Asap ? l.PostedOn.AddDays(AsapDays)
-            : l.PostedOn.AddDays(UnspecifiedDays),
+        Due = l.Kind == ListingKind.Unsolicited ? null
+            : l.DeadlineType == DeadlineType.Date ? l.DeadlineOn
+            : l.DeadlineType == DeadlineType.Asap ? l.PostedOn!.Value.AddDays(AsapDays)
+            : l.PostedOn!.Value.AddDays(UnspecifiedDays),
     };
 
     private static readonly Func<Listing, ListingWithDue> CompiledWithDue = WithDue.Compile();
 
-    internal static DateOnly DueOn(Listing listing) => CompiledWithDue(listing).Due;
+    internal static DateOnly? DueOn(Listing listing) => CompiledWithDue(listing).Due;
 
     public static async Task<List<ListingUrlCheckResult>> CheckListingUrlsAsync(
         List<string> urls, AppDbContext db, CancellationToken ct)
@@ -46,7 +47,8 @@ public static class ListingQueries
         // All statuses and archive states count as seen; the global filter still scopes matches to this user.
         var matches = await db.Listings.AsNoTracking()
             .Where(l => distinctUrls.Contains(l.Url))
-            .Select(l => new { l.Id, l.Url })
+            // Non-null: only listings matching one of the URLs come back.
+            .Select(l => new { l.Id, Url = l.Url! })
             .ToListAsync(ct);
         var idsByUrl = matches.GroupBy(l => l.Url, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.Select(l => l.Id).Order().ToList(), StringComparer.Ordinal);
@@ -105,11 +107,13 @@ public static class ListingQueries
         return query;
     }
 
-    // Upcoming soonest first, then expired (also soonest first).
+    // Upcoming soonest first, then expired (also soonest first), then those without a deadline.
+    // Due == null explicitly: SQLite sorts NULL before every date.
     private static IQueryable<Listing> ByClosestDeadline(IQueryable<Listing> query, DateOnly today) =>
         query
             .Select(WithDue)
-            .OrderBy(x => x.Due < today)
+            .OrderBy(x => x.Due == null)
+            .ThenBy(x => x.Due < today)
             .ThenBy(x => x.Due)
             .ThenByDescending(x => x.Listing.CreatedAt)
             .ThenByDescending(x => x.Listing.Id)
@@ -136,21 +140,23 @@ public static partial class ListingNode
     {
         descriptor.Ignore(l => l.UserId);
         descriptor.Ignore(l => l.NormalizedTitle);
-        // Ordered by the client: the timeline by occurredAt, interviews by scheduledAt.
+        // Ordered by the client: the timeline by occurredAt, interviews by scheduledAt, questions by id.
         descriptor.Field(l => l.StatusHistory).UseSorting();
         descriptor.Field(l => l.Interviews).UseSorting();
+        descriptor.Field(l => l.ApplicationQuestions).UseSorting();
         // dueOn needs these even when the client didn't select them.
+        descriptor.Field(l => l.Kind).IsProjected();
         descriptor.Field(l => l.DeadlineType).IsProjected();
         descriptor.Field(l => l.PostedOn).IsProjected();
         descriptor.Field(l => l.DeadlineOn).IsProjected();
     }
 
     // Same rule the server sorts and filters on, so the UI's badges can't disagree with the list.
-    public static DateOnly GetDueOn([Parent] Listing listing) => ListingQueries.DueOn(listing);
+    public static DateOnly? GetDueOn([Parent] Listing listing) => ListingQueries.DueOn(listing);
 }
 
 internal sealed class ListingWithDue
 {
     public Listing Listing { get; init; } = null!;
-    public DateOnly Due { get; init; }
+    public DateOnly? Due { get; init; }
 }

@@ -1,3 +1,4 @@
+using JobHunt.Api.Features.ApplicationQuestions;
 using JobHunt.Api.Features.Applications;
 using JobHunt.Api.Features.Auth;
 using JobHunt.Api.Features.Companies;
@@ -19,6 +20,8 @@ public class Listing
     public string Title { get; set; } = null!;
     // Names.Normalize(Title), for search: SQLite's LIKE/lower()/NOCASE only fold ASCII, so "økonomi" wouldn't find "Økonomi".
     public string NormalizedTitle { get; set; } = null!;
+    // An advertised vacancy, a company page inviting open applications, or an application sent with no page at all.
+    public ListingKind Kind { get; set; }
     public int CompanyId { get; set; }
     public Company Company { get; set; } = null!;
     public int JobRoleId { get; set; }
@@ -28,8 +31,9 @@ public class Listing
     public Schedule? Schedule { get; set; }
     public WorkMode? WorkMode { get; set; }
     public string? Description { get; set; }
-    public string Url { get; set; } = null!;
-    public DateOnly PostedOn { get; set; }
+    // Null only for an unsolicited application, which has no page and was never posted.
+    public string? Url { get; set; }
+    public DateOnly? PostedOn { get; set; }
     public DeadlineType DeadlineType { get; set; }
     public DateOnly? DeadlineOn { get; set; }
     public Language? PostingLanguage { get; set; }
@@ -57,6 +61,7 @@ public class Listing
     public List<StatusChange> StatusHistory { get; set; } = [];
     public List<Interview> Interviews { get; set; } = [];
     public List<ListingContact> Contacts { get; set; } = [];
+    public List<ApplicationQuestion> ApplicationQuestions { get; set; } = [];
     // Set when the ad is a training program that leads to a job; null for ordinary jobs.
     public TrainingProgram? TrainingProgram { get; set; }
 }
@@ -91,6 +96,9 @@ public class ListingLocation
     public int LocationId { get; set; }
     public Location Location { get; set; } = null!;
 }
+
+// Unsolicited (åpen søknad without an invitation): Title and JobRole name the field applied in, and there is no deadline.
+public enum ListingKind { Vacancy, OpenInvitation, Unsolicited }
 
 public enum Seniority { Intern, Junior, Mid, Senior, Lead }
 

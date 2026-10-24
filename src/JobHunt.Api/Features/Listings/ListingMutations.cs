@@ -20,8 +20,9 @@ public record ListingInput(
     Schedule? Schedule,
     WorkMode? WorkMode,
     string? Description,
-    string Url,
-    DateOnly PostedOn,
+    // Both required, except that an unsolicited application has neither (the UI links the company's CareersUrl).
+    string? Url,
+    DateOnly? PostedOn,
     [property: DefaultValue(DeadlineType.Unspecified)] DeadlineType DeadlineType,
     DateOnly? DeadlineOn,
     Language? PostingLanguage,
@@ -35,7 +36,8 @@ public record ListingInput(
     Optional<TrainingProgramInput?> TrainingProgram = default,
     string? JobRoleCategoryName = null,
     // True when this save applies a fresh re-analysis (the prompts change over time); stamps ReanalyzedAt.
-    [property: DefaultValue(false)] bool Reanalyzed = false);
+    [property: DefaultValue(false)] bool Reanalyzed = false,
+    [property: DefaultValue(ListingKind.Vacancy)] ListingKind Kind = ListingKind.Vacancy);
 
 // The end employer comes in by name like the listing's company; null when the ad doesn't name one.
 public record TrainingProgramInput(
@@ -71,6 +73,8 @@ public class DuplicateListingException(int existingListingId)
 // PreviousAttempts: closed listings with the same URL, i.e. the ad was reposted and this is a new attempt.
 // PossibleDuplicates: same company and role or title but a different URL: often the same job on another board,
 // but can be a second opening, so it's saved and the matches are returned for the user to judge.
+// An open application also matches any other open application to the company that's still active: one at a time
+// is best, but sending another is allowed.
 public record CreateListingPayload(Listing Listing, List<Listing> PreviousAttempts, List<Listing> PossibleDuplicates);
 
 public class ListingInUseException(int id) : Exception($"Listing {id} has been applied to and can't be deleted. Archive it instead.");
@@ -91,7 +95,8 @@ public static class ListingMutations
         await db.SaveChangesAsync(ct);
 
         // Any other listing with this URL is closed, or the duplicate check would have thrown.
-        var previousAttempts = await WithDetails(db)
+        // Guarded: EF compares a null URL as IS NULL, which would match every unsolicited application.
+        var previousAttempts = entity.Url is null ? [] : await WithDetails(db)
             .Where(l => l.Url == entity.Url && l.Id != entity.Id)
             .OrderByDescending(l => l.CreatedAt)
             .ToListAsync(ct);
@@ -99,11 +104,13 @@ public static class ListingMutations
         // Few listings per company, so the title match runs in memory with the same Names.Normalize as lookups.
         var title = Names.Normalize(entity.Title);
         var sameCompany = await WithDetails(db)
-            .Where(l => l.CompanyId == entity.CompanyId && l.Id != entity.Id && l.Url != entity.Url)
+            .Where(l => l.CompanyId == entity.CompanyId && l.Id != entity.Id && (entity.Url == null || l.Url != entity.Url))
             .OrderByDescending(l => l.CreatedAt)
             .ToListAsync(ct);
         var possibleDuplicates = sameCompany
-            .Where(l => l.JobRoleId == entity.JobRoleId || Names.Normalize(l.Title) == title)
+            .Where(l => l.JobRoleId == entity.JobRoleId || Names.Normalize(l.Title) == title
+                || (entity.Kind != ListingKind.Vacancy && l.Kind != ListingKind.Vacancy
+                    && !ApplicationStatuses.Final.Contains(l.Status)))
             .ToList();
         return new CreateListingPayload(entity, previousAttempts, possibleDuplicates);
     }
@@ -173,8 +180,8 @@ public static class ListingMutations
             ?? throw new ListingNotFoundException(id);
 
     // Shared with undoStatusChange, which must not reopen a listing while another attempt is open.
-    internal static Task<int?> OpenListingIdWithUrlAsync(Listing listing, AppDbContext db, CancellationToken ct) =>
-        db.Listings
+    internal static async Task<int?> OpenListingIdWithUrlAsync(Listing listing, AppDbContext db, CancellationToken ct) =>
+        listing.Url is null ? null : await db.Listings
             .Where(l => l.Url == listing.Url && l.Id != listing.Id && !ApplicationStatuses.Final.Contains(l.Status))
             .Select(l => (int?)l.Id)
             .FirstOrDefaultAsync(ct);
@@ -206,6 +213,7 @@ public static class ListingMutations
                 ?? throw new InvalidListingException("Choose an existing job role category.");
         }
 
+        entity.Kind = input.Kind;
         entity.Title = input.Title.Trim();
         entity.NormalizedTitle = Names.Normalize(entity.Title);
         entity.Seniority = input.Seniority;
@@ -213,7 +221,7 @@ public static class ListingMutations
         entity.Schedule = input.Schedule;
         entity.WorkMode = input.WorkMode;
         entity.Description = input.Description;
-        entity.Url = ListingUrls.Normalize(new Uri(input.Url.Trim()));
+        entity.Url = string.IsNullOrWhiteSpace(input.Url) ? null : ListingUrls.Normalize(new Uri(input.Url.Trim()));
         // Only one open listing per URL; closed ones are earlier attempts. Archived listings count too:
         // re-adding an ad you saved and archived is still a duplicate. A closed listing may share an open one's URL.
         if (!ApplicationStatuses.Final.Contains(entity.Status))
@@ -365,9 +373,25 @@ public static class ListingMutations
             throw new InvalidListingException("Company name is required.");
         if (string.IsNullOrWhiteSpace(input.JobRoleName))
             throw new InvalidListingException("Job role is required.");
-        // http(s) only: the UI renders this as a link, and a javascript: URL would run on click.
-        if (!Uri.TryCreate(input.Url.Trim(), UriKind.Absolute, out var url) || url.Scheme is not ("http" or "https"))
-            throw new InvalidListingException("Url must be an http(s) link.");
+        if (input.Kind == ListingKind.Unsolicited)
+        {
+            // Nothing was posted. A URL would also take part in the one-open-listing-per-URL rule, so two
+            // applications pointing at the same careers page would block each other.
+            if (!string.IsNullOrWhiteSpace(input.Url))
+                throw new InvalidListingException("An unsolicited application has no URL; the company's careers URL covers it.");
+            if (input.PostedOn is not null)
+                throw new InvalidListingException("An unsolicited application has no posted date.");
+            if (input.DeadlineType != DeadlineType.Unspecified)
+                throw new InvalidListingException("An unsolicited application has no deadline.");
+        }
+        else
+        {
+            // http(s) only: the UI renders this as a link, and a javascript: URL would run on click.
+            if (!Uri.TryCreate(input.Url?.Trim(), UriKind.Absolute, out var url) || url.Scheme is not ("http" or "https"))
+                throw new InvalidListingException("Url must be an http(s) link.");
+            if (input.PostedOn is null)
+                throw new InvalidListingException("Posted date is required.");
+        }
         // One day of slack: today is UTC here, and just after midnight in Norway it's still yesterday in UTC.
         if (input.PostedOn > today.AddDays(1))
             throw new InvalidListingException("Posted date can't be in the future.");

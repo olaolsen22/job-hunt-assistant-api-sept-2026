@@ -29,7 +29,7 @@ public class CoverLetterGenerator(LlmExecution execution, LlmModelResolver model
     {
         var context = await CoverLetterContext.BuildAsync(listingId, db, time, ct);
         var call = await execution.RunAsync(model,
-            [new(ChatRole.System, CoverLetterPrompt.Instructions(context.Language)),
+            [new(ChatRole.System, CoverLetterPrompt.Instructions(context.Language, context.Kind)),
              new(ChatRole.User, $"<cover_letter_context>\n{context.Json}\n</cover_letter_context>")],
             new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0.7f, MaxOutputTokens = 4096 },
             Operation, db, ct);
@@ -75,7 +75,7 @@ public static class CoverLetterExternalPromptQueries
     {
         var context = await CoverLetterContext.BuildAsync(listingId, db, time, ct);
         var prompt = $$"""
-            {{CoverLetterPrompt.Instructions(context.Language)}}
+            {{CoverLetterPrompt.Instructions(context.Language, context.Kind)}}
             Return it in a single ```json code block without prose, and include "schemaVersion": {{CoverLetterPrompt.Version}} in the object.
 
             Listing, candidate, and writing sample data:
