@@ -1,7 +1,6 @@
 using System.Text.Json;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.AiSafeguards;
-using JobHunt.Api.Features.Applications;
 using JobHunt.Api.Features.LlmModels;
 using JobHunt.Api.Llm;
 using Microsoft.EntityFrameworkCore;
@@ -81,22 +80,14 @@ public class ProfileSkillWordingSuggester(LlmExecution execution, LlmModelResolv
 
     private async Task<ProfileSkillWordingSuggestion> SuggestCoreAsync(ResolvedLlmModel resolved, AppDbContext db, CancellationToken ct)
     {
-        var call = await execution.RunAsync(resolved,
+        var call = await execution.RunJsonAsync(resolved,
             [new(ChatRole.System, ProfileSkillWordingPromptQueries.Instructions),
              new(ChatRole.User, await ProfileSkillWordingPromptQueries.ContentAsync(db, ct))],
             new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0, MaxOutputTokens = 32_768 },
-            Operation, db, ct);
-        ProfileSkillWordingSuggestion result;
-        if (call.Error is { } error) result = new(ProfileSkillWordingStatus.Failed, null, error);
-        else if (Decode(call.Response!.Text) is { } reply) result = new(ProfileSkillWordingStatus.Succeeded, await ChangesAsync(reply, db, ct), null);
-        else
-        {
-            call.Usage!.Success = false;
-            call.Usage.ErrorCode = "invalid-json";
-            result = new(ProfileSkillWordingStatus.Failed, null, "The AI's answer couldn't be read. Try again.");
-        }
-        if (call.Usage is { } audited) await execution.SaveUsageAsync(audited, ct);
-        return result;
+            Operation, db, Decode, "The AI's answer couldn't be read. Try again.", ct);
+        return call.Value is { } reply
+            ? new(ProfileSkillWordingStatus.Succeeded, await ChangesAsync(reply, db, ct), null)
+            : new(ProfileSkillWordingStatus.Failed, null, call.Error);
     }
 
     private static Reply? Decode(string text)
@@ -111,16 +102,16 @@ public class ProfileSkillWordingSuggester(LlmExecution execution, LlmModelResolv
         var current = await db.ProfileBullets.ToDictionaryAsync(b => b.Id, b => b.Text, ct);
         var profile = await db.Profiles.Select(p => new { p.Headline, p.Summary }).SingleAsync(ct);
         var bullets = (reply.Bullets ?? []).OfType<Bullet>()
-            .Select(b => new { b.Id, Text = ProfileMutations.Clean(b.Text) })
+            .Select(b => new { b.Id, Text = Inputs.Clean(b.Text) })
             .Where(b => b.Text is { Length: <= ProfileBulletMutations.MaxTextLength } && current.TryGetValue(b.Id, out var old) && old != b.Text)
             .DistinctBy(b => b.Id).Select(b => new ProfileBulletText(b.Id, b.Text!)).ToList();
         return new(bullets,
             Changed(reply.Headline, profile.Headline, ProfileMutations.MaxTextLength),
-            Changed(reply.Summary, profile.Summary, ApplicationMutations.MaxNoteLength));
+            Changed(reply.Summary, profile.Summary, Inputs.MaxMarkdownLength));
     }
 
     private static string? Changed(string? value, string? current, int maxLength) =>
-        ProfileMutations.Clean(value) is { } text && current is not null && text != current && text.Length <= maxLength ? text : null;
+        Inputs.Clean(value) is { } text && current is not null && text != current && text.Length <= maxLength ? text : null;
 }
 
 [MutationType]

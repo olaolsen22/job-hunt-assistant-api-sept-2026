@@ -30,19 +30,19 @@ public static class TailoredCvDraftValidation
         var content = new TailoredCvContent(input.Summary?.Trim(),
             input.Experiences?.Select(e => new TailoredCvExperience(CleanRequired(e.Employer), CleanRequired(e.Title), e.StartMonth,
                 e.EndMonth, (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
-                CleanOptional(e.Location), CleanOptional(e.Paragraph), CleanNames(e.Technologies))).ToList(),
-            input.Educations?.Select(e => new TailoredCvEducation(CleanRequired(e.School), CleanOptional(e.Degree), CleanOptional(e.Field),
+                Inputs.Clean(e.Location), Inputs.Clean(e.Paragraph), CleanNames(e.Technologies))).ToList(),
+            input.Educations?.Select(e => new TailoredCvEducation(CleanRequired(e.School), Inputs.Clean(e.Degree), Inputs.Clean(e.Field),
                 e.StartMonth, e.EndMonth, (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
-                CleanOptional(e.Location), CleanOptional(e.Paragraph))).ToList(),
-            input.Certifications?.Select(e => new TailoredCvCertification(CleanRequired(e.Name), CleanOptional(e.Issuer), e.IssuedMonth,
-                e.ExpiresMonth, CleanOptional(e.Url), (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
-                CleanOptional(e.Paragraph))).ToList(),
-            input.Projects?.Select(e => new TailoredCvProject(CleanRequired(e.Name), CleanOptional(e.Url), e.StartMonth, e.EndMonth,
+                Inputs.Clean(e.Location), Inputs.Clean(e.Paragraph))).ToList(),
+            input.Certifications?.Select(e => new TailoredCvCertification(CleanRequired(e.Name), Inputs.Clean(e.Issuer), e.IssuedMonth,
+                e.ExpiresMonth, Inputs.Clean(e.Url), (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
+                Inputs.Clean(e.Paragraph))).ToList(),
+            input.Projects?.Select(e => new TailoredCvProject(CleanRequired(e.Name), Inputs.Clean(e.Url), e.StartMonth, e.EndMonth,
                 (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
-                CleanOptional(e.Location), CleanOptional(e.Paragraph), e.Kind, CleanNames(e.Technologies))).ToList(),
+                Inputs.Clean(e.Location), Inputs.Clean(e.Paragraph), e.Kind, CleanNames(e.Technologies))).ToList(),
             input.Skills?.Select(s => new TailoredCvSkill(CleanRequired(s.Name), s.Level, s.SourceSkillId, s.CategoryId)).ToList(),
             input.Languages?.Select(l => new TailoredCvLanguage(CleanRequired(l.Name), l.Written, l.Spoken)).ToList(),
-            CleanOptional(input.FullName), CleanOptional(input.Headline), CleanOptional(input.Email), CleanOptional(input.Phone), CleanOptional(input.Address),
+            Inputs.Clean(input.FullName), Inputs.Clean(input.Headline), Inputs.Clean(input.Email), Inputs.Clean(input.Phone), Inputs.Clean(input.Address),
             input.Links?.Select(l => new TailoredCvLink(CleanRequired(l.Label), CleanRequired(l.Url))).ToList(),
             input.Language ?? postingLanguage ?? Language.English, input.DateOfBirth, input.ReferencesOnRequest,
             input.SectionOrder ?? TailoredCvSectionOrder.Standard,
@@ -253,10 +253,8 @@ public static class TailoredCvDraftValidation
             throw Invalid("languages", $"name is required and at most {ProfileLanguage.MaxNameLength} characters");
         if (c.Languages?.Select(l => l.Name.ToUpperInvariant()).Distinct().Count() != c.Languages?.Count)
             throw Invalid("languages", "entries must be unique");
-        if (c.Links?.Any(l => Blank(l.Label) || l.Label.Length > 50 || l.Url.Length > 2048
-                || !Uri.TryCreate(l.Url, UriKind.Absolute, out var uri)
-                || uri.Scheme is not ("http" or "https")) == true)
-            throw Invalid("links", "each link needs a label (at most 50 characters) and an HTTP(S) URL of at most 2048 characters");
+        if (c.Links?.Any(l => Blank(l.Label) || l.Label.Length > 50 || !Inputs.TryHttpUrl(l.Url, out _)) == true)
+            throw Invalid("links", $"each link needs a label (at most 50 characters) and an HTTP(S) URL of at most {Inputs.MaxUrlLength} characters");
         if (c.Email is { } email)
         {
             try { _ = new MailAddress(email); }
@@ -320,7 +318,6 @@ public static class TailoredCvDraftValidation
     private static string CleanRequired(string? value) => value?.Trim() ?? "";
     private static List<string>? CleanNames(List<string>? values) => values?.Select(v => v?.Trim())
         .Where(v => !string.IsNullOrEmpty(v)).Select(v => v!).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-    private static string? CleanOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     private static bool Blank(string? value) => string.IsNullOrWhiteSpace(value);
     private static InvalidTailoredCvDraftException Invalid(string path, string message) =>
         new($"{path}: {message}.");

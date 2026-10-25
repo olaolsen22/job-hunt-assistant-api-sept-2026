@@ -1,6 +1,4 @@
 using JobHunt.Api.Data;
-using JobHunt.Api.Features.Applications;
-using JobHunt.Api.Features.Contacts;
 using JobHunt.Api.Features.Industries;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Skills;
@@ -42,7 +40,6 @@ public static class CompanyMutations
     // Well above the ~30 rows a pasted quick-add list produces, far below what one transaction minds.
     private const int MaxBatchSize = 100;
     private const int MaxDescriptionLength = 500;
-    private const int MaxUrlLength = 2048;
     private const int MaxSkills = 50;
     private const int MaxSkillNameLength = 100;
 
@@ -194,16 +191,16 @@ public static class CompanyMutations
     // Trims, blanks to null, and validates; shared by createCompanies rows and updateCompanyDetails.
     private static CompanyDetailsInput Clean(CompanyDetailsInput details, int currentYear)
     {
-        var orgNumber = ContactMutations.Clean(details.OrgNumber)?.Replace(" ", "");
+        var orgNumber = Inputs.Clean(details.OrgNumber)?.Replace(" ", "");
         if (orgNumber is not null && !IsOrgNumber(orgNumber))
             throw new InvalidCompanyException($"\"{details.OrgNumber!.Trim()}\" is not a valid Norwegian org.nr.");
         if (details.FoundedYear is < 1800 || details.FoundedYear > currentYear)
             throw new InvalidCompanyException($"Founded year must be between 1800 and {currentYear}.");
-        var description = ContactMutations.Clean(details.Description);
+        var description = Inputs.Clean(details.Description);
         if (description?.Length > MaxDescriptionLength)
             throw new InvalidCompanyException($"The description is longer than {MaxDescriptionLength} characters.");
 
-        var skills = details.Skills.Select(ContactMutations.Clean).OfType<string>().DistinctBy(Names.Normalize).ToList();
+        var skills = details.Skills.Select(Inputs.Clean).OfType<string>().DistinctBy(Names.Normalize).ToList();
         if (skills.Count > MaxSkills)
             throw new InvalidCompanyException($"A company can list at most {MaxSkills} skills.");
         if (skills.FirstOrDefault(s => s.Length > MaxSkillNameLength) is { } longSkill)
@@ -223,9 +220,8 @@ public static class CompanyMutations
     // http(s) only: the UI renders these as links, and a javascript: URL would run on click.
     private static string? Url(string? value, string field)
     {
-        var url = ContactMutations.Clean(value);
-        if (url is not null && (url.Length > MaxUrlLength
-            || !Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https")))
+        var url = Inputs.Clean(value);
+        if (url is not null && !Inputs.TryHttpUrl(url, out _))
             throw new InvalidCompanyException($"{field} must be an http(s) link.");
         return url;
     }
@@ -277,9 +273,9 @@ public static class CompanyMutations
     {
         var company = await db.Companies.FirstOrDefaultAsync(c => c.Id == id, ct)
             ?? throw new CompanyNotFoundException(id);
-        notes = ApplicationMutations.CleanNote(notes);
-        if (notes?.Length > ApplicationMutations.MaxNoteLength)
-            throw new InvalidCompanyException($"The notes are longer than {ApplicationMutations.MaxNoteLength} characters.");
+        notes = Inputs.Clean(notes);
+        if (notes?.Length > Inputs.MaxMarkdownLength)
+            throw new InvalidCompanyException($"The notes are longer than {Inputs.MaxMarkdownLength} characters.");
         company.Notes = notes;
         await db.SaveChangesAsync(ct);
         return company;
@@ -319,8 +315,9 @@ public static class CompanyMutations
     }
 }
 
-// Finds or creates industries and locations by name. FindOrCreate only sees saved rows, so each lookup is
-// remembered here: two rows naming the same new industry must share one instance or the unique index fails on save.
+// Finds or creates industries, skills and locations by name. Rows are resolved before any company is added, so a new
+// lookup isn't tracked yet and FindOrCreate can't see it. Each one is remembered here instead: two rows naming the same
+// new industry must share one instance or the unique index fails on save.
 internal class CompanyLookups(AppDbContext db)
 {
     private readonly Dictionary<string, Industry> industries = [];
@@ -338,17 +335,13 @@ internal class CompanyLookups(AppDbContext db)
         return industries[normalizedName] = industry;
     }
 
-    // Shares skill ids with listings and the profile. Names arrive cleaned and distinct.
+    // Names arrive cleaned and distinct.
     public async Task<List<Skill>> SkillsAsync(List<string> names, CancellationToken ct)
     {
-        var missing = names.Select(Names.Normalize).Where(n => !skills.ContainsKey(n)).ToList();
-        foreach (var skill in await db.Skills.Where(s => missing.Contains(s.NormalizedName)).ToListAsync(ct))
+        var missing = names.Where(n => !skills.ContainsKey(Names.Normalize(n))).ToList();
+        foreach (var skill in await SkillLookup.FindOrCreateAsync(missing, db, ct))
             skills[skill.NormalizedName] = skill;
-        return names.Select(name => skills.TryGetValue(Names.Normalize(name), out var known) ? known
-            : skills[Names.Normalize(name)] = new Skill
-            {
-                UserId = db.CurrentUserId!, Name = name, NormalizedName = Names.Normalize(name),
-            }).ToList();
+        return [.. names.Select(name => skills[Names.Normalize(name)])];
     }
 
     // Repeats within one list collapse into one location.

@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Net.Mail;
 using JobHunt.Api.Data;
-using JobHunt.Api.Features.Applications;
 using JobHunt.Api.Features.JobRoles;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Locations;
@@ -118,7 +117,7 @@ public static class ProfileMutations
     {
         if (minSalary < 0)
             throw new InvalidProfileException("The minimum salary can't be negative.");
-        var currency = Clean(salaryCurrency)?.ToUpperInvariant();
+        var currency = Inputs.Clean(salaryCurrency)?.ToUpperInvariant();
         if (currency is not null && !Currencies.Contains(currency))
             throw new InvalidProfileException($"\"{salaryCurrency}\" is not an ISO 4217 currency code, e.g. NOK.");
         if (minSalary is not null && currency is null)
@@ -157,7 +156,7 @@ public static class ProfileMutations
         if (level is < 1 or > 5)
             throw new InvalidProfileException("Skill level must be 1–5.");
         var profile = await db.Profiles.SingleAsync(ct);
-        var skill = (await FindOrCreateSkillsAsync([name], profile.UserId, db, ct))[0];
+        var skill = (await FindOrCreateSkillsAsync([name], db, ct))[0];
         var profileSkill = skill.Id == 0 ? null : await db.ProfileSkills.FirstOrDefaultAsync(s => s.SkillId == skill.Id, ct);
         if (profileSkill is null)
             db.ProfileSkills.Add(profileSkill = new ProfileSkill { ProfileId = profile.Id, Skill = skill });
@@ -242,11 +241,10 @@ public static class ProfileMutations
         Text(name, "Language name", ProfileLanguage.MaxNameLength)
         ?? throw new InvalidProfileException("Language name is required.");
 
-    internal static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     internal static string? Text(string? value, string field, int maxLength = MaxTextLength)
     {
-        var text = Clean(value);
+        var text = Inputs.Clean(value);
         if (text?.Length > maxLength)
             throw new InvalidProfileException($"{field} is longer than {maxLength} characters.");
         return text;
@@ -257,19 +255,19 @@ public static class ProfileMutations
 
     internal static string? Email(string? value)
     {
-        var email = Clean(value);
+        var email = Inputs.Clean(value);
         if (email is not null && !(MailAddress.TryCreate(email, out var address) && address.Address == email))
             throw new InvalidProfileException($"\"{email}\" is not an email address.");
         return email;
     }
 
     internal static string? Markdown(string? value, string field) =>
-        Text(value, field, ApplicationMutations.MaxNoteLength);
+        Text(value, field, Inputs.MaxMarkdownLength);
 
     internal static string? Url(string? value)
     {
-        var text = Clean(value);
-        if (text is not null && !(Uri.TryCreate(text, UriKind.Absolute, out var url) && url.Scheme is "http" or "https"))
+        var text = Inputs.Clean(value);
+        if (text is not null && !Inputs.TryHttpUrl(text, out _))
             throw new InvalidProfileException($"\"{text}\" is not an http(s) link.");
         return text;
     }
@@ -279,15 +277,6 @@ public static class ProfileMutations
 
     internal static DateOnly? Month(DateOnly? date) => date is { } d ? Month(d) : null;
 
-    // Found case-insensitively or created, like listing skills, so the profile and listings share skill ids.
-    internal static async Task<List<Skill>> FindOrCreateSkillsAsync(
-        IEnumerable<string> names, string userId, AppDbContext db, CancellationToken ct)
-    {
-        var distinct = names.Select(n => Required(n, "Skill name")).DistinctBy(Names.Normalize).ToList();
-        var normalized = distinct.Select(Names.Normalize).ToList();
-        var existing = await db.Skills.Where(s => normalized.Contains(s.NormalizedName)).ToDictionaryAsync(s => s.NormalizedName, ct);
-        return [.. distinct.Select(name => existing.GetValueOrDefault(Names.Normalize(name))
-            ?? db.Skills.Local.FirstOrDefault(s => s.UserId == userId && s.NormalizedName == Names.Normalize(name))
-            ?? new Skill { UserId = userId, Name = name, NormalizedName = Names.Normalize(name) })];
-    }
+    internal static Task<List<Skill>> FindOrCreateSkillsAsync(IEnumerable<string> names, AppDbContext db, CancellationToken ct) =>
+        SkillLookup.FindOrCreateAsync(names.Select(n => Required(n, "Skill name")), db, ct);
 }

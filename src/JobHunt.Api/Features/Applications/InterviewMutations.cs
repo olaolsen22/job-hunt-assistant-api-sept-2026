@@ -62,11 +62,11 @@ public static class InterviewMutations
     private static void Apply(Interview interview, DateTimeOffset scheduledAt, string? title, string? notes, DateTime now)
     {
         interview.Title = string.IsNullOrWhiteSpace(title) ? null : title.Trim();
-        interview.Notes = ApplicationMutations.CleanNote(notes);
+        interview.Notes = Inputs.Clean(notes);
         if (interview.Title?.Length > MaxTitleLength)
             throw new InvalidInterviewException($"The title is longer than {MaxTitleLength} characters.");
-        if (interview.Notes?.Length > ApplicationMutations.MaxNoteLength)
-            throw new InvalidInterviewException($"The notes are longer than {ApplicationMutations.MaxNoteLength} characters.");
+        if (interview.Notes?.Length > Inputs.MaxMarkdownLength)
+            throw new InvalidInterviewException($"The notes are longer than {Inputs.MaxMarkdownLength} characters.");
         interview.ScheduledAt = scheduledAt.UtcDateTime;
         interview.UpdatedAt = now;
     }

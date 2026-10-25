@@ -174,7 +174,7 @@ public static class ProfileEntryMutations
             experience.Location = await LocationLookup.FindOrCreateAsync(location, db, ct);
         (experience.StartMonth, experience.EndMonth) = (Month(startMonth), Month(endMonth));
         CheckOrder(experience.StartMonth, experience.EndMonth, "The end month");
-        var skills = await FindOrCreateSkillsAsync(skillNames, experience.UserId, db, ct);
+        var skills = await FindOrCreateSkillsAsync(skillNames, db, ct);
         experience.Skills.Clear();
         experience.Skills.AddRange(skills);
         AddToProfileSkills(experience.ProfileId, skills, await ProfileSkillIdsAsync(skills, db, ct), db);
@@ -222,7 +222,7 @@ public static class ProfileEntryMutations
             project.Location = await LocationLookup.FindOrCreateAsync(location, db, ct);
         (project.StartMonth, project.EndMonth) = (Month(startMonth), Month(endMonth));
         CheckOrder(project.StartMonth, project.EndMonth, "The end month");
-        var skills = await FindOrCreateSkillsAsync(skillNames, project.UserId, db, ct);
+        var skills = await FindOrCreateSkillsAsync(skillNames, db, ct);
         project.Skills.Clear();
         project.Skills.AddRange(skills);
         AddToProfileSkills(project.ProfileId, skills, await ProfileSkillIdsAsync(skills, db, ct), db);

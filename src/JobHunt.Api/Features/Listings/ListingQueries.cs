@@ -37,9 +37,8 @@ public static class ListingQueries
         for (var i = 0; i < urls.Count; i++)
         {
             var value = urls[i].Trim();
-            if (value.Length > 2048 || !Uri.TryCreate(value, UriKind.Absolute, out var uri)
-                || uri.Scheme is not ("http" or "https"))
-                throw new GraphQLException($"URL at index {i} must be an absolute HTTP(S) URL of at most 2048 characters.");
+            if (!Inputs.TryHttpUrl(value, out var uri))
+                throw new GraphQLException($"URL at index {i} must be an absolute HTTP(S) URL of at most {Inputs.MaxUrlLength} characters.");
             normalized[i] = ListingUrls.Normalize(uri);
         }
 

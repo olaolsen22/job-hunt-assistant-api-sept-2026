@@ -113,22 +113,14 @@ public class ProfileSummarySuggester(LlmExecution execution, LlmModelResolver mo
     private async Task<ProfileSummarySuggestion> SuggestCoreAsync(ResolvedLlmModel resolved, AppDbContext db, CancellationToken ct)
     {
         var language = await ProfileSummaryPromptQueries.LanguageAsync(db, ct);
-        var call = await execution.RunAsync(resolved,
+        var call = await execution.RunJsonAsync(resolved,
             [new(ChatRole.System, ProfileSummaryPromptQueries.Instructions(language, external: false)),
              new(ChatRole.User, await ProfileSummaryPromptQueries.ContentAsync(db, ct))],
             new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0.3f, MaxOutputTokens = 4_096 },
-            Operation, db, ct);
-        ProfileSummarySuggestion result;
-        if (call.Error is { } error) result = new(ProfileSummaryStatus.Failed, null, error);
-        else if (Decode(call.Response!.Text) is { } reply) result = new(ProfileSummaryStatus.Succeeded, reply.Summary, null);
-        else
-        {
-            call.Usage!.Success = false;
-            call.Usage.ErrorCode = "invalid-json";
-            result = new(ProfileSummaryStatus.Failed, null, "The AI's answer couldn't be read. Try again.");
-        }
-        if (call.Usage is { } audited) await execution.SaveUsageAsync(audited, ct);
-        return result;
+            Operation, db, Decode, "The AI's answer couldn't be read. Try again.", ct);
+        return call.Value is { } reply
+            ? new(ProfileSummaryStatus.Succeeded, reply.Summary, null)
+            : new(ProfileSummaryStatus.Failed, null, call.Error);
     }
 
     // An over-long summary counts as unreadable: the UI would only show text the PDF can't fit.
@@ -137,7 +129,7 @@ public class ProfileSummarySuggester(LlmExecution execution, LlmModelResolver mo
         try
         {
             var reply = JsonSerializer.Deserialize<Reply>(text, JsonSerializerOptions.Web);
-            var summary = ProfileMutations.Clean(reply?.Summary);
+            var summary = Inputs.Clean(reply?.Summary);
             return reply is null || summary?.Length > ProfileSummaryPromptQueries.MaxLength ? null : new(summary);
         }
         catch (JsonException) { return null; }

@@ -1,7 +1,6 @@
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Auth;
 using JobHunt.Api.Llm;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.LlmProviderKeys;
@@ -56,10 +55,7 @@ public static class ProviderKeyMutations
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
         }
-        catch (DbUpdateException ex) when (ex.InnerException is SqliteException { SqliteErrorCode: 19 })
-        { throw new ProviderKeyException("conflict"); }
-        catch (SqliteException ex) when (ex.SqliteErrorCode is 5 or 6)
-        { throw new ProviderKeyException("conflict"); }
+        catch (Exception ex) when (SqliteErrors.IsContention(ex)) { throw new ProviderKeyException("conflict"); }
         return ProviderKeyQueries.Status(key);
     }
 
@@ -71,8 +67,7 @@ public static class ProviderKeyMutations
         RequireOwner(http);
         if (!LlmProviders.Supported.Contains(provider)) throw new ProviderKeyException("invalid-input");
         try { await RetireAsync(provider, db, time, ct); }
-        catch (SqliteException ex) when (ex.SqliteErrorCode is 5 or 6)
-        { throw new ProviderKeyException("conflict"); }
+        catch (Exception ex) when (SqliteErrors.IsContention(ex)) { throw new ProviderKeyException("conflict"); }
         return new(provider, false, null, null, null, null);
     }
 

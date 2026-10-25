@@ -96,3 +96,19 @@ public class TailoredCvDraftConfiguration : IEntityTypeConfiguration<TailoredCvD
         builder.HasIndex(d => d.ListingId).IsUnique();
     }
 }
+
+// Drafts are snapshots, so a skill or category change only moves their links; a dangling id would block saving the
+// draft. A draft is only rewritten when one of its skills changes.
+public static class TailoredCvDraftSkills
+{
+    public static void Rewrite(IEnumerable<TailoredCvDraft> drafts, Func<TailoredCvSkill, TailoredCvSkill> map)
+    {
+        foreach (var draft in drafts)
+        {
+            var content = draft.Content;
+            if (content.Skills is not { } skills) continue;
+            var mapped = skills.Select(map).ToList();
+            if (!mapped.SequenceEqual(skills)) draft.Content = content with { Skills = mapped };
+        }
+    }
+}

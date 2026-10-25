@@ -28,28 +28,19 @@ public class ProfileCvParser(
 
     private async Task<ProfileCvParseResult> ParseCoreAsync(string text, ResolvedLlmModel resolved, AppDbContext db, CancellationToken ct)
     {
-        var call = await execution.RunAsync(resolved,
+        var call = await execution.RunJsonAsync(resolved,
             [new(ChatRole.System, await ProfileCvPromptQueries.InstructionsAsync(db, ct)), new(ChatRole.User, $"<cv>\n{text}\n</cv>")],
             new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0, MaxOutputTokens = 32_768 },
-            Operation, db, ct);
-        ProfileCvParseResult result;
-        if (call.Error is { } error) result = new(ProfileCvParseStatus.Failed, null, error);
-        else
-        {
-            try
-            {
-                var candidate = ProfileCvDecoder.Decode(call.Response!.Text);
-                result = new(ProfileCvParseStatus.Succeeded, candidate, null);
-            }
-            catch (InvalidProfileImportException)
-            {
-                call.Usage!.Success = false;
-                call.Usage.ErrorCode = "invalid-json";
-                result = new(ProfileCvParseStatus.Failed, null, "The AI's answer couldn't be read. Try again, or import a smaller CV section.");
-            }
-        }
-        if (call.Usage is { } audited) await execution.SaveUsageAsync(audited, ct);
-        return result;
+            Operation, db, Decode, "The AI's answer couldn't be read. Try again, or import a smaller CV section.", ct);
+        return call.Value is { } candidate
+            ? new(ProfileCvParseStatus.Succeeded, candidate, null)
+            : new(ProfileCvParseStatus.Failed, null, call.Error);
+    }
+
+    private static ProfileCvCandidate? Decode(string text)
+    {
+        try { return ProfileCvDecoder.Decode(text); }
+        catch (InvalidProfileImportException) { return null; }
     }
 }
 

@@ -1,5 +1,4 @@
 using JobHunt.Api.Data;
-using JobHunt.Api.Features.Applications;
 using JobHunt.Api.Features.Companies;
 using Microsoft.EntityFrameworkCore;
 
@@ -75,11 +74,11 @@ public static class ContactMutations
 
         entity.Name = input.Name.Trim();
         entity.NormalizedName = normalizedName;
-        entity.Title = Clean(input.Title);
-        entity.Email = Clean(input.Email);
-        entity.Phone = Clean(input.Phone);
-        entity.Url = Clean(input.Url);
-        entity.Notes = ApplicationMutations.CleanNote(input.Notes);
+        entity.Title = Inputs.Clean(input.Title);
+        entity.Email = Inputs.Clean(input.Email);
+        entity.Phone = Inputs.Clean(input.Phone);
+        entity.Url = Inputs.Clean(input.Url);
+        entity.Notes = Inputs.Clean(input.Notes);
     }
 
     // Shared with ListingInput.contacts, which throws its own error type around this.
@@ -91,17 +90,14 @@ public static class ContactMutations
         if (fields.Any(f => f?.Trim().Length > MaxFieldLength))
             throw new InvalidContactException($"Contact \"{input.Name.Trim()}\": fields are limited to {MaxFieldLength} characters.");
         // Only a sanity check: ads write emails in all sorts of ways ("kari (at) acme.no").
-        if (Clean(input.Email) is { } email && !email.Contains('@'))
+        if (Inputs.Clean(input.Email) is { } email && !email.Contains('@'))
             throw new InvalidContactException($"Contact \"{input.Name.Trim()}\": email must contain @.");
-        // http(s) only: the UI renders this as a link, and a javascript: URL would run on click.
-        if (Clean(input.Url) is { } url
-            && (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https")))
+        if (Inputs.Clean(input.Url) is { } url && !Inputs.TryHttpUrl(url, out _))
             throw new InvalidContactException($"Contact \"{input.Name.Trim()}\": url must be an http(s) link.");
-        if (input.Notes?.Length > ApplicationMutations.MaxNoteLength)
-            throw new InvalidContactException($"Contact notes are longer than {ApplicationMutations.MaxNoteLength} characters.");
+        if (input.Notes?.Length > Inputs.MaxMarkdownLength)
+            throw new InvalidContactException($"Contact notes are longer than {Inputs.MaxMarkdownLength} characters.");
     }
 
-    internal static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
 
 [ObjectType<Contact>]

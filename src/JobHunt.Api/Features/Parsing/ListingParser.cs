@@ -26,7 +26,7 @@ public class ListingParser(
     private const int QuickMaxInputChars = 200_000;
     private const int QuickMaxOutputTokens = 32_768;
 
-    // Sets the job's outcome and adds an LlmUsage row; the caller saves both.
+    // Sets the job's outcome; the caller saves the job. LlmExecution records the usage itself.
     public async Task RunAsync(ParseJob job, ResolvedLlmModel selection, AppDbContext db, CancellationToken ct)
     {
         // The same prompts the copy-paste path serves, so both paths return the same JSON.
@@ -55,26 +55,13 @@ public class ListingParser(
         if (job.Mode == ParseMode.Full)
             options.Reasoning = new ReasoningOptions { Effort = ReasoningEffort.Low };
 
-        var call = await execution.RunAsync(selection, messages, options,
-            job.Mode == ParseMode.Companies ? CompaniesOperation : Operation, db, ct);
-        if (call.Error is { } error)
-        {
-            job.Status = ParseJobStatus.Failed;
-            job.Error = error;
-        }
-        else if (IsExpectedJson(call.Response!.Text, job.Mode))
-        {
-            job.Status = ParseJobStatus.Succeeded;
-            job.Result = call.Response.Text;
-        }
-        else
-        {
-            job.Status = ParseJobStatus.Failed;
-            job.Error = "The AI's answer couldn't be read. Try again, or use copy-paste.";
-            call.Usage!.Success = false;
-            call.Usage.ErrorCode = "invalid-json";
-        }
-        if (call.Usage is { } audited) await execution.SaveUsageAsync(audited, ct);
+        var call = await execution.RunJsonAsync(selection, messages, options,
+            job.Mode == ParseMode.Companies ? CompaniesOperation : Operation, db,
+            text => IsExpectedJson(text, job.Mode) ? text : null,
+            "The AI's answer couldn't be read. Try again, or use copy-paste.", ct);
+        job.Status = call.Value is null ? ParseJobStatus.Failed : ParseJobStatus.Succeeded;
+        job.Result = call.Value;
+        job.Error = call.Error;
         job.CompletedAt = time.GetUtcNow().UtcDateTime;
     }
 

@@ -1,7 +1,6 @@
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Parsing;
 using JobHunt.Api.Llm;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.AiSafeguards;
@@ -50,9 +49,7 @@ public class AiOperations(IDbContextFactory<AppDbContext> contexts, AiRequestDig
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
         }
-        catch (SqliteException ex) when (ex.SqliteErrorCode is 5 or 6 or 19) { throw new AiSafetyException("ai-busy"); }
-        catch (DbUpdateException ex) when (ex.InnerException is SqliteException { SqliteErrorCode: 5 or 6 or 19 })
-        { throw new AiSafetyException("ai-busy"); }
+        catch (Exception ex) when (SqliteErrors.IsContention(ex)) { throw new AiSafetyException("ai-busy"); }
 
         Current = receipt;
         ordinal = 0;

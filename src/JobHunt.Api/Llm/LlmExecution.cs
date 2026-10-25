@@ -6,7 +6,6 @@ using Google.GenAI;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.AiSafeguards;
 using JobHunt.Api.Features.Usage;
-using Microsoft.Data.Sqlite;
 using JobHunt.Api.Features.LlmProviderKeys;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
@@ -26,6 +25,9 @@ public record LlmCallResult(ChatResponse? Response, LlmUsage? Usage, string? Err
     public string? Error => ErrorCode is null ? null : ProviderKeyException.MessageFor(ErrorCode);
 }
 
+// Value is null exactly when Error is set: the provider failed, or its answer didn't decode.
+public record LlmJsonResult<T>(T? Value, string? Error, string? ErrorCode) where T : class;
+
 public class LlmExecution(
     [FromKeyedServices(GeminiOptions.Provider)] IChatClient shared,
     IHttpClientFactory http, ProviderKeyProtector protector, TimeProvider time, ILogger<LlmExecution> logger,
@@ -40,6 +42,21 @@ public class LlmExecution(
                 options.MaxOutputTokens, options.Temperature }, null, db, () => Task.FromResult(model),
             selected => RunCoreAsync(selected, input, options, operation, db, ct),
             result => new AiOutcome(result.ErrorCode is null, result.ErrorCode), ct);
+    }
+
+    // For calls that must return JSON. decode returns null for an answer it can't use; that attempt's usage row is
+    // then marked invalid-json. Usage is otherwise already saved by RunAsync.
+    public async Task<LlmJsonResult<T>> RunJsonAsync<T>(ResolvedLlmModel model, IEnumerable<ChatMessage> messages,
+        ChatOptions options, string operation, AppDbContext db, Func<string, T?> decode, string unreadable,
+        CancellationToken ct) where T : class
+    {
+        var call = await RunAsync(model, messages, options, operation, db, ct);
+        if (call.Error is { } error) return new(null, error, call.ErrorCode);
+        if (decode(call.Response!.Text) is { } value) return new(value, null, null);
+        call.Usage!.Success = false;
+        call.Usage.ErrorCode = "invalid-json";
+        await SaveUsageAsync(call.Usage, ct);
+        return new(null, unreadable, "invalid-json");
     }
 
     private async Task<LlmCallResult> RunCoreAsync(ResolvedLlmModel model, IEnumerable<ChatMessage> messages,
@@ -68,8 +85,8 @@ public class LlmExecution(
             mapped.ModelId = model.ModelId;
             if (model.Provider != GeminiOptions.Provider) mapped.Reasoning = null;
             // Anthropic's text adapter uses the shared strict-JSON instructions and decoder.
-            if (model.Provider == "anthropic") mapped.ResponseFormat = null;
-            if (model.Provider == "mistral" && mapped.MaxOutputTokens is { } maximum)
+            if (model.Provider == LlmProviders.Anthropic) mapped.ResponseFormat = null;
+            if (model.Provider == LlmProviders.Mistral && mapped.MaxOutputTokens is { } maximum)
             {
                 // OpenAI's adapter otherwise emits max_completion_tokens, which Mistral doesn't accept.
                 mapped.MaxOutputTokens = null;
@@ -169,9 +186,7 @@ public class LlmExecution(
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
         }
-        catch (SqliteException ex) when (ex.SqliteErrorCode is 5 or 6 or 19) { throw new AiSafetyException("ai-busy"); }
-        catch (DbUpdateException ex) when (ex.InnerException is SqliteException { SqliteErrorCode: 5 or 6 or 19 })
-        { throw new AiSafetyException("ai-busy"); }
+        catch (Exception ex) when (SqliteErrors.IsContention(ex)) { throw new AiSafetyException("ai-busy"); }
     }
 
     // Also called by decoders to mark invalid JSON; this context cannot save pending caller content.

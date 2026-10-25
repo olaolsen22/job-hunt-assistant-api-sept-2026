@@ -11,11 +11,11 @@ public class ProviderCatalogOptions : IValidatableObject
     public List<ProviderModelOption> Mistral { get; set; } = [];
 
     public IReadOnlyList<ProviderModelOption> For(string provider) => provider switch
-    { "anthropic" => Anthropic, "openai" => OpenAI, "mistral" => Mistral, _ => [] };
+    { LlmProviders.Anthropic => Anthropic, LlmProviders.OpenAI => OpenAI, LlmProviders.Mistral => Mistral, _ => [] };
 
     public IEnumerable<ValidationResult> Validate(ValidationContext context)
     {
-        foreach (var provider in LlmProviders.Supported.Where(p => p != "gemini"))
+        foreach (var provider in LlmProviders.Supported.Where(p => p != LlmProviders.Gemini))
         {
             var models = For(provider);
             if (models.Count == 0 || models.Any(m => string.IsNullOrWhiteSpace(m.Id) || string.IsNullOrWhiteSpace(m.Label)
@@ -28,7 +28,7 @@ public class ProviderCatalogOptions : IValidatableObject
 
     public bool HasUniqueSelectionIds(GeminiOptions gemini)
     {
-        var ids = gemini.Models.Select(m => m.Id).Concat(LlmProviders.Supported.Where(p => p != "gemini")
+        var ids = gemini.Models.Select(m => m.Id).Concat(LlmProviders.Supported.Where(p => p != LlmProviders.Gemini)
             .SelectMany(p => For(p).Select(m => $"{p}:{m.Id}"))).ToList();
         return ids.Distinct(StringComparer.Ordinal).Count() == ids.Count;
     }

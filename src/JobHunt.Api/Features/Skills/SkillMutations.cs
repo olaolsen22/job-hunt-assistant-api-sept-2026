@@ -110,32 +110,43 @@ public static class SkillMutations
         removeSkillIds = removeSkillIds?.Distinct().ToList() ?? [];
         Validate(operations, translations, categories, removeSkillIds);
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var drafts = await db.TailoredCvDrafts.ToListAsync(ct);
         // First, so an operation naming a removed skill creates a fresh one instead of reusing the doomed row.
-        await RemoveAsync(removeSkillIds, db, ct);
+        await RemoveAsync(removeSkillIds, drafts, db, ct);
         var result = new List<Skill>();
-        foreach (var operation in operations) result.AddRange(await ApplyAsync(operation, db, ct));
+        foreach (var operation in operations) result.AddRange(await ApplyAsync(operation, drafts, db, ct));
+
+        // By name after the operations, so a translation or category can target a skill an operation created.
+        var translated = await SkillsByNameAsync(translations.Select(t => t.SkillName), db.Skills.Include(s => s.Translations), ct);
         foreach (var translation in translations)
         {
-            var normalized = Names.Normalize(translation.SkillName);
-            var skill = await db.Skills.Include(s => s.Translations).FirstOrDefaultAsync(s => s.NormalizedName == normalized, ct)
+            var skill = translated.GetValueOrDefault(Names.Normalize(translation.SkillName))
                 ?? throw new InvalidSkillCleanupException($"There is no skill \"{translation.SkillName.Trim()}\" to translate.");
             SetTranslation(skill, translation.Language, translation.Name.Trim());
-            await db.SaveChangesAsync(ct);
             result.Add(skill);
         }
+        var categorized = await SkillsByNameAsync(categories.Select(c => c.SkillName), db.Skills, ct);
+        var categoryNames = categories.Select(c => Names.Normalize(c.CategoryName)).Distinct().ToList();
+        var known = await db.SkillCategories.Where(c => categoryNames.Contains(c.NormalizedName)).ToDictionaryAsync(c => c.NormalizedName, ct);
         foreach (var assignment in categories)
         {
-            var normalized = Names.Normalize(assignment.SkillName);
-            var skill = await db.Skills.FirstOrDefaultAsync(s => s.NormalizedName == normalized, ct)
+            var skill = categorized.GetValueOrDefault(Names.Normalize(assignment.SkillName))
                 ?? throw new InvalidSkillCleanupException($"There is no skill \"{assignment.SkillName.Trim()}\" to categorize.");
-            var categoryName = Names.Normalize(assignment.CategoryName);
-            skill.Category = await db.SkillCategories.FirstOrDefaultAsync(c => c.NormalizedName == categoryName, ct)
+            skill.Category = known.GetValueOrDefault(Names.Normalize(assignment.CategoryName))
                 ?? throw new InvalidSkillCleanupException($"There is no skill category \"{assignment.CategoryName.Trim()}\".");
-            await db.SaveChangesAsync(ct);
             result.Add(skill);
         }
+        await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         return [.. result.Distinct().OrderBy(s => s.Name)];
+    }
+
+    private static async Task<Dictionary<string, Skill>> SkillsByNameAsync(
+        IEnumerable<string> names, IQueryable<Skill> skills, CancellationToken ct)
+    {
+        var normalized = names.Select(Names.Normalize).Distinct().ToList();
+        if (normalized.Count == 0) return [];
+        return await skills.Where(s => normalized.Contains(s.NormalizedName)).ToDictionaryAsync(s => s.NormalizedName, ct);
     }
 
     private static void Validate(List<SkillCleanupOperation> operations, List<SkillCleanupTranslation> translations,
@@ -165,7 +176,8 @@ public static class SkillMutations
         if (repeated is not null) throw new InvalidSkillCleanupException($"Skill {repeated.Key} is in more than one operation.");
     }
 
-    private static async Task<List<Skill>> ApplyAsync(SkillCleanupOperation operation, AppDbContext db, CancellationToken ct)
+    private static async Task<List<Skill>> ApplyAsync(SkillCleanupOperation operation, List<TailoredCvDraft> drafts,
+        AppDbContext db, CancellationToken ct)
     {
         var sourceIds = operation.SkillIds.Distinct().ToList();
         var sources = await db.Skills.Where(s => sourceIds.Contains(s.Id)).ToListAsync(ct);
@@ -227,18 +239,8 @@ public static class SkillMutations
             .Where(p => p.Skills.Any(s => removedIds.Contains(s.Id))).ToListAsync(ct);
         foreach (var project in projects) ReplaceTags(project.Skills, removedIds, targets);
 
-        // Drafts are snapshots, so only the source link moves; a dangling id would block saving the draft.
-        var drafts = await db.TailoredCvDrafts.ToListAsync(ct);
-        foreach (var draft in drafts)
-        {
-            var content = draft.Content;
-            if (content.Skills?.Any(s => s.SourceSkillId is { } id && removedIds.Contains(id)) != true) continue;
-            draft.Content = content with
-            {
-                Skills = [.. content.Skills.Select(s => s.SourceSkillId is { } id && removedIds.Contains(id)
-                    ? s with { SourceSkillId = targetIds[0] } : s)],
-            };
-        }
+        TailoredCvDraftSkills.Rewrite(drafts, s => s.SourceSkillId is { } id && removedIds.Contains(id)
+            ? s with { SourceSkillId = targetIds[0] } : s);
 
         // A merge keeps the sources' translations where the target has none; a split can't divide one translation.
         if (targets is [var target])
@@ -256,22 +258,13 @@ public static class SkillMutations
 
     // Unlike deleteSkill, removes skills in use: the user reviewed each removal. The database cascades the
     // profile, listing and experience/project links; drafts only lose the source link and keep their text.
-    private static async Task RemoveAsync(List<int> ids, AppDbContext db, CancellationToken ct)
+    private static async Task RemoveAsync(List<int> ids, List<TailoredCvDraft> drafts, AppDbContext db, CancellationToken ct)
     {
         if (ids.Count == 0) return;
         var skills = await db.Skills.Where(s => ids.Contains(s.Id)).ToListAsync(ct);
         if (skills.Count != ids.Count) throw new SkillNotFoundException(ids.Except(skills.Select(s => s.Id)).First());
 
-        var drafts = await db.TailoredCvDrafts.ToListAsync(ct);
-        foreach (var draft in drafts)
-        {
-            var content = draft.Content;
-            if (content.Skills?.Any(s => s.SourceSkillId is { } id && ids.Contains(id)) != true) continue;
-            draft.Content = content with
-            {
-                Skills = [.. content.Skills.Select(s => s.SourceSkillId is { } id && ids.Contains(id) ? s with { SourceSkillId = null } : s)],
-            };
-        }
+        TailoredCvDraftSkills.Rewrite(drafts, s => s.SourceSkillId is { } id && ids.Contains(id) ? s with { SourceSkillId = null } : s);
         db.Skills.RemoveRange(skills);
         await db.SaveChangesAsync(ct);
     }

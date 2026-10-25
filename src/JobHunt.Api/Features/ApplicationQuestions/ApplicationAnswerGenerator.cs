@@ -46,36 +46,18 @@ public class ApplicationAnswerGenerator(LlmExecution execution, LlmModelResolver
     private async Task<ApplicationAnswerGenerationResult> AskAsync(ResolvedLlmModel model, List<ChatMessage> messages,
         int? charLimit, AppDbContext db, CancellationToken ct)
     {
-        var call = await execution.RunAsync(model, messages,
+        var call = await execution.RunJsonAsync(model, messages,
             new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0.7f, MaxOutputTokens = 8192 },
-            Operation, db, ct);
+            Operation, db, text => Decode(text, charLimit),
+            "The AI's answer couldn't be read. Try again, or use the external prompt.", ct);
+        return new(call.Value is null ? ApplicationAnswerGenerationStatus.Failed : ApplicationAnswerGenerationStatus.Succeeded,
+            call.Value, call.Error, call.ErrorCode);
+    }
 
-        ApplicationAnswerGenerationResult result;
-        if (call.Error is { } error)
-            result = new(ApplicationAnswerGenerationStatus.Failed, null, error, call.ErrorCode);
-        else
-        {
-            try
-            {
-                result = new(ApplicationAnswerGenerationStatus.Succeeded,
-                    ApplicationAnswerPrompt.Decode(call.Response!.Text, charLimit, external: false), null, null);
-            }
-            catch (InvalidApplicationQuestionException)
-            {
-                result = new(ApplicationAnswerGenerationStatus.Failed, null,
-                    "The AI's answer couldn't be read. Try again, or use the external prompt.", "invalid-json");
-            }
-        }
-        if (call.Usage is { } usage)
-        {
-            if (result.Status != ApplicationAnswerGenerationStatus.Succeeded)
-            {
-                usage.Success = false;
-                usage.ErrorCode ??= "invalid-json";
-            }
-            await execution.SaveUsageAsync(usage, ct);
-        }
-        return result;
+    private static ApplicationAnswerCandidate? Decode(string text, int? charLimit)
+    {
+        try { return ApplicationAnswerPrompt.Decode(text, charLimit, external: false); }
+        catch (InvalidApplicationQuestionException) { return null; }
     }
 }
 

@@ -1,5 +1,6 @@
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Listings;
+using JobHunt.Api.Features.TailoredCvDrafts;
 using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.Skills;
@@ -80,15 +81,8 @@ public static class SkillCategoryMutations
         var category = await db.SkillCategories.FirstOrDefaultAsync(c => c.Id == id, ct)
             ?? throw new SkillCategoryNotFoundException(id);
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
-        foreach (var draft in await db.TailoredCvDrafts.ToListAsync(ct))
-        {
-            var content = draft.Content;
-            if (content.Skills?.Any(s => s.CategoryId == id) != true) continue;
-            draft.Content = content with
-            {
-                Skills = [.. content.Skills.Select(s => s.CategoryId == id ? s with { CategoryId = null } : s)],
-            };
-        }
+        TailoredCvDraftSkills.Rewrite(await db.TailoredCvDrafts.ToListAsync(ct),
+            s => s.CategoryId == id ? s with { CategoryId = null } : s);
         db.SkillCategories.Remove(category);
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
