@@ -2,7 +2,6 @@ using JobHunt.Api.Data;
 using JobHunt.Api.Features.Auth;
 using JobHunt.Api.Features.Usage;
 using JobHunt.Api.Llm;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.AiSafeguards;
@@ -51,7 +50,7 @@ public static class LlmLimitMutations
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
         }
-        catch (SqliteException ex) when (ex.SqliteErrorCode is 5 or 6) { throw new AiSafetyException("ai-busy"); }
+        catch (Exception ex) when (SqliteErrors.IsContention(ex)) { throw new AiSafetyException("ai-busy"); }
         return (await LlmLimitQueries.GetLlmCallLimitsAsync(db, http, time, ct)).Single(l => l.Provider == provider);
     }
 }

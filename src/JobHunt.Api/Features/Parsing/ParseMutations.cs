@@ -14,8 +14,6 @@ public static class ParseMutations
 {
     // Well above any single ad; the parser only sends the first 12k characters anyway.
     private const int MaxTextLength = 100_000;
-    // Practical browser limit; real job ad links are far shorter.
-    private const int MaxUrlLength = 2048;
 
     // Returns the finished job for now. With the queue it will return QUEUED and finish over onParseJobUpdated,
     // so the UI already handles both.
@@ -32,7 +30,7 @@ public static class ParseMutations
         if (text.Length > MaxTextLength)
             throw new InvalidParseRequestException($"The text is longer than {MaxTextLength} characters.");
 
-        return await operations.RunAsync("parse-listing", new { text, mode, model }, requestId, db,
+        return await operations.RunAsync(ListingParser.Operation, new { text, mode, model }, requestId, db,
             () => models.ResolveAsync(model, db, ct), resolved => RunJobAsync(text, mode, resolved, db, parser, time, ct),
             Outcome, ct);
     }
@@ -75,9 +73,7 @@ public static class ParseMutations
         ListingPageFetcher fetcher, AiOperations operations, TimeProvider time, CancellationToken ct, Guid? requestId = null)
     {
         url = url.Trim();
-        if (url.Length > MaxUrlLength
-            || !Uri.TryCreate(url, UriKind.Absolute, out var uri)
-            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        if (!Inputs.TryHttpUrl(url, out var uri))
             throw new InvalidParseRequestException("Enter a full http(s) link to the job ad.");
 
         return await operations.RunAsync("parse-url", new { url, model }, requestId, db,

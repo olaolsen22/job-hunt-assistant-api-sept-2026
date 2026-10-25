@@ -42,11 +42,14 @@ public class TailoredCvAnalyzer(
     public Task<TailoredCvAnalysisResult> AnalyzeAsync(int listingId, TailoredCvSection section,
         int? sourceEntryId, string? model, AppDbContext db, CancellationToken ct, Guid? requestId = null) =>
         operations.RunAsync("analyze-tailored-cv-section", new { listingId, section, sourceEntryId, model }, requestId, db,
-            () => models.ResolveAsync(model, db, ct), resolved => AnalyzeSectionAsync(listingId, section, sourceEntryId, resolved, db, ct),
+            () => models.ResolveAsync(model, db, ct),
+            async resolved => await AnalyzeSectionAsync(await LoadAsync(listingId, db, ct), section, sourceEntryId, resolved, db, ct),
             result => new AiOutcome(result.Status == TailoredCvAnalysisStatus.Succeeded, result.ErrorCode), ct);
 
-    private async Task<TailoredCvAnalysisResult> AnalyzeSectionAsync(int listingId, TailoredCvSection section,
-        int? sourceEntryId, ResolvedLlmModel model, AppDbContext db, CancellationToken ct)
+    private record Sources(Listing Listing, Profile Profile, Language Language);
+
+    // Loaded once per request, so analyze-all doesn't reload the whole profile for every section.
+    private static async Task<Sources> LoadAsync(int listingId, AppDbContext db, CancellationToken ct)
     {
         var listing = await db.Listings.AsNoTracking()
             .Include(l => l.Company).ThenInclude(c => c.Skills).ThenInclude(s => s.Skill).Include(l => l.JobRole)
@@ -54,27 +57,26 @@ public class TailoredCvAnalyzer(
             .Include(l => l.Languages)
             .FirstOrDefaultAsync(l => l.Id == listingId, ct)
             ?? throw new ListingNotFoundException(listingId);
-        var profile = await ProfileQueries.LoadAsync(db, ct);
-        var language = await TailoredCvLanguageText.TargetLanguageAsync(listing, db, ct);
+        return new(listing, await ProfileQueries.LoadAsync(db, ct), await TailoredCvLanguageText.TargetLanguageAsync(listing, db, ct));
+    }
+
+    private async Task<TailoredCvAnalysisResult> AnalyzeSectionAsync(Sources sources, TailoredCvSection section,
+        int? sourceEntryId, ResolvedLlmModel model, AppDbContext db, CancellationToken ct)
+    {
+        var (listing, profile, language) = sources;
         var context = BuildContext(listing, profile, section, sourceEntryId, language);
         var input = JsonSerializer.Serialize(context, JsonOptions);
         if (input.Length > MaxContextLength)
             throw new InvalidTailoredCvAnalysisException($"Analysis input must be at most {MaxContextLength} characters.");
 
-        var call = await execution.RunAsync(model,
+        var tooLong = false;
+        var call = await execution.RunJsonAsync(model,
             [new(ChatRole.System, Instructions(section, language)), new(ChatRole.User, $"<cv_context>\n{input}\n</cv_context>")],
             new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0, MaxOutputTokens = 4096 },
-            Operation, db, ct);
-        var result = call.Error is { } error
-            ? Failed(section, sourceEntryId, error)
-            : Decode(call.Response!.Text, section, sourceEntryId, context);
-        if (call.Usage is { } usage && result.Status != TailoredCvAnalysisStatus.Succeeded)
-        {
-            usage.Success = false;
-            usage.ErrorCode ??= "invalid-json";
-        }
-        if (call.Usage is { } audited) await execution.SaveUsageAsync(audited, ct);
-        return result with { ErrorCode = call.ErrorCode ?? (result.Status == TailoredCvAnalysisStatus.Failed ? "invalid-json" : null) };
+            Operation, db, text => (tooLong = text.Length > MaxOutputLength) ? null : Decode(text, section, sourceEntryId, context),
+            "The AI's answer couldn't be read. Try again, or use the external prompt.", ct);
+        var error = tooLong ? "The AI's answer was too long to read. Try again." : call.Error!;
+        return call.Value ?? Failed(section, sourceEntryId, error) with { ErrorCode = call.ErrorCode };
     }
 
     public Task<TailoredCvAnalysisReport> AnalyzeAllAsync(int listingId, string? model, AppDbContext db, CancellationToken ct, Guid? requestId = null) =>
@@ -105,6 +107,7 @@ public class TailoredCvAnalyzer(
             .Concat(educationIds.Select(id => (Section: TailoredCvSection.Education, Id: (int?)id)))
             .Concat(projectIds.Select(id => (Section: TailoredCvSection.Project, Id: (int?)id)))
             .Concat([(TailoredCvSection.Skills, (int?)null), (TailoredCvSection.Summary, (int?)null)]).ToList();
+        var sources = await LoadAsync(listingId, db, ct);
         var results = new List<TailoredCvAnalysisResult>(sections.Count);
         string? stop = null;
         foreach (var (section, id) in sections)
@@ -112,7 +115,7 @@ public class TailoredCvAnalyzer(
             ct.ThrowIfCancellationRequested();
             if (stop is not null) { results.Add(Skipped(section, id, stop)); continue; }
             TailoredCvAnalysisResult result;
-            try { result = await AnalyzeSectionAsync(listingId, section, id, resolved, db, ct); }
+            try { result = await AnalyzeSectionAsync(sources, section, id, resolved, db, ct); }
             catch (AiSafetyException ex) when (ex.Code == "daily-limit-reached")
             { result = Skipped(section, id, ex.Code); }
             results.Add(result);
@@ -380,11 +383,10 @@ public class TailoredCvAnalyzer(
             """;
     }
 
-    private static TailoredCvAnalysisResult Decode(string json, TailoredCvSection section,
+    // Null when the answer is unreadable or names ids outside the context.
+    private static TailoredCvAnalysisResult? Decode(string json, TailoredCvSection section,
         int? sourceEntryId, object context)
     {
-        if (json.Length > MaxOutputLength)
-            return Failed(section, sourceEntryId, "The AI's answer was too long to read. Try again.");
         try
         {
             using var document = JsonDocument.Parse(json);
@@ -447,7 +449,7 @@ public class TailoredCvAnalyzer(
         catch (Exception ex) when (ex is JsonException or InvalidOperationException
             or System.Collections.Generic.KeyNotFoundException)
         {
-            return Failed(section, sourceEntryId, "The AI's answer couldn't be read. Try again, or use the external prompt.");
+            return null;
         }
     }
 

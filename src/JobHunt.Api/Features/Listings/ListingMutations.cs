@@ -101,17 +101,13 @@ public static class ListingMutations
             .OrderByDescending(l => l.CreatedAt)
             .ToListAsync(ct);
 
-        // Few listings per company, so the title match runs in memory with the same Names.Normalize as lookups.
-        var title = Names.Normalize(entity.Title);
-        var sameCompany = await WithDetails(db)
-            .Where(l => l.CompanyId == entity.CompanyId && l.Id != entity.Id && (entity.Url == null || l.Url != entity.Url))
+        var openApplication = entity.Kind != ListingKind.Vacancy;
+        var possibleDuplicates = await WithDetails(db)
+            .Where(l => l.CompanyId == entity.CompanyId && l.Id != entity.Id && (entity.Url == null || l.Url != entity.Url)
+                && (l.JobRoleId == entity.JobRoleId || l.NormalizedTitle == entity.NormalizedTitle
+                    || (openApplication && l.Kind != ListingKind.Vacancy && !ApplicationStatuses.Final.Contains(l.Status))))
             .OrderByDescending(l => l.CreatedAt)
             .ToListAsync(ct);
-        var possibleDuplicates = sameCompany
-            .Where(l => l.JobRoleId == entity.JobRoleId || Names.Normalize(l.Title) == title
-                || (entity.Kind != ListingKind.Vacancy && l.Kind != ListingKind.Vacancy
-                    && !ApplicationStatuses.Final.Contains(l.Status)))
-            .ToList();
         return new CreateListingPayload(entity, previousAttempts, possibleDuplicates);
     }
 
@@ -259,17 +255,13 @@ public static class ListingMutations
         if (entity.JobRole.CategoryId is null && entity.JobRole.Category is null && suggestedCategory is not null)
             entity.JobRole.Category = suggestedCategory;
 
-        var skillNames = input.Skills.Select(s => Names.Normalize(s.Name)).ToList();
-        var skills = await db.Skills
-            .Where(s => skillNames.Contains(s.NormalizedName))
-            .ToDictionaryAsync(s => s.NormalizedName, ct);
+        var skills = (await SkillLookup.FindOrCreateAsync(input.Skills.Select(s => s.Name.Trim()), db, ct))
+            .ToDictionary(s => s.NormalizedName);
         var categories = await SkillCategoryPrompt.ByNormalizedNameAsync(input.Skills.Select(s => s.CategoryName), db, ct);
         entity.Skills.Clear();
         foreach (var skill in input.Skills)
         {
-            var name = Names.Normalize(skill.Name);
-            var lookup = skills.GetValueOrDefault(name)
-                ?? new Skill { UserId = entity.UserId, Name = skill.Name.Trim(), NormalizedName = name };
+            var lookup = skills[Names.Normalize(skill.Name)];
             if (lookup.CategoryId is null && lookup.Category is null && skill.CategoryName is { } categoryName)
                 lookup.Category = categories.GetValueOrDefault(Names.Normalize(categoryName));
             entity.Skills.Add(new ListingSkill
@@ -342,11 +334,11 @@ public static class ListingMutations
             var name = Names.Normalize(input.Name);
             if (known.TryGetValue(name, out var contact))
             {
-                contact.Title ??= ContactMutations.Clean(input.Title);
-                contact.Email ??= ContactMutations.Clean(input.Email);
-                contact.Phone ??= ContactMutations.Clean(input.Phone);
-                contact.Url ??= ContactMutations.Clean(input.Url);
-                contact.Notes ??= ApplicationMutations.CleanNote(input.Notes);
+                contact.Title ??= Inputs.Clean(input.Title);
+                contact.Email ??= Inputs.Clean(input.Email);
+                contact.Phone ??= Inputs.Clean(input.Phone);
+                contact.Url ??= Inputs.Clean(input.Url);
+                contact.Notes ??= Inputs.Clean(input.Notes);
             }
             else
                 contact = new Contact
@@ -355,11 +347,11 @@ public static class ListingMutations
                     Company = company,
                     Name = input.Name.Trim(),
                     NormalizedName = name,
-                    Title = ContactMutations.Clean(input.Title),
-                    Email = ContactMutations.Clean(input.Email),
-                    Phone = ContactMutations.Clean(input.Phone),
-                    Url = ContactMutations.Clean(input.Url),
-                    Notes = ApplicationMutations.CleanNote(input.Notes),
+                    Title = Inputs.Clean(input.Title),
+                    Email = Inputs.Clean(input.Email),
+                    Phone = Inputs.Clean(input.Phone),
+                    Url = Inputs.Clean(input.Url),
+                    Notes = Inputs.Clean(input.Notes),
                 };
             entity.Contacts.Add(new ListingContact { Contact = contact });
         }
@@ -386,8 +378,7 @@ public static class ListingMutations
         }
         else
         {
-            // http(s) only: the UI renders this as a link, and a javascript: URL would run on click.
-            if (!Uri.TryCreate(input.Url?.Trim(), UriKind.Absolute, out var url) || url.Scheme is not ("http" or "https"))
+            if (!Inputs.TryHttpUrl(input.Url, out _))
                 throw new InvalidListingException("Url must be an http(s) link.");
             if (input.PostedOn is null)
                 throw new InvalidListingException("Posted date is required.");

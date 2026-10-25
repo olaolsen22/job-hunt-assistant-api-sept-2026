@@ -15,9 +15,9 @@ public class ProviderKeyValidator(IHttpClientFactory clients)
         timeout.CancelAfter(TimeSpan.FromSeconds(10));
         using var client = clients.CreateClient(LlmProviders.HttpClientName);
         using var request = new HttpRequestMessage(HttpMethod.Get,
-            new Uri(LlmProviders.Endpoint(provider), provider == "gemini" ? "v1beta/models?pageSize=1" : provider == "anthropic" ? "v1/models?limit=1" : "models"));
-        if (provider == "gemini") request.Headers.Add("x-goog-api-key", apiKey);
-        else if (provider == "anthropic")
+            new Uri(LlmProviders.Endpoint(provider), provider == LlmProviders.Gemini ? "v1beta/models?pageSize=1" : provider == LlmProviders.Anthropic ? "v1/models?limit=1" : "models"));
+        if (provider == LlmProviders.Gemini) request.Headers.Add("x-goog-api-key", apiKey);
+        else if (provider == LlmProviders.Anthropic)
         {
             request.Headers.Add("x-api-key", apiKey);
             request.Headers.Add("anthropic-version", "2023-06-01");

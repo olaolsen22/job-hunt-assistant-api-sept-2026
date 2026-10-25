@@ -15,8 +15,6 @@ public class StatusChangeNotFoundException(int id) : Exception($"Status change {
 [MutationType]
 public static class ApplicationMutations
 {
-    internal const int MaxNoteLength = 10_000;
-
     // Interviewing is reached through addInterview; the outcomes through recordOutcome.
     private static readonly Dictionary<ApplicationStatus, ApplicationStatus[]> Allowed = new()
     {
@@ -84,7 +82,7 @@ public static class ApplicationMutations
         var listing = await ListingMutations.FindWithDetailsAsync(listingId, db, ct);
         var change = listing.StatusHistory.Single(s => s.Id == id);
         change.OccurredAt = occurredAt.UtcDateTime;
-        change.Note = CleanNote(note);
+        change.Note = Inputs.Clean(note);
         Validate(listing, change, time.GetUtcNow().UtcDateTime);
         if (change.Status == ApplicationStatus.Applied)
             foreach (var document in listing.Documents.Where(d => d.SentAt is not null))
@@ -137,7 +135,7 @@ public static class ApplicationMutations
             UserId = listing.UserId,
             Status = status,
             OccurredAt = occurredAt,
-            Note = CleanNote(note),
+            Note = Inputs.Clean(note),
             CreatedAt = now,
         };
         listing.StatusHistory.Add(change);
@@ -147,15 +145,12 @@ public static class ApplicationMutations
         return change;
     }
 
-    // Trimmed, and blank means none, so an emptied editor doesn't store whitespace.
-    internal static string? CleanNote(string? note) => string.IsNullOrWhiteSpace(note) ? null : note.Trim();
-
     private static void Validate(Listing listing, StatusChange change, DateTime now)
     {
         if (change.OccurredAt > now)
             throw new InvalidApplicationException("The date can't be in the future.");
-        if (change.Note?.Length > MaxNoteLength)
-            throw new InvalidApplicationException($"The note is longer than {MaxNoteLength} characters.");
+        if (change.Note?.Length > Inputs.MaxMarkdownLength)
+            throw new InvalidApplicationException($"The note is longer than {Inputs.MaxMarkdownLength} characters.");
         var appliedAt = listing.StatusHistory.Single(s => s.Status == ApplicationStatus.Applied).OccurredAt;
         if (listing.StatusHistory.Any(s => s.OccurredAt < appliedAt))
             throw new InvalidApplicationException("Nothing can happen before the application date.");

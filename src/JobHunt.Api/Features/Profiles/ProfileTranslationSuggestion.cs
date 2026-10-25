@@ -2,7 +2,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.AiSafeguards;
-using JobHunt.Api.Features.Applications;
 using JobHunt.Api.Features.LlmModels;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Parsing;
@@ -159,23 +158,14 @@ public class ProfileTranslationSuggester(LlmExecution execution, LlmModelResolve
     private async Task<ProfileTranslationSuggestion> SuggestCoreAsync(
         Language language, ResolvedLlmModel resolved, AppDbContext db, CancellationToken ct)
     {
-        var call = await execution.RunAsync(resolved,
+        var call = await execution.RunJsonAsync(resolved,
             [new(ChatRole.System, ProfileTranslationPromptQueries.Instructions(language, external: false)),
              new(ChatRole.User, await ProfileTranslationPromptQueries.ContentAsync(language, db, ct))],
             new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0.3f, MaxOutputTokens = 32_768 },
-            Operation, db, ct);
-        ProfileTranslationSuggestion result;
-        if (call.Error is { } error) result = new(ProfileTranslationStatus.Failed, null, error);
-        else if (Decode(call.Response!.Text) is { } reply)
-            result = new(ProfileTranslationStatus.Succeeded, await TargetsAsync(reply, language, db, ct), null);
-        else
-        {
-            call.Usage!.Success = false;
-            call.Usage.ErrorCode = "invalid-json";
-            result = new(ProfileTranslationStatus.Failed, null, "The AI's answer couldn't be read. Try again.");
-        }
-        if (call.Usage is { } audited) await execution.SaveUsageAsync(audited, ct);
-        return result;
+            Operation, db, Decode, "The AI's answer couldn't be read. Try again.", ct);
+        return call.Value is { } reply
+            ? new(ProfileTranslationStatus.Succeeded, await TargetsAsync(reply, language, db, ct), null)
+            : new(ProfileTranslationStatus.Failed, null, call.Error);
     }
 
     private static Reply? Decode(string text)
@@ -193,16 +183,16 @@ public class ProfileTranslationSuggester(LlmExecution execution, LlmModelResolve
             .Where(b => ProfileTranslationPromptQueries.IsTarget(ProfileTranslationPromptQueries.State(b, language)))
             .Select(b => b.Id).ToHashSet();
         var bullets = (reply.Bullets ?? []).OfType<Bullet>()
-            .Select(b => new { b.Id, Text = ProfileMutations.Clean(b.Text) })
+            .Select(b => new { b.Id, Text = Inputs.Clean(b.Text) })
             .Where(b => b.Text is { Length: <= ProfileBulletMutations.MaxTextLength } && targets.Contains(b.Id))
             .DistinctBy(b => b.Id).Select(b => new ProfileBulletText(b.Id, b.Text!)).ToList();
         return new(bullets,
             Target(reply.Headline, ProfileTranslationPromptQueries.HeadlineState(profile, language), ProfileMutations.MaxTextLength),
-            Target(reply.Summary, ProfileTranslationPromptQueries.SummaryState(profile, language), ApplicationMutations.MaxNoteLength));
+            Target(reply.Summary, ProfileTranslationPromptQueries.SummaryState(profile, language), Inputs.MaxMarkdownLength));
     }
 
     private static string? Target(string? value, ProfileTranslationPromptQueries.TranslationState? state, int maxLength) =>
-        ProfileMutations.Clean(value) is { } text && ProfileTranslationPromptQueries.IsTarget(state) && text.Length <= maxLength
+        Inputs.Clean(value) is { } text && ProfileTranslationPromptQueries.IsTarget(state) && text.Length <= maxLength
             ? text : null;
 }
 

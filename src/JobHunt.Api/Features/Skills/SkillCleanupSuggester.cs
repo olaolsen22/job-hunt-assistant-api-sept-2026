@@ -33,26 +33,14 @@ public class SkillCleanupSuggester(LlmExecution execution, LlmModelResolver mode
 
     private async Task<SkillCleanupSuggestion> SuggestCoreAsync(ResolvedLlmModel resolved, AppDbContext db, CancellationToken ct)
     {
-        var call = await execution.RunAsync(resolved,
+        var call = await execution.RunJsonAsync(resolved,
             [new(ChatRole.System, SkillCleanupPromptQueries.Instructions), new(ChatRole.User, await SkillCleanupPromptQueries.SkillListAsync(db, ct))],
             new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0, MaxOutputTokens = 16_384 },
-            Operation, db, ct);
-        SkillCleanupSuggestion result;
-        if (call.Error is { } error) result = new(SkillCleanupSuggestStatus.Failed, null, null, null, null, error);
-        else if (Decode(call.Response!.Text) is { } plan)
-        {
-            var known = await KnownAsync(plan, db, ct);
-            result = new(SkillCleanupSuggestStatus.Succeeded, known, await TranslationsAsync(plan, known, db, ct),
-                await CategoriesAsync(plan, known, db, ct), await RemovalsAsync(plan, known, db, ct), null);
-        }
-        else
-        {
-            call.Usage!.Success = false;
-            call.Usage.ErrorCode = "invalid-json";
-            result = new(SkillCleanupSuggestStatus.Failed, null, null, null, null, "The AI's answer couldn't be read. Try again.");
-        }
-        if (call.Usage is { } audited) await execution.SaveUsageAsync(audited, ct);
-        return result;
+            Operation, db, Decode, "The AI's answer couldn't be read. Try again.", ct);
+        if (call.Value is not { } plan) return new(SkillCleanupSuggestStatus.Failed, null, null, null, null, call.Error);
+        var known = await KnownAsync(plan, db, ct);
+        return new(SkillCleanupSuggestStatus.Succeeded, known, await TranslationsAsync(plan, known, db, ct),
+            await CategoriesAsync(plan, known, db, ct), await RemovalsAsync(plan, known, db, ct), null);
     }
 
     private static Plan? Decode(string text)

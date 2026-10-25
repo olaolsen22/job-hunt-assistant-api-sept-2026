@@ -28,38 +28,20 @@ public class CoverLetterGenerator(LlmExecution execution, LlmModelResolver model
         AppDbContext db, CancellationToken ct)
     {
         var context = await CoverLetterContext.BuildAsync(listingId, db, time, ct);
-        var call = await execution.RunAsync(model,
+        var call = await execution.RunJsonAsync(model,
             [new(ChatRole.System, CoverLetterPrompt.Instructions(context.Language, context.Kind)),
              new(ChatRole.User, $"<cover_letter_context>\n{context.Json}\n</cover_letter_context>")],
             new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0.7f, MaxOutputTokens = 4096 },
-            Operation, db, ct);
+            Operation, db, text => Decode(text, context),
+            "The AI's answer couldn't be read. Try again, or use the external prompt.", ct);
+        return new(call.Value is null ? CoverLetterGenerationStatus.Failed : CoverLetterGenerationStatus.Succeeded,
+            call.Value, call.Error, call.ErrorCode);
+    }
 
-        CoverLetterGenerationResult result;
-        if (call.Error is { } error)
-            result = new(CoverLetterGenerationStatus.Failed, null, error, call.ErrorCode);
-        else
-        {
-            try
-            {
-                result = new(CoverLetterGenerationStatus.Succeeded,
-                    CoverLetterPrompt.Decode(call.Response!.Text, context, external: false), null, null);
-            }
-            catch (InvalidCoverLetterException)
-            {
-                result = new(CoverLetterGenerationStatus.Failed, null,
-                    "The AI's answer couldn't be read. Try again, or use the external prompt.", "invalid-json");
-            }
-        }
-        if (call.Usage is { } usage)
-        {
-            if (result.Status != CoverLetterGenerationStatus.Succeeded)
-            {
-                usage.Success = false;
-                usage.ErrorCode ??= "invalid-json";
-            }
-            await execution.SaveUsageAsync(usage, ct);
-        }
-        return result;
+    private static CoverLetterContent? Decode(string text, CoverLetterPromptContext context)
+    {
+        try { return CoverLetterPrompt.Decode(text, context, external: false); }
+        catch (InvalidCoverLetterException) { return null; }
     }
 }
 
