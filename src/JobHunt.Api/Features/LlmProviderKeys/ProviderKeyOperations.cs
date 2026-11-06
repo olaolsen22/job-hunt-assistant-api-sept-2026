@@ -55,7 +55,7 @@ public static class ProviderKeyMutations
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
         }
-        catch (Exception ex) when (SqliteErrors.IsContention(ex)) { throw new ProviderKeyException("conflict"); }
+        catch (Exception ex) when (SqliteErrors.IsContention(ex)) { throw new ProviderKeyException(LlmErrorCodes.Conflict); }
         return ProviderKeyQueries.Status(key);
     }
 
@@ -65,9 +65,9 @@ public static class ProviderKeyMutations
         IHttpContextAccessor http, TimeProvider time, CancellationToken ct)
     {
         RequireOwner(http);
-        if (!LlmProviders.Supported.Contains(provider)) throw new ProviderKeyException("invalid-input");
+        if (!LlmProviders.Supported.Contains(provider)) throw new ProviderKeyException(LlmErrorCodes.InvalidInput);
         try { await RetireAsync(provider, db, time, ct); }
-        catch (Exception ex) when (SqliteErrors.IsContention(ex)) { throw new ProviderKeyException("conflict"); }
+        catch (Exception ex) when (SqliteErrors.IsContention(ex)) { throw new ProviderKeyException(LlmErrorCodes.Conflict); }
         return new(provider, false, null, null, null, null);
     }
 
@@ -80,6 +80,6 @@ public static class ProviderKeyMutations
 
     private static void RequireOwner(IHttpContextAccessor http)
     {
-        if (http.HttpContext?.User.IsInRole(Roles.Owner) != true) throw new ProviderKeyException("forbidden");
+        if (http.HttpContext?.User.IsInRole(Roles.Owner) != true) throw new ProviderKeyException(LlmErrorCodes.Forbidden);
     }
 }

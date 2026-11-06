@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.DataProtection;
+using JobHunt.Api.Llm;
 
 namespace JobHunt.Api.Features.LlmProviderKeys;
 
@@ -9,14 +10,10 @@ public class ProviderKeyException(string code) : Exception(MessageFor(code))
 
     public static string MessageFor(string code) => code switch
     {
-        "invalid-key" => "The provider rejected the API key. Update it or switch models.",
-        "credential-unavailable" => "The saved API key is unavailable. Re-enter it or switch models.",
-        "rate-limited" => "The AI provider's rate limit was reached. Try later or switch models.",
-        "timeout" => "The AI took too long to answer. Try again.",
-        "forbidden" => "Only an Owner can manage provider keys.",
-        "invalid-input" => "Choose a supported provider and supply an API key of 1–4096 characters.",
-        "conflict" => "The provider key changed concurrently. Refresh and try again.",
-        _ => "The AI provider couldn't be reached. Try again later.",
+        LlmErrorCodes.Forbidden => "Only an Owner can manage provider keys.",
+        LlmErrorCodes.InvalidInput => "Choose a supported provider and supply an API key of 1–4096 characters.",
+        LlmErrorCodes.Conflict => "The provider key changed concurrently. Refresh and try again.",
+        _ => LlmErrorCodes.MessageFor(code),
     };
 }
 
@@ -30,8 +27,8 @@ public class ProviderKeyProtector(IDataProtectionProvider protection)
     public string Unprotect(UserProviderKey key)
     {
         if (key.RetiredAt is not null || key.ProtectedKey is null)
-            throw new ProviderKeyException("credential-unavailable");
+            throw new ProviderKeyException(LlmErrorCodes.CredentialUnavailable);
         try { return For(key).Unprotect(key.ProtectedKey); }
-        catch (CryptographicException) { throw new ProviderKeyException("credential-unavailable"); }
+        catch (CryptographicException) { throw new ProviderKeyException(LlmErrorCodes.CredentialUnavailable); }
     }
 }

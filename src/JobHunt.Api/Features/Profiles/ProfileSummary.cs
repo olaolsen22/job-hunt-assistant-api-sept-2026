@@ -18,7 +18,8 @@ public record ProfileSummaryPrompt(int Version, string Instructions);
 
 public enum ProfileSummaryStatus { Succeeded, Failed }
 // A succeeded null summary means the profile holds too little to write one.
-public record ProfileSummarySuggestion(ProfileSummaryStatus Status, string? Summary, string? Error);
+public record ProfileSummarySuggestion(ProfileSummaryStatus Status, string? Summary, string? Error,
+    [property: GraphQLIgnore] string? ErrorCode = null);
 
 [QueryType]
 public static class ProfileSummaryPromptQueries
@@ -109,7 +110,7 @@ public class ProfileSummarySuggester(LlmExecution execution, LlmModelResolver mo
     public Task<ProfileSummarySuggestion> SuggestAsync(string? model, AppDbContext db, CancellationToken ct, Guid? requestId = null) =>
         operations.RunAsync(Operation, new { model }, requestId, db,
             () => models.ResolveAsync(model, db, ct), resolved => SuggestCoreAsync(resolved, db, ct),
-            result => new AiOutcome(result.Status == ProfileSummaryStatus.Succeeded), ct);
+            result => new AiOutcome(result.Status == ProfileSummaryStatus.Succeeded, result.ErrorCode), ct);
 
     private async Task<ProfileSummarySuggestion> SuggestCoreAsync(ResolvedLlmModel resolved, AppDbContext db, CancellationToken ct)
     {
@@ -121,7 +122,7 @@ public class ProfileSummarySuggester(LlmExecution execution, LlmModelResolver mo
             Operation, db, Decode, "The AI's answer couldn't be read. Try again.", ct);
         return call.Value is { } reply
             ? new(ProfileSummaryStatus.Succeeded, reply.Summary, null)
-            : new(ProfileSummaryStatus.Failed, null, call.Error);
+            : new(ProfileSummaryStatus.Failed, null, call.Error, call.ErrorCode);
     }
 
     // An over-long summary counts as unreadable: the UI would only show text the PDF can't fit.

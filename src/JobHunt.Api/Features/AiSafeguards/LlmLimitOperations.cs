@@ -38,8 +38,8 @@ public static class LlmLimitMutations
     public static async Task<LlmCallLimit> SetLlmCallLimitAsync(string provider, int? dailyRequestLimit, AppDbContext db,
         IHttpContextAccessor http, TimeProvider time, CancellationToken ct)
     {
-        if (http.HttpContext?.User.IsInRole(Roles.Owner) != true) throw new AiSafetyException("forbidden");
-        if (!LlmProviders.Supported.Contains(provider) || dailyRequestLimit < 0) throw new AiSafetyException("invalid-input");
+        if (http.HttpContext?.User.IsInRole(Roles.Owner) != true) throw new AiSafetyException(LlmErrorCodes.Forbidden);
+        if (!LlmProviders.Supported.Contains(provider) || dailyRequestLimit < 0) throw new AiSafetyException(LlmErrorCodes.InvalidInput);
         try
         {
             await using var transaction = await AiTransactions.BeginAsync(db, ct);
@@ -50,7 +50,7 @@ public static class LlmLimitMutations
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
         }
-        catch (Exception ex) when (SqliteErrors.IsContention(ex)) { throw new AiSafetyException("ai-busy"); }
+        catch (Exception ex) when (SqliteErrors.IsContention(ex)) { throw new AiSafetyException(LlmErrorCodes.AiBusy); }
         return (await LlmLimitQueries.GetLlmCallLimitsAsync(db, http, time, ct)).Single(l => l.Provider == provider);
     }
 }

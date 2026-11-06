@@ -92,7 +92,7 @@ public static class ParseMutations
     }
 
     private static AiOutcome Outcome(ParseJob job) => new(job.Status == ParseJobStatus.Succeeded,
-        job.Status == ParseJobStatus.Failed ? "parse-failed" : null, job);
+        job.Status == ParseJobStatus.Failed ? LlmErrorCodes.ParseFailed : null, job);
 
     private static async Task<ParseJob> RunJobAsync(
         string text, ParseMode mode, ResolvedLlmModel model, AppDbContext db, ListingParser parser, TimeProvider time,

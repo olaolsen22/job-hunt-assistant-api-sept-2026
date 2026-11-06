@@ -3,7 +3,6 @@ using JobHunt.Api.Data;
 using JobHunt.Api.Features.AiSafeguards;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.LlmModels;
-using JobHunt.Api.Features.LlmProviderKeys;
 using JobHunt.Api.Features.Profiles;
 using JobHunt.Api.Llm;
 using Microsoft.Extensions.AI;
@@ -106,11 +105,10 @@ public class TailoredCvAnalyzer(
                 : null;
             TailoredCvAnalysisResult result;
             try { result = await AnalyzeSectionAsync(sources, section, id, resolved, db, ct, cvBullets); }
-            catch (AiSafetyException ex) when (ex.Code == "daily-limit-reached")
+            catch (AiSafetyException ex) when (ex.Code == LlmErrorCodes.DailyLimitReached)
             { result = Skipped(section, id, ex.Code); }
             results.Add(result);
-            if (result.ErrorCode is "invalid-key" or "credential-unavailable" or "rate-limited" or "timeout"
-                or "provider-error" or "daily-limit-reached") stop = result.ErrorCode;
+            if (LlmErrorCodes.StopsBatch(result.ErrorCode)) stop = result.ErrorCode;
         }
         return new(results);
     }
@@ -126,7 +124,7 @@ public class TailoredCvAnalyzer(
 
     private static TailoredCvAnalysisResult Skipped(TailoredCvSection section, int? id, string code) =>
         new(TailoredCvAnalysisStatus.Skipped, section, id, [], [], null,
-            code == "daily-limit-reached" ? AiSafetyException.MessageFor(code) : ProviderKeyException.MessageFor(code), code);
+            code == LlmErrorCodes.DailyLimitReached ? AiSafetyException.MessageFor(code) : LlmErrorCodes.MessageFor(code), code);
 
     private static TailoredCvAnalysisResult Failed(TailoredCvSection section, int? sourceEntryId, string error) =>
         new(TailoredCvAnalysisStatus.Failed, section, sourceEntryId, [], [], null, error);

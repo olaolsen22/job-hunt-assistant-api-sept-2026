@@ -11,7 +11,7 @@ namespace JobHunt.Api.Features.TailoredCvDrafts;
 public enum TailoredCvSkillGroupStatus { Succeeded, Failed }
 public record TailoredCvSkillGroup(string Name, string Group);
 public record TailoredCvSkillGroupSuggestion(TailoredCvSkillGroupStatus Status, List<TailoredCvSkillGroup>? Groups,
-    string? Error);
+    string? Error, [property: GraphQLIgnore] string? ErrorCode = null);
 // Complete prompt, skill list included, for the copy-paste path. The pasted labels go into the skills' group.
 public record TailoredCvSkillGroupPrompt(int Version, string Instructions);
 
@@ -34,7 +34,7 @@ public class TailoredCvSkillGroupSuggester(LlmExecution execution, LlmModelResol
         var names = CleanNames(skillNames);
         return operations.RunAsync(Operation, new { skillNames, language, model }, requestId, db,
             () => models.ResolveAsync(model, db, ct), resolved => SuggestCoreAsync(names, language, resolved, db, ct),
-            result => new AiOutcome(result.Status == TailoredCvSkillGroupStatus.Succeeded), ct);
+            result => new AiOutcome(result.Status == TailoredCvSkillGroupStatus.Succeeded, result.ErrorCode), ct);
     }
 
     internal static List<string> CleanNames(List<string> skillNames)
@@ -57,7 +57,7 @@ public class TailoredCvSkillGroupSuggester(LlmExecution execution, LlmModelResol
             [new(ChatRole.System, Instructions(language, external: false)), new(ChatRole.User, SkillList(names))],
             new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0, MaxOutputTokens = 4096 },
             Operation, db, JsonReply.TryDecode<Plan>, "The AI's answer couldn't be read. Try again.", ct);
-        if (call.Value is not { } plan) return new(TailoredCvSkillGroupStatus.Failed, null, call.Error);
+        if (call.Value is not { } plan) return new(TailoredCvSkillGroupStatus.Failed, null, call.Error, call.ErrorCode);
 
         // Only the sent skills, once each, in the draft's order; the label keeps the AI's first spelling so the
         // same group typed twice still merges into one line.

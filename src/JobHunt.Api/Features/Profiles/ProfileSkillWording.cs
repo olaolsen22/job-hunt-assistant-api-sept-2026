@@ -15,7 +15,8 @@ public record ProfileSkillWording(List<ProfileBulletText> Bullets, string? Headl
 public record ProfileSkillWordingPrompt(int Version, string Instructions);
 
 public enum ProfileSkillWordingStatus { Succeeded, Failed }
-public record ProfileSkillWordingSuggestion(ProfileSkillWordingStatus Status, ProfileSkillWording? Wording, string? Error);
+public record ProfileSkillWordingSuggestion(ProfileSkillWordingStatus Status, ProfileSkillWording? Wording, string? Error,
+    [property: GraphQLIgnore] string? ErrorCode = null);
 
 [QueryType]
 public static class ProfileSkillWordingPromptQueries
@@ -75,7 +76,7 @@ public class ProfileSkillWordingSuggester(LlmExecution execution, LlmModelResolv
     public Task<ProfileSkillWordingSuggestion> SuggestAsync(string? model, AppDbContext db, CancellationToken ct, Guid? requestId = null) =>
         operations.RunAsync(Operation, new { model }, requestId, db,
             () => models.ResolveAsync(model, db, ct), resolved => SuggestCoreAsync(resolved, db, ct),
-            result => new AiOutcome(result.Status == ProfileSkillWordingStatus.Succeeded), ct);
+            result => new AiOutcome(result.Status == ProfileSkillWordingStatus.Succeeded, result.ErrorCode), ct);
 
     private async Task<ProfileSkillWordingSuggestion> SuggestCoreAsync(ResolvedLlmModel resolved, AppDbContext db, CancellationToken ct)
     {
@@ -86,7 +87,7 @@ public class ProfileSkillWordingSuggester(LlmExecution execution, LlmModelResolv
             Operation, db, JsonReply.TryDecode<Reply>, "The AI's answer couldn't be read. Try again.", ct);
         return call.Value is { } reply
             ? new(ProfileSkillWordingStatus.Succeeded, await ChangesAsync(reply, db, ct), null)
-            : new(ProfileSkillWordingStatus.Failed, null, call.Error);
+            : new(ProfileSkillWordingStatus.Failed, null, call.Error, call.ErrorCode);
     }
 
     // Keeps only real changes that applyProfileSkillWording would accept, so the review shows nothing it would reject.

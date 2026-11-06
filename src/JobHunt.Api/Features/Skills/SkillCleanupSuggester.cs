@@ -12,7 +12,7 @@ namespace JobHunt.Api.Features.Skills;
 public enum SkillCleanupSuggestStatus { Succeeded, Failed }
 public record SkillCleanupSuggestion(SkillCleanupSuggestStatus Status, List<SkillCleanupOperation>? Operations,
     List<SkillCleanupTranslation>? Translations, List<SkillCleanupCategory>? Categories,
-    List<SkillCleanupRemoval>? Removals, string? Error);
+    List<SkillCleanupRemoval>? Removals, string? Error, [property: GraphQLIgnore] string? ErrorCode = null);
 
 // Only suggests: nothing is saved but usage. The reviewed operations go to cleanUpSkills.
 public class SkillCleanupSuggester(LlmExecution execution, LlmModelResolver models, AiOperations operations)
@@ -29,7 +29,7 @@ public class SkillCleanupSuggester(LlmExecution execution, LlmModelResolver mode
     public Task<SkillCleanupSuggestion> SuggestAsync(string? model, AppDbContext db, CancellationToken ct, Guid? requestId = null) =>
         operations.RunAsync(Operation, new { model }, requestId, db,
             () => models.ResolveAsync(model, db, ct), resolved => SuggestCoreAsync(resolved, db, ct),
-            result => new AiOutcome(result.Status == SkillCleanupSuggestStatus.Succeeded), ct);
+            result => new AiOutcome(result.Status == SkillCleanupSuggestStatus.Succeeded, result.ErrorCode), ct);
 
     private async Task<SkillCleanupSuggestion> SuggestCoreAsync(ResolvedLlmModel resolved, AppDbContext db, CancellationToken ct)
     {
@@ -37,7 +37,7 @@ public class SkillCleanupSuggester(LlmExecution execution, LlmModelResolver mode
             [new(ChatRole.System, SkillCleanupPromptQueries.Instructions), new(ChatRole.User, await SkillCleanupPromptQueries.SkillListAsync(db, ct))],
             new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0, MaxOutputTokens = 16_384 },
             Operation, db, JsonReply.TryDecode<Plan>, "The AI's answer couldn't be read. Try again.", ct);
-        if (call.Value is not { } plan) return new(SkillCleanupSuggestStatus.Failed, null, null, null, null, call.Error);
+        if (call.Value is not { } plan) return new(SkillCleanupSuggestStatus.Failed, null, null, null, null, call.Error, call.ErrorCode);
         var known = await KnownAsync(plan, db, ct);
         return new(SkillCleanupSuggestStatus.Succeeded, known, await TranslationsAsync(plan, known, db, ct),
             await CategoriesAsync(plan, known, db, ct), await RemovalsAsync(plan, known, db, ct), null);

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
+using JobHunt.Api.Llm;
 
 namespace JobHunt.Api.Features.AiSafeguards;
 
@@ -12,6 +13,6 @@ public class AiRequestDigests(IDataProtectionProvider protection)
     public bool Matches(string userId, string protectedDigest, string digest)
     {
         try { return For(userId).Unprotect(protectedDigest) == digest; }
-        catch (CryptographicException) { throw new AiSafetyException("operation-interrupted"); }
+        catch (CryptographicException) { throw new AiSafetyException(LlmErrorCodes.OperationInterrupted); }
     }
 }

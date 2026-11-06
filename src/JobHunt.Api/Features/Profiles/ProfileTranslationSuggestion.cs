@@ -27,7 +27,8 @@ public record ProfileEducationText(int Id, string? Degree, string? Field);
 public record ProfileTranslationPrompt(int Version, string Instructions);
 
 public enum ProfileTranslationStatus { Succeeded, Failed }
-public record ProfileTranslationSuggestion(ProfileTranslationStatus Status, ProfileTranslationDraft? Translation, string? Error);
+public record ProfileTranslationSuggestion(ProfileTranslationStatus Status, ProfileTranslationDraft? Translation, string? Error,
+    [property: GraphQLIgnore] string? ErrorCode = null);
 
 [QueryType]
 public static class ProfileTranslationPromptQueries
@@ -89,10 +90,6 @@ public static class ProfileTranslationPromptQueries
         : TranslationState.Current;
 
     internal static bool IsTarget(TranslationState? state) => state is TranslationState.Missing or TranslationState.Stale;
-
-    internal static IEnumerable<ProfileBullet> Bullets(Profile profile) =>
-        profile.Experiences.SelectMany(e => e.Bullets).Concat(profile.Educations.SelectMany(e => e.Bullets))
-            .Concat(profile.Certifications.SelectMany(c => c.Bullets)).Concat(profile.Projects.SelectMany(p => p.Bullets));
 
     // The user message on the built-in path, so both paths send the same data.
     internal static async Task<string> ContentAsync(Language language, AppDbContext db, CancellationToken ct)
@@ -189,7 +186,7 @@ public class ProfileTranslationSuggester(LlmExecution execution, LlmModelResolve
         await ProfileTranslationMutations.CheckLanguageAsync(language, db, ct);
         return await operations.RunAsync(Operation, new { language, model }, requestId, db,
             () => models.ResolveAsync(model, db, ct), resolved => SuggestCoreAsync(language, resolved, db, ct),
-            result => new AiOutcome(result.Status == ProfileTranslationStatus.Succeeded), ct);
+            result => new AiOutcome(result.Status == ProfileTranslationStatus.Succeeded, result.ErrorCode), ct);
     }
 
     private async Task<ProfileTranslationSuggestion> SuggestCoreAsync(
@@ -202,14 +199,14 @@ public class ProfileTranslationSuggester(LlmExecution execution, LlmModelResolve
             Operation, db, JsonReply.TryDecode<Reply>, "The AI's answer couldn't be read. Try again.", ct);
         return call.Value is { } reply
             ? new(ProfileTranslationStatus.Succeeded, await TargetsAsync(reply, language, db, ct), null)
-            : new(ProfileTranslationStatus.Failed, null, call.Error);
+            : new(ProfileTranslationStatus.Failed, null, call.Error, call.ErrorCode);
     }
 
     // Keeps only missing or stale items applyProfileTranslation would accept.
     private static async Task<ProfileTranslationDraft> TargetsAsync(Reply reply, Language language, AppDbContext db, CancellationToken ct)
     {
         var profile = await ProfileQueries.LoadAsync(db, ct);
-        var targets = ProfileTranslationPromptQueries.Bullets(profile)
+        var targets = profile.AllBullets()
             .Where(b => ProfileTranslationPromptQueries.IsTarget(ProfileTranslationPromptQueries.State(b, language)))
             .Select(b => b.Id).ToHashSet();
         var bullets = (reply.Bullets ?? []).OfType<Bullet>()

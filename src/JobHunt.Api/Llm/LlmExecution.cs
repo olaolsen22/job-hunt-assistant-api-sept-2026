@@ -22,7 +22,7 @@ public record ResolvedLlmModel(string Id, string Provider, string ModelId, strin
 
 public record LlmCallResult(ChatResponse? Response, LlmUsage? Usage, string? ErrorCode)
 {
-    public string? Error => ErrorCode is null ? null : ProviderKeyException.MessageFor(ErrorCode);
+    public string? Error => ErrorCode is null ? null : LlmErrorCodes.MessageFor(ErrorCode);
 }
 
 // Value is null exactly when Error is set: the provider failed, or its answer didn't decode.
@@ -53,9 +53,9 @@ public class LlmExecution(
         if (call.Error is { } error) return new(null, error, call.ErrorCode);
         if (decode(call.Response!.Text) is { } value) return new(value, null, null);
         call.Usage!.Success = false;
-        call.Usage.ErrorCode = "invalid-json";
+        call.Usage.ErrorCode = LlmErrorCodes.InvalidJson;
         await SaveUsageAsync(call.Usage, ct);
-        return new(null, unreadable, "invalid-json");
+        return new(null, unreadable, LlmErrorCodes.InvalidJson);
     }
 
     private async Task<LlmCallResult> RunCoreAsync(ResolvedLlmModel model, IEnumerable<ChatMessage> messages,
@@ -73,12 +73,12 @@ public class LlmExecution(
             if (model.UserProviderKeyId is { } keyId)
             {
                 var key = await db.UserProviderKeys.AsNoTracking().SingleOrDefaultAsync(k => k.Id == keyId && k.RetiredAt == null, ct)
-                    ?? throw new ProviderKeyException("credential-unavailable");
-                if (key.Provider != model.Provider) throw new ProviderKeyException("credential-unavailable");
+                    ?? throw new ProviderKeyException(LlmErrorCodes.CredentialUnavailable);
+                if (key.Provider != model.Provider) throw new ProviderKeyException(LlmErrorCodes.CredentialUnavailable);
                 personal = ProviderClients.Create(model.Provider, protector.Unprotect(key), model.ModelId, http);
                 client = personal;
             }
-            else if (model.Provider != GeminiOptions.Provider) throw new ProviderKeyException("credential-unavailable");
+            else if (model.Provider != GeminiOptions.Provider) throw new ProviderKeyException(LlmErrorCodes.CredentialUnavailable);
 
             var mapped = options.Clone();
             mapped.ModelId = model.ModelId;
@@ -103,7 +103,7 @@ public class LlmExecution(
                 UserId = db.CurrentUserId!, Provider = model.Provider, Model = model.ModelId,
                 KeySource = model.KeySource, UserProviderKeyId = model.UserProviderKeyId,
                 AiOperationId = operations.Current!.Id, AttemptOrdinal = operations.NextOrdinal(),
-                Operation = operation, CreatedAt = time.GetUtcNow().UtcDateTime, ErrorCode = "attempt-pending",
+                Operation = operation, CreatedAt = time.GetUtcNow().UtcDateTime, ErrorCode = LlmErrorCodes.AttemptPending,
             };
             await ReserveAsync(usage, ct);
             var response = await client.GetResponseAsync(messages, mapped, timeout.Token);
@@ -117,25 +117,25 @@ public class LlmExecution(
         catch (HttpRequestException ex)
         {
             var status = ex is ApiException google ? (HttpStatusCode)google.StatusCode : ex.StatusCode;
-            return Failed(status is { } s ? ProviderKeyValidator.CodeFor(s) : "provider-error");
+            return Failed(status is { } s ? ProviderKeyValidator.CodeFor(s) : LlmErrorCodes.ProviderError);
         }
         catch (ClientResultException ex) { return Failed(ProviderKeyValidator.CodeFor((HttpStatusCode)ex.Status)); }
         catch (AnthropicException ex)
         {
             return Failed(ex switch
             {
-                AnthropicUnauthorizedException or AnthropicForbiddenException => "invalid-key",
-                AnthropicRateLimitException => "rate-limited",
-                _ => "provider-error",
+                AnthropicUnauthorizedException or AnthropicForbiddenException => LlmErrorCodes.InvalidKey,
+                AnthropicRateLimitException => LlmErrorCodes.RateLimited,
+                _ => LlmErrorCodes.ProviderError,
             });
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return Failed("timeout"); }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return Failed(LlmErrorCodes.Timeout); }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            if (usage is not null) { usage.Success = false; usage.ErrorCode = "canceled"; }
+            if (usage is not null) { usage.Success = false; usage.ErrorCode = LlmErrorCodes.Canceled; }
             throw new OperationCanceledException(ct);
         }
-        catch (JsonException) { return Failed("provider-error"); }
+        catch (JsonException) { return Failed(LlmErrorCodes.ProviderError); }
         catch (AiSafetyException) { usage = null; throw; }
         finally
         {
@@ -175,14 +175,14 @@ public class LlmExecution(
                     var consumed = await db.LlmUsages.IgnoreQueryFilters().CountAsync(u => u.UserId == usage.UserId
                         && u.Provider == usage.Provider && u.KeySource == LlmKeySource.User
                         && u.CreatedAt >= start && u.CreatedAt < end, ct);
-                    if (consumed >= maximum) throw new AiSafetyException("daily-limit-reached");
+                    if (consumed >= maximum) throw new AiSafetyException(LlmErrorCodes.DailyLimitReached);
                 }
             }
             db.LlmUsages.Add(usage);
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
         }
-        catch (Exception ex) when (SqliteErrors.IsContention(ex)) { throw new AiSafetyException("ai-busy"); }
+        catch (Exception ex) when (SqliteErrors.IsContention(ex)) { throw new AiSafetyException(LlmErrorCodes.AiBusy); }
     }
 
     // Also called by decoders to mark invalid JSON; this context cannot save pending caller content.

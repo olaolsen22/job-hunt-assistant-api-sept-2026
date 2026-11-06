@@ -8,7 +8,8 @@ using Microsoft.Extensions.AI;
 namespace JobHunt.Api.Features.Profiles;
 
 public enum ProfileCvParseStatus { Succeeded, Failed }
-public record ProfileCvParseResult(ProfileCvParseStatus Status, ProfileCvCandidate? Candidate, string? Error);
+public record ProfileCvParseResult(ProfileCvParseStatus Status, ProfileCvCandidate? Candidate, string? Error,
+    [property: GraphQLIgnore] string? ErrorCode = null);
 
 // CV input and unreviewed output are transient. Only usage metadata is saved.
 public class ProfileCvParser(
@@ -23,7 +24,7 @@ public class ProfileCvParser(
             throw new InvalidParseRequestException($"Paste English CV text (1–{MaxTextLength} characters).");
         return await operations.RunAsync("parse-profile-cv", new { text, model }, requestId, db,
             () => models.ResolveAsync(model, db, ct), resolved => ParseCoreAsync(text, resolved, db, ct),
-            result => new AiOutcome(result.Status == ProfileCvParseStatus.Succeeded), ct);
+            result => new AiOutcome(result.Status == ProfileCvParseStatus.Succeeded, result.ErrorCode), ct);
     }
 
     private async Task<ProfileCvParseResult> ParseCoreAsync(string text, ResolvedLlmModel resolved, AppDbContext db, CancellationToken ct)
@@ -34,7 +35,7 @@ public class ProfileCvParser(
             Operation, db, Decode, "The AI's answer couldn't be read. Try again, or import a smaller CV section.", ct);
         return call.Value is { } candidate
             ? new(ProfileCvParseStatus.Succeeded, candidate, null)
-            : new(ProfileCvParseStatus.Failed, null, call.Error);
+            : new(ProfileCvParseStatus.Failed, null, call.Error, call.ErrorCode);
     }
 
     private static ProfileCvCandidate? Decode(string text)

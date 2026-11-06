@@ -18,8 +18,8 @@ public class AiOperations(IDbContextFactory<AppDbContext> contexts, AiRequestDig
         Func<T, AiOutcome> outcome, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        if (requestId == Guid.Empty) throw new AiSafetyException("invalid-request-id");
-        var owner = caller.CurrentUserId ?? throw new AiSafetyException("forbidden");
+        if (requestId == Guid.Empty) throw new AiSafetyException(LlmErrorCodes.InvalidRequestId);
+        var owner = caller.CurrentUserId ?? throw new AiSafetyException(LlmErrorCodes.Forbidden);
         var digest = digests.Hash(new { Version = 1, Kind = kind, Arguments = arguments });
         var id = requestId ?? Guid.NewGuid();
         await using var db = await contexts.CreateDbContextAsync(ct);
@@ -38,7 +38,7 @@ public class AiOperations(IDbContextFactory<AppDbContext> contexts, AiRequestDig
             if (active is not null)
                 throw new AiSafetyException(active.Kind == kind && active.Provider == model.Provider
                     && active.Model == model.ModelId && active.CredentialId == model.CredentialId
-                    && digests.Matches(owner, active.ProtectedRequestDigest, digest) ? "operation-in-progress" : "ai-busy");
+                    && digests.Matches(owner, active.ProtectedRequestDigest, digest) ? LlmErrorCodes.OperationInProgress : LlmErrorCodes.AiBusy);
             receipt = new()
             {
                 RequestId = id, UserId = owner, Kind = kind, ProtectedRequestDigest = digests.Protect(owner, digest),
@@ -49,7 +49,7 @@ public class AiOperations(IDbContextFactory<AppDbContext> contexts, AiRequestDig
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
         }
-        catch (Exception ex) when (SqliteErrors.IsContention(ex)) { throw new AiSafetyException("ai-busy"); }
+        catch (Exception ex) when (SqliteErrors.IsContention(ex)) { throw new AiSafetyException(LlmErrorCodes.AiBusy); }
 
         Current = receipt;
         ordinal = 0;
@@ -76,12 +76,12 @@ public class AiOperations(IDbContextFactory<AppDbContext> contexts, AiRequestDig
                 await using var recovery = await contexts.CreateDbContextAsync(CancellationToken.None);
                 await using var transaction = await AiTransactions.BeginAsync(recovery, CancellationToken.None);
                 await recovery.LlmUsages.IgnoreQueryFilters().Where(u => u.AiOperationId == receipt.Id
-                    && u.UserId == owner && u.ErrorCode == "attempt-pending")
-                    .ExecuteUpdateAsync(s => s.SetProperty(u => u.ErrorCode, "operation-interrupted"), CancellationToken.None);
+                    && u.UserId == owner && u.ErrorCode == LlmErrorCodes.AttemptPending)
+                    .ExecuteUpdateAsync(s => s.SetProperty(u => u.ErrorCode, LlmErrorCodes.OperationInterrupted), CancellationToken.None);
                 await recovery.AiOperations.IgnoreQueryFilters().Where(o => o.Id == receipt.Id && o.UserId == owner
                     && o.Status == AiOperationStatus.Running).ExecuteUpdateAsync(s => s
                         .SetProperty(o => o.Status, AiOperationStatus.Interrupted)
-                        .SetProperty(o => o.ErrorCode, "operation-interrupted")
+                        .SetProperty(o => o.ErrorCode, LlmErrorCodes.OperationInterrupted)
                         .SetProperty(o => o.CompletedAt, time.GetUtcNow().UtcDateTime), CancellationToken.None);
                 await transaction.CommitAsync(CancellationToken.None);
             }
@@ -90,15 +90,15 @@ public class AiOperations(IDbContextFactory<AppDbContext> contexts, AiRequestDig
 
     private async Task<T> ReplayAsync<T>(AiOperation receipt, string digest, string owner, AppDbContext caller, CancellationToken ct)
     {
-        if (!digests.Matches(owner, receipt.ProtectedRequestDigest, digest)) throw new AiSafetyException("request-conflict");
-        if (receipt.Status == AiOperationStatus.Running) throw new AiSafetyException("operation-in-progress");
-        if (receipt.Status == AiOperationStatus.Interrupted) throw new AiSafetyException("operation-interrupted");
+        if (!digests.Matches(owner, receipt.ProtectedRequestDigest, digest)) throw new AiSafetyException(LlmErrorCodes.RequestConflict);
+        if (receipt.Status == AiOperationStatus.Running) throw new AiSafetyException(LlmErrorCodes.OperationInProgress);
+        if (receipt.Status == AiOperationStatus.Interrupted) throw new AiSafetyException(LlmErrorCodes.OperationInterrupted);
         if (typeof(T) == typeof(ParseJob) && receipt.ParseJobId is { } jobId)
         {
             var job = await caller.ParseJobs.SingleOrDefaultAsync(j => j.Id == jobId, ct);
             if (job is not null) return (T)(object)job;
         }
-        throw new AiSafetyException("result-unavailable");
+        throw new AiSafetyException(LlmErrorCodes.ResultUnavailable);
     }
 
     public static async Task RecoverAsync(AppDbContext db, TimeProvider time, CancellationToken ct = default)
@@ -106,11 +106,11 @@ public class AiOperations(IDbContextFactory<AppDbContext> contexts, AiRequestDig
         // Startup only, before serving requests, under the application's single-instance deployment contract.
         await using var transaction = await AiTransactions.BeginAsync(db, ct);
         var stale = db.AiOperations.IgnoreQueryFilters().Where(o => o.Status == AiOperationStatus.Running);
-        await db.LlmUsages.IgnoreQueryFilters().Where(u => u.ErrorCode == "attempt-pending"
+        await db.LlmUsages.IgnoreQueryFilters().Where(u => u.ErrorCode == LlmErrorCodes.AttemptPending
             && stale.Any(o => o.Id == u.AiOperationId && o.UserId == u.UserId))
-            .ExecuteUpdateAsync(s => s.SetProperty(u => u.ErrorCode, "operation-interrupted"), ct);
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.ErrorCode, LlmErrorCodes.OperationInterrupted), ct);
         await stale.ExecuteUpdateAsync(s => s.SetProperty(o => o.Status, AiOperationStatus.Interrupted)
-            .SetProperty(o => o.ErrorCode, "operation-interrupted")
+            .SetProperty(o => o.ErrorCode, LlmErrorCodes.OperationInterrupted)
             .SetProperty(o => o.CompletedAt, time.GetUtcNow().UtcDateTime), ct);
         await transaction.CommitAsync(ct);
     }

@@ -10,7 +10,7 @@ public class ProviderKeyValidator(IHttpClientFactory clients)
     {
         if (!LlmProviders.Supported.Contains(provider) || string.IsNullOrWhiteSpace(apiKey) || apiKey.Length > 4096
             || apiKey.Any(char.IsControl))
-            throw new ProviderKeyException("invalid-input");
+            throw new ProviderKeyException(LlmErrorCodes.InvalidInput);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(10));
         using var client = clients.CreateClient(LlmProviders.HttpClientName);
@@ -28,15 +28,15 @@ public class ProviderKeyValidator(IHttpClientFactory clients)
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
             if (!response.IsSuccessStatusCode) throw new ProviderKeyException(CodeFor(response.StatusCode));
         }
-        catch (HttpRequestException) { throw new ProviderKeyException("provider-error"); }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw new ProviderKeyException("timeout"); }
+        catch (HttpRequestException) { throw new ProviderKeyException(LlmErrorCodes.ProviderError); }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw new ProviderKeyException(LlmErrorCodes.Timeout); }
     }
 
     public static string CodeFor(HttpStatusCode status) => status switch
     {
-        HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => "invalid-key",
-        HttpStatusCode.TooManyRequests => "rate-limited",
-        HttpStatusCode.RequestTimeout or HttpStatusCode.GatewayTimeout => "timeout",
-        _ => "provider-error",
+        HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => LlmErrorCodes.InvalidKey,
+        HttpStatusCode.TooManyRequests => LlmErrorCodes.RateLimited,
+        HttpStatusCode.RequestTimeout or HttpStatusCode.GatewayTimeout => LlmErrorCodes.Timeout,
+        _ => LlmErrorCodes.ProviderError,
     };
 }

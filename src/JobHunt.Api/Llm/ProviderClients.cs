@@ -24,7 +24,7 @@ public static class LlmProviders
         Anthropic => "https://api.anthropic.com/",
         OpenAI => "https://api.openai.com/v1/",
         Mistral => "https://api.mistral.ai/v1/",
-        _ => throw new ProviderKeyException("invalid-input"),
+        _ => throw new ProviderKeyException(LlmErrorCodes.InvalidInput),
     });
 }
 
@@ -54,7 +54,7 @@ public static class ProviderClients
                     RetryPolicy = new ClientRetryPolicy(0),
                     Transport = new HttpClientPipelineTransport(transport),
                 }).GetChatClient(model).AsIChatClient(),
-                _ => throw new ProviderKeyException("invalid-input"),
+                _ => throw new ProviderKeyException(LlmErrorCodes.InvalidInput),
             };
             return new OwnedClient(client, transport);
         }
