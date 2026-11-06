@@ -104,6 +104,84 @@ public class ListingPageFetcherTests
         await Assert.ThrowsAsync<InvalidParseRequestException>(() => fetcher.GetListingTextAsync(Url, default));
     }
 
+    [Fact]
+    public async Task SlowBody_IsRejected_WithinTheTimeout()
+    {
+        using var server = new TcpListener(IPAddress.Loopback, 0);
+        server.Start();
+        using var stop = new CancellationTokenSource();
+        _ = DripBodyAsync(server, stop.Token);
+        var fetcher = new ListingPageFetcher(new HttpClient { Timeout = TimeSpan.FromSeconds(1) }, NullLogger<ListingPageFetcher>.Instance);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        await Assert.ThrowsAsync<InvalidParseRequestException>(() => fetcher.GetListingTextAsync(
+            new Uri($"http://127.0.0.1:{((IPEndPoint)server.LocalEndpoint).Port}/"), default));
+
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(10), $"Took {clock.Elapsed}.");
+        await stop.CancelAsync();
+    }
+
+    [Fact]
+    public async Task ConnectionDroppedMidBody_IsRejected()
+    {
+        var fetcher = new ListingPageFetcher(new HttpClient(new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(new FailingStream()),
+        })), NullLogger<ListingPageFetcher>.Instance);
+
+        await Assert.ThrowsAsync<InvalidParseRequestException>(() => fetcher.GetListingTextAsync(Url, default));
+    }
+
+    [Theory]
+    [InlineData("""text/html; charset=iso-8859-1""", "")]
+    [InlineData("""text/html; charset=windows-1252""", "")]
+    [InlineData("text/html", """<meta charset="iso-8859-1">""")]
+    public async Task NonUtf8Page_KeepsNorwegianLetters(string contentType, string meta)
+    {
+        var html = $"<html><head>{meta}</head><body><p>Søknadsfrist for utvikler i Tromsø. {new string('x', 300)}</p></body></html>";
+        var content = new ByteArrayContent(System.Text.Encoding.Latin1.GetBytes(html));
+        content.Headers.TryAddWithoutValidation("Content-Type", contentType);
+        var fetcher = new ListingPageFetcher(new HttpClient(new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = content })),
+            NullLogger<ListingPageFetcher>.Instance);
+
+        Assert.Contains("Søknadsfrist for utvikler i Tromsø.", await fetcher.GetListingTextAsync(Url, default));
+    }
+
+    [Fact]
+    public async Task UnknownCharset_FallsBackToUtf8()
+    {
+        var html = $"<html><body><p>Tromsø {new string('x', 300)}</p></body></html>";
+        var content = new ByteArrayContent(System.Text.Encoding.UTF8.GetBytes(html));
+        content.Headers.TryAddWithoutValidation("Content-Type", "text/html; charset=not-a-charset");
+        var fetcher = new ListingPageFetcher(new HttpClient(new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = content })),
+            NullLogger<ListingPageFetcher>.Instance);
+
+        Assert.Contains("Tromsø", await fetcher.GetListingTextAsync(Url, default));
+    }
+
+    [Theory]
+    [InlineData("""[{"name":"Six Robotics"}]""", "Company: Six Robotics")]
+    [InlineData("\"Six Robotics\"", "Company: Six Robotics")]
+    [InlineData("42", "Title: Dev")]
+    public async Task HiringOrganization_AnyShape_IsRead(string organization, string expected)
+    {
+        var page = $$"""<script type="application/ld+json">{"@type":"JobPosting","title":"Dev","hiringOrganization":{{organization}},"description":"Ad"}</script>""";
+
+        Assert.Contains(expected, await FetcherReturning(HttpStatusCode.OK, page).GetListingTextAsync(Url, default));
+    }
+
+    // Unclosed tags make the block regex quadratic: this page took about 130 seconds without a timeout.
+    [Fact]
+    public async Task PathologicalHtml_IsRejected_InsteadOfPinningACore()
+    {
+        var page = string.Concat(Enumerable.Repeat("<nav>", 80_000));
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        await Assert.ThrowsAsync<InvalidParseRequestException>(() => FetcherReturning(HttpStatusCode.OK, page).GetListingTextAsync(Url, default));
+
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(60), $"Took {clock.Elapsed}.");
+    }
+
     [Theory]
     [InlineData("127.0.0.1", false)]
     [InlineData("10.1.2.3", false)]
@@ -134,6 +212,33 @@ public class ListingPageFetcherTests
         await Assert.ThrowsAsync<InvalidParseRequestException>(() => fetcher.GetListingTextAsync(url, default));
 
         Assert.False(server.Pending());
+    }
+
+    // Answers with headers, then a few bytes a second, so only a timeout covering the body can stop the read.
+    private static async Task DripBodyAsync(TcpListener server, CancellationToken ct)
+    {
+        try
+        {
+            using var client = await server.AcceptTcpClientAsync(ct);
+            var stream = client.GetStream();
+            await stream.ReadAtLeastAsync(new byte[1024], 1, throwOnEndOfStream: false, ct);
+            await stream.WriteAsync("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 100000\r\n\r\n"u8.ToArray(), ct);
+            while (!ct.IsCancellationRequested)
+            {
+                await stream.WriteAsync("<p>x</p>"u8.ToArray(), ct);
+                await Task.Delay(200, ct);
+            }
+        }
+        catch (Exception e) when (e is OperationCanceledException or IOException) { }
+    }
+
+    private class FailingStream : MemoryStream
+    {
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken ct) =>
+            throw new HttpIOException(HttpRequestError.ResponseEnded);
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default) =>
+            throw new HttpIOException(HttpRequestError.ResponseEnded);
     }
 
     private class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler

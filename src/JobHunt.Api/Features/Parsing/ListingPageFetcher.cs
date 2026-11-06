@@ -1,18 +1,22 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace JobHunt.Api.Features.Parsing;
 
-// Downloads a listing page and reduces it to the text of the one posting on it, or a company page to its text. The owner pastes arbitrary URLs and
-// the server fetches them, so the handler built in CreateHandler is what keeps this off our own network.
+// Reduces a fetched page to its posting or company text. CreateHandler keeps the fetch off our own network.
 public partial class ListingPageFetcher(HttpClient http, ILogger<ListingPageFetcher> logger)
 {
     public const string Unreadable = "Couldn't read that page. Paste its text instead.";
 
     private const int MaxBytes = 2_000_000;
     private const int MaxRedirects = 5;
+    private const int MetaCharsetWindow = 2048;
+
+    // Malformed HTML makes the tag regexes quadratic, and a running regex ignores cancellation.
+    private const int RegexTimeoutMs = 5_000;
 
     // A JS-rendered shell or login wall leaves a few nav words; a real ad is far longer.
     private const int MinFallbackChars = 200;
@@ -23,6 +27,9 @@ public partial class ListingPageFetcher(HttpClient http, ILogger<ListingPageFetc
 
     private const string CompanyHint =
         "Text extracted from a company's web page, including its header and footer. Email and phone links are written out.";
+
+    // Windows-1252 and friends aren't built into .NET.
+    static ListingPageFetcher() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
     public static SocketsHttpHandler CreateHandler() => new()
     {
@@ -70,53 +77,55 @@ public partial class ListingPageFetcher(HttpClient http, ILogger<ListingPageFetc
             || (b[0] == 192 && b[1] == 168));
     }
 
-    // Throws InvalidParseRequestException (a typed mutation error) for anything that stops us reading the page. The
-    // owner only sees one message for all of them, so the real reason goes to the log. Host only: query strings
-    // can carry tokens.
+    // Every failure becomes InvalidParseRequestException with one message; the real reason goes to the log.
+    // Logs the host only: query strings can carry tokens.
     public async Task<string> GetListingTextAsync(Uri url, CancellationToken ct) =>
-        Readable(Extract(await GetHtmlAsync(url, ct)), url);
+        Readable(await GetHtmlAsync(url, ct), Extract, url);
 
-    // A company's about, team or contact page. Contact details often sit in the footer or only in mailto:/tel: links,
-    // so those stay; only scripts, styles and menus go.
-    public async Task<string> GetCompanyTextAsync(Uri url, CancellationToken ct)
-    {
-        var html = await GetHtmlAsync(url, ct);
-        var text = HtmlToText(PageCode().Replace(ContactLink().Replace(html, " $1 "), " "));
-        return Readable(text.Length < MinFallbackChars ? null : $"{CompanyHint}\n\n{text}", url);
-    }
+    public async Task<string> GetCompanyTextAsync(Uri url, CancellationToken ct) =>
+        Readable(await GetHtmlAsync(url, ct), ExtractCompany, url);
 
-    private string Readable(string? text, Uri url)
+    private string Readable(string html, Func<string, string?> extract, Uri url)
     {
-        if (text is not null) return text;
-        logger.LogWarning("Page on {Host} had no readable text (JS-rendered or login wall?)", url.Host);
+        try
+        {
+            if (extract(html) is { } text) return text;
+            logger.LogWarning("Page on {Host} had no readable text (JS-rendered or login wall?)", url.Host);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            logger.LogWarning("Page on {Host} took too long to reduce to text", url.Host);
+        }
         throw new InvalidParseRequestException(Unreadable);
     }
 
     private async Task<string> GetHtmlAsync(Uri url, CancellationToken ct)
     {
-        string html;
+        // HttpClient.Timeout stops at the response headers here, so this also covers reading the body.
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(http.Timeout);
         try
         {
-            using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+            using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
             if (!response.IsSuccessStatusCode)
             {
                 logger.LogWarning("Page on {Host} answered {StatusCode}", url.Host, (int)response.StatusCode);
                 throw new InvalidParseRequestException(Unreadable);
             }
-            html = await ReadCappedAsync(response, url, ct);
+            return await ReadCappedAsync(response, url, timeout.Token);
         }
-        catch (HttpRequestException ex)
+        // A dropped connection or corrupt compression surfaces mid-read, not as HttpRequestException.
+        catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidDataException)
         {
             logger.LogWarning(ex, "Page on {Host} couldn't be fetched", url.Host);
             throw new InvalidParseRequestException(Unreadable);
         }
-        // HttpClient reports its own timeout as TaskCanceledException; with our token still live it's the site being slow.
-        catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
+        // With the caller's token still live, it's the site being slow.
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
         {
             logger.LogWarning(ex, "Page on {Host} timed out", url.Host);
             throw new InvalidParseRequestException(Unreadable);
         }
-        return html;
     }
 
     // Counts bytes as they arrive instead of trusting Content-Length, which a server can omit or lie about.
@@ -135,7 +144,24 @@ public partial class ListingPageFetcher(HttpClient http, ILogger<ListingPageFetc
             }
             buffer.Write(chunk, 0, read);
         }
-        return System.Text.Encoding.UTF8.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
+        return PageEncoding(response, buffer).GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
+    }
+
+    // Decoding Latin-1 or Windows-1252 as UTF-8 garbles æøå. The charset is in the header or a <meta> tag.
+    private static Encoding PageEncoding(HttpResponseMessage response, MemoryStream body)
+    {
+        var start = Encoding.Latin1.GetString(body.GetBuffer(), 0, (int)Math.Min(body.Length, MetaCharsetWindow));
+        var name = response.Content.Headers.ContentType?.CharSet?.Trim('"') ?? MetaCharset().Match(start).Groups[1].Value;
+        try { return name.Length == 0 ? Encoding.UTF8 : Encoding.GetEncoding(name); }
+        catch (ArgumentException) { return Encoding.UTF8; }
+    }
+
+    // A company's about, team or contact page. Contact details often sit in the footer or mailto:/tel: links, so
+    // only scripts, styles and menus go.
+    private static string? ExtractCompany(string html)
+    {
+        var text = HtmlToText(PageCode().Replace(ContactLink().Replace(html, " $1 "), " "));
+        return text.Length < MinFallbackChars ? null : $"{CompanyHint}\n\n{text}";
     }
 
     // The page's JobPosting when it has one (only this ad, no menus or related listings), else its stripped text.
@@ -196,7 +222,7 @@ public partial class ListingPageFetcher(HttpClient http, ILogger<ListingPageFetc
 
         Add("Title", Text(posting, "title"));
         if (posting.TryGetProperty("hiringOrganization", out var organization))
-            Add("Company", organization.ValueKind == JsonValueKind.Object ? Text(organization, "name") : organization.GetString());
+            Add("Company", OrganizationName(organization));
         Add("Location", Location(posting));
         Add("Posted", Text(posting, "datePosted"));
         // finn.no fills validThrough with a made-up date when the ad says "snarest", so the wording on the page wins.
@@ -209,6 +235,15 @@ public partial class ListingPageFetcher(HttpClient http, ILogger<ListingPageFetc
         lines.Add(HtmlToText(Text(posting, "description") ?? ""));
         return string.Join('\n', lines);
     }
+
+    // Sites write hiringOrganization as an object, a plain name or an array of either.
+    private static string? OrganizationName(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.Object => Text(value, "name"),
+        JsonValueKind.String => value.GetString(),
+        JsonValueKind.Array => value.EnumerateArray().Select(OrganizationName).FirstOrDefault(name => name is not null),
+        _ => null,
+    };
 
     // jobLocation is one Place or an array of them; the address is nested and every part is optional.
     private static string? Location(JsonElement posting)
@@ -238,32 +273,35 @@ public partial class ListingPageFetcher(HttpClient http, ILogger<ListingPageFetc
         return BlankLines().Replace(text, "\n\n").Trim();
     }
 
-    [GeneratedRegex("""<script[^>]*type\s*=\s*["']application/ld\+json["'][^>]*>(.*?)</script>""", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
+    [GeneratedRegex("""<meta\b[^>]*\bcharset\s*=\s*["']?([\w-]+)""", RegexOptions.IgnoreCase)]
+    private static partial Regex MetaCharset();
+
+    [GeneratedRegex("""<script[^>]*type\s*=\s*["']application/ld\+json["'][^>]*>(.*?)</script>""", RegexOptions.Singleline | RegexOptions.IgnoreCase, RegexTimeoutMs)]
     private static partial Regex JsonLdScript();
 
     // Navigation, footers and the like: never part of the posting itself.
-    [GeneratedRegex(@"<!--.*?-->|<(script|style|noscript|svg|nav|header|footer|aside)\b[^>]*>.*?</\1>", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"<!--.*?-->|<(script|style|noscript|svg|nav|header|footer|aside)\b[^>]*>.*?</\1>", RegexOptions.Singleline | RegexOptions.IgnoreCase, RegexTimeoutMs)]
     private static partial Regex BlockElement();
 
-    [GeneratedRegex(@"<!--.*?-->|<(script|style|noscript|svg|nav)\b[^>]*>.*?</\1>", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"<!--.*?-->|<(script|style|noscript|svg|nav)\b[^>]*>.*?</\1>", RegexOptions.Singleline | RegexOptions.IgnoreCase, RegexTimeoutMs)]
     private static partial Regex PageCode();
 
     // The opening <a> of a mailto:/tel: link, replaced by the address so it survives as text.
-    [GeneratedRegex("""<a\b[^>]*\bhref\s*=\s*["'](?:mailto|tel):([^"'?]+)[^"']*["'][^>]*>""", RegexOptions.IgnoreCase)]
+    [GeneratedRegex("""<a\b[^>]*\bhref\s*=\s*["'](?:mailto|tel):([^"'?]+)[^"']*["'][^>]*>""", RegexOptions.IgnoreCase, RegexTimeoutMs)]
     private static partial Regex ContactLink();
 
-    [GeneratedRegex(@"Søknadsfrist</span>\s*<strong[^>]*>(.*?)</strong>", RegexOptions.Singleline)]
+    [GeneratedRegex(@"Søknadsfrist</span>\s*<strong[^>]*>(.*?)</strong>", RegexOptions.Singleline, RegexTimeoutMs)]
     private static partial Regex ShownDeadline();
 
-    [GeneratedRegex(@"<br\s*/?>|</(p|div|li|ul|ol|h[1-6]|tr|section|article)>", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"<br\s*/?>|</(p|div|li|ul|ol|h[1-6]|tr|section|article)>", RegexOptions.IgnoreCase, RegexTimeoutMs)]
     private static partial Regex LineBreakTag();
 
-    [GeneratedRegex("<[^>]+>")]
+    [GeneratedRegex("<[^>]+>", RegexOptions.None, RegexTimeoutMs)]
     private static partial Regex AnyTag();
 
-    [GeneratedRegex(@"[ \t\r\f\v]+")]
+    [GeneratedRegex(@"[ \t\r\f\v]+", RegexOptions.None, RegexTimeoutMs)]
     private static partial Regex Spaces();
 
-    [GeneratedRegex(@"\s*\n\s*(\n\s*)+")]
+    [GeneratedRegex(@"\s*\n\s*(\n\s*)+", RegexOptions.None, RegexTimeoutMs)]
     private static partial Regex BlankLines();
 }
