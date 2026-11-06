@@ -5003,9 +5003,7 @@ enum LlmKeySource {
 }
 
 enum ParseJobStatus {
-  QUEUED
   RUNNING
-  RETRYING
   SUCCEEDED
   FAILED
 }

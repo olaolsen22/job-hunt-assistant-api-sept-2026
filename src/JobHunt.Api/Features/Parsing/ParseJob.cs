@@ -8,8 +8,8 @@ namespace JobHunt.Api.Features.Parsing;
 // Companies = a list of names or text about companies into company rows.
 public enum ParseMode { Full, Quick, Companies }
 
-// Queued and Retrying come with the background queue; until then jobs finish inside the mutation.
-public enum ParseJobStatus { Queued, Running, Retrying, Succeeded, Failed }
+// Queued and Retrying return with the background queue; until then jobs finish inside the mutation.
+public enum ParseJobStatus { /* Queued, */ Running, /* Retrying, */ Succeeded, Failed }
 
 public class ParseJob
 {
