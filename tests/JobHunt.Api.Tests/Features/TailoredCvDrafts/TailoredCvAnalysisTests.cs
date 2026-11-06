@@ -737,7 +737,14 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
     public async Task OversizedAnalysisContextIsRejectedBeforeCallingProvider()
     {
         var client = await factory.GetOwnerClientAsync();
-        var listingId = await CreateListingAsync(client, "Developer", new string('x', TailoredCvAnalyzer.MaxContextLength + 1), []);
+        var listingId = await CreateListingAsync(client, "Developer", "Build software", []);
+        // The API now caps descriptions below this, so only a row from before the cap can get this long.
+        using (var scope = factory.Services.CreateScope())
+        {
+            var description = new string('x', TailoredCvAnalyzer.MaxContextLength + 1);
+            await scope.ServiceProvider.GetRequiredService<AppDbContext>().Listings.IgnoreQueryFilters()
+                .Where(l => l.Id == listingId).ExecuteUpdateAsync(s => s.SetProperty(l => l.Description, description));
+        }
         factory.Llm.Respond = () => throw new InvalidOperationException("The provider must not be called.");
 
         var result = await AnalyzeAsync(client, listingId, "SKILLS", null);

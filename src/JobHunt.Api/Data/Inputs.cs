@@ -12,6 +12,9 @@ public static class Inputs
     // Notes, summaries and other Markdown fields.
     public const int MaxMarkdownLength = 10_000;
 
+    // Company and job role names, listing titles.
+    public const int MaxNameLength = 200;
+
     // Trimmed, and blank means none, so an emptied field doesn't store whitespace.
     public static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 

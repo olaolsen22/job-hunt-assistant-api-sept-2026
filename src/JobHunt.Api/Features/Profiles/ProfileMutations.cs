@@ -126,6 +126,8 @@ public static class ProfileMutations
             throw new InvalidProfileException("The notice period must be 0–12 months.");
         if (jobRoleNames.Any(string.IsNullOrWhiteSpace))
             throw new InvalidProfileException("Job role name is required.");
+        if (jobRoleNames.Any(n => n.Trim().Length > Inputs.MaxNameLength))
+            throw new InvalidProfileException($"Job role names are limited to {Inputs.MaxNameLength} characters.");
 
         var profile = await db.Profiles
             .Include(p => p.JobRoles).Include(p => p.WorkModes).Include(p => p.EmploymentTypes)

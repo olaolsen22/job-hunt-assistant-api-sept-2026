@@ -184,6 +184,17 @@ public class CompanyTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Empty(results[1].GetProperty("company").GetProperty("locations").EnumerateArray());
     }
 
+    [Fact]
+    public async Task CreateCompanies_WithOverlongName_ReturnsInvalidCompanyError()
+    {
+        var client = await factory.GetOwnerClientAsync();
+
+        var data = await client.GraphQLAsync(CreateCompanies, new { companies = new[] { Row(new string('x', 201)) } });
+
+        Assert.Equal("InvalidCompanyError",
+            data.GetProperty("createCompanies").GetProperty("errors")[0].GetProperty("__typename").GetString());
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(101)]

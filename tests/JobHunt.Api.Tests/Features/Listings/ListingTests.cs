@@ -597,6 +597,31 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData(200, 200, 200, 20_000, null)]
+    [InlineData(201, 50, 50, 10, "Title is longer than 200 characters.")]
+    [InlineData(50, 201, 50, 10, "Company name is longer than 200 characters.")]
+    [InlineData(50, 50, 201, 10, "Job role is longer than 200 characters.")]
+    [InlineData(50, 50, 50, 20_001, "Description is longer than 20000 characters.")]
+    public async Task CreateListing_LengthLimits(int title, int company, int role, int description, string? error)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        string Filled(int length) => Guid.NewGuid().ToString("N").PadRight(length, 'x');
+
+        var payload = (await client.GraphQLAsync(CreateListing, new
+        {
+            listing = new
+            {
+                title = Filled(title), companyName = Filled(company), jobRoleName = Filled(role), description = Filled(description),
+                url = UniqueUrl(), postedOn = "2026-09-20",
+                skills = Array.Empty<object>(), languages = Array.Empty<object>(), locations = Array.Empty<object>(),
+            },
+        })).GetProperty("createListing");
+
+        if (error is null) Assert.Equal(JsonValueKind.Null, payload.GetProperty("errors").ValueKind);
+        else Assert.Equal(error, payload.GetProperty("errors")[0].GetProperty("message").GetString());
+    }
+
     internal static string Unique(string name) => $"{name} {Guid.NewGuid():N}";
 
     // URLs are unique per user and tests share one DB.

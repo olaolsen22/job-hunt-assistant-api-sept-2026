@@ -84,6 +84,9 @@ public class ListingInUseException(int id) : Exception($"Listing {id} has been a
 [MutationType]
 public static class ListingMutations
 {
+    // Parsed descriptions run to about 1000 characters plus the requirements list; pasted ones can be longer.
+    private const int MaxDescriptionLength = 20_000;
+
     [Error<InvalidListingException>]
     [Error<InvalidLocationException>]
     [Error<DuplicateListingException>]
@@ -330,6 +333,12 @@ public static class ListingMutations
             throw new InvalidListingException("Company name is required.");
         if (string.IsNullOrWhiteSpace(input.JobRoleName))
             throw new InvalidListingException("Job role is required.");
+        CheckNameLength(input.Title, "Title");
+        CheckNameLength(input.CompanyName, "Company name");
+        CheckNameLength(input.JobRoleName, "Job role");
+        CheckNameLength(input.TrainingProgram.Value?.EndCompanyName, "End company name");
+        if (input.Description?.Length > MaxDescriptionLength)
+            throw new InvalidListingException($"Description is longer than {MaxDescriptionLength} characters.");
         if (input.Kind == ListingKind.Unsolicited)
         {
             // Nothing was posted. A URL would also take part in the one-open-listing-per-URL rule, so two
@@ -389,5 +398,11 @@ public static class ListingMutations
         var duplicateContact = (input.Contacts ?? []).GroupBy(c => Names.Normalize(c.Name)).FirstOrDefault(g => g.Count() > 1);
         if (duplicateContact is not null)
             throw new InvalidListingException($"Contact \"{duplicateContact.First().Name.Trim()}\" is listed twice.");
+    }
+
+    private static void CheckNameLength(string? value, string field)
+    {
+        if (value?.Trim().Length > Inputs.MaxNameLength)
+            throw new InvalidListingException($"{field} is longer than {Inputs.MaxNameLength} characters.");
     }
 }

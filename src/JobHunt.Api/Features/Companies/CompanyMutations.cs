@@ -61,6 +61,8 @@ public static class CompanyMutations
             throw new InvalidCompanyException($"Send between 1 and {MaxBatchSize} companies.");
         if (companies.Any(c => string.IsNullOrWhiteSpace(c.Name)))
             throw new InvalidCompanyException("Every company needs a name.");
+        if (companies.Any(c => c.Name.Trim().Length > Inputs.MaxNameLength))
+            throw new InvalidCompanyException($"Company names are limited to {Inputs.MaxNameLength} characters.");
 
         // Resolved for every row, even ones that turn out to exist, so a bad country code always fails the batch.
         var now = time.GetUtcNow().UtcDateTime;
@@ -316,6 +318,8 @@ public static class CompanyMutations
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new InvalidCompanyException("Name is required.");
+        if (name.Trim().Length > Inputs.MaxNameLength)
+            throw new InvalidCompanyException($"Company names are limited to {Inputs.MaxNameLength} characters.");
 
         var company = await db.Companies.Include(c => c.Locations).ThenInclude(l => l.Location)
                 .FirstOrDefaultAsync(c => c.Id == id, ct)

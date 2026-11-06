@@ -298,6 +298,7 @@ public class ProfileTests(ApiFactory factory) : IClassFixture<ApiFactory>
         { "negative salary", Preferences(minSalary: -1, salaryCurrency: "NOK") },
         { "notice too long", Preferences(noticePeriodMonths: 13) },
         { "blank role", Preferences([" "]) },
+        { "overlong role", Preferences([new string('x', 201)]) },
     };
 
     [Theory]
