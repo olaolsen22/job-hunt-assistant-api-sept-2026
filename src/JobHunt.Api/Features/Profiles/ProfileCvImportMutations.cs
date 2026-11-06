@@ -31,6 +31,9 @@ public record ProfileCvImportSelection(Language ContentLanguage, ProfileCvBasics
 [MutationType]
 public static class ProfileCvImportMutations
 {
+    // Where the import has got to, so an error can name the field.
+    private sealed class ImportPath { public string Value { get; set; } = "basics"; }
+
     [Error<InvalidProfileImportException>]
     [Error<ProfileEntryNotFoundException>]
     [Error<InvalidLocationException>]
@@ -43,114 +46,159 @@ public static class ProfileCvImportMutations
             throw new InvalidProfileImportException("contentLanguage: English import requires an English-primary profile; import never switches its language.");
 
         ValidateTargets(selection);
-        var path = "basics";
+        var at = new ImportPath();
         try
         {
-            if (selection.Basics is { } basics)
-            {
-                if (basics.FullName.HasValue) { path = "basics.fullName"; profile.FullName = Text(basics.FullName.Value, path); }
-                if (basics.Headline.HasValue) { path = "basics.headline"; profile.Headline = Text(basics.Headline.Value, path); }
-                if (basics.Summary.HasValue) { path = "basics.summary"; profile.Summary = Markdown(basics.Summary.Value, path); }
-                if (basics.Email.HasValue) { path = "basics.email"; profile.Email = Email(basics.Email.Value); }
-                if (basics.Phone.HasValue) { path = "basics.phone"; profile.Phone = Text(basics.Phone.Value, path); }
-                if (basics.Location.HasValue)
-                {
-                    path = "basics.location";
-                    profile.Location = basics.Location.Value is { } location ? await LocationLookup.FindOrCreateAsync(location, db, ct) : null;
-                    if (profile.Location is null) profile.LocationId = null;
-                }
-            }
-            if (selection.Links.HasValue)
-            {
-                path = "links";
-                profile.Links = ValidateLinks(selection.Links.Value ?? throw new InvalidProfileImportException("links: use [] to clear the list, not null."));
-            }
-            if (selection.Hobbies.HasValue)
-            {
-                path = "hobbies";
-                profile.Hobbies = ValidateHobbies(selection.Hobbies.Value ?? throw new InvalidProfileImportException("hobbies: use [] to clear the list, not null."));
-            }
-
-            for (var i = 0; i < (selection.Experiences?.Count ?? 0); i++)
-            {
-                var input = selection.Experiences![i]; path = $"experiences[{i}]";
-                var entry = input.Id is { } id ? profile.Experiences.FirstOrDefault(e => e.Id == id)
-                    ?? throw new ProfileEntryNotFoundException("Experience", id)
-                    : new ProfileExperience { UserId = profile.UserId, ProfileId = profile.Id };
-                await ProfileEntryMutations.ApplyAsync(entry, input.Employer, input.Title, input.Location,
-                    input.StartMonth ?? throw new InvalidProfileImportException(path + ".startMonth: a reviewed month is required."),
-                    input.EndMonth, input.SkillNames ?? [], db, ct);
-                ApplyBullets(entry.Bullets, input.Bullets, profile.UserId, path);
-                if (input.Id is null) db.ProfileExperiences.Add(entry);
-            }
-            for (var i = 0; i < (selection.Educations?.Count ?? 0); i++)
-            {
-                var input = selection.Educations![i]; path = $"educations[{i}]";
-                var entry = input.Id is { } id ? profile.Educations.FirstOrDefault(e => e.Id == id)
-                    ?? throw new ProfileEntryNotFoundException("Education", id)
-                    : new ProfileEducation { UserId = profile.UserId, ProfileId = profile.Id };
-                await ProfileEntryMutations.ApplyAsync(entry, input.School, input.Degree, input.Field, input.Location,
-                    input.StartMonth ?? throw new InvalidProfileImportException(path + ".startMonth: a reviewed month is required."),
-                    input.EndMonth, db, ct);
-                ApplyBullets(entry.Bullets, input.Bullets, profile.UserId, path);
-                if (input.Id is null) db.ProfileEducations.Add(entry);
-            }
-            for (var i = 0; i < (selection.Certifications?.Count ?? 0); i++)
-            {
-                var input = selection.Certifications![i]; path = $"certifications[{i}]";
-                var entry = input.Id is { } id ? profile.Certifications.FirstOrDefault(e => e.Id == id)
-                    ?? throw new ProfileEntryNotFoundException("Certification", id)
-                    : new ProfileCertification { UserId = profile.UserId, ProfileId = profile.Id };
-                ProfileEntryMutations.Apply(entry, input.Name, input.Issuer, input.IssuedMonth, input.ExpiresMonth, input.Url);
-                ApplyBullets(entry.Bullets, input.Bullets, profile.UserId, path);
-                if (input.Id is null) db.ProfileCertifications.Add(entry);
-            }
-            for (var i = 0; i < (selection.Projects?.Count ?? 0); i++)
-            {
-                var input = selection.Projects![i]; path = $"projects[{i}]";
-                var entry = input.Id is { } id ? profile.Projects.FirstOrDefault(e => e.Id == id)
-                    ?? throw new ProfileEntryNotFoundException("Project", id)
-                    : new ProfileProject { UserId = profile.UserId, ProfileId = profile.Id };
-                // The import format has no kind: an updated project keeps the one the user chose.
-                await ProfileEntryMutations.ApplyAsync(entry, input.Name, input.Url, input.Location,
-                    input.StartMonth, input.EndMonth, entry.Kind, input.SkillNames ?? [], db, ct);
-                ApplyBullets(entry.Bullets, input.Bullets, profile.UserId, path);
-                if (input.Id is null) db.ProfileProjects.Add(entry);
-            }
-            for (var i = 0; i < (selection.Skills?.Count ?? 0); i++)
-            {
-                var input = selection.Skills![i]; path = $"skills[{i}]";
-                if (input.Level is not (>= 1 and <= 5)) throw new InvalidProfileImportException(path + ".level: choose a reviewed level from 1 to 5.");
-                var skill = (await FindOrCreateSkillsAsync([Required(input.Name, "Skill name")], db, ct))[0];
-                if (skill.CategoryId is null && skill.Category is null && input.CategoryName is { } categoryName)
-                    skill.Category = (await SkillCategoryPrompt.ByNormalizedNameAsync([categoryName], db, ct)).Values.FirstOrDefault();
-                var level = db.ProfileSkills.Local.FirstOrDefault(s => s.ProfileId == profile.Id
-                    && (s.Skill == skill || (skill.Id != 0 && s.SkillId == skill.Id)));
-                if (level is null) db.ProfileSkills.Add(level = new ProfileSkill { ProfileId = profile.Id, Skill = skill });
-                level.Level = input.Level.Value;
-            }
-            for (var i = 0; i < (selection.Languages?.Count ?? 0); i++)
-            {
-                var input = selection.Languages![i]; path = $"languages[{i}]";
-                if (input.Written is null || input.Spoken is null)
-                    throw new InvalidProfileImportException(path + ": choose reviewed written and spoken levels.");
-                var name = ProfileMutations.LanguageName(input.Name);
-                var language = profile.Languages.FirstOrDefault(l => string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase));
-                if (language is null) profile.Languages.Add(language = new ProfileLanguage { ProfileId = profile.Id, Name = name });
-                language.Written = input.Written.Value;
-                language.Spoken = input.Spoken.Value;
-            }
+            await ApplyBasicsAsync(selection, profile, at, db, ct);
+            await ApplyExperiencesAsync(selection.Experiences, profile, at, db, ct);
+            await ApplyEducationsAsync(selection.Educations, profile, at, db, ct);
+            ApplyCertifications(selection.Certifications, profile, at, db);
+            await ApplyProjectsAsync(selection.Projects, profile, at, db, ct);
+            await ApplySkillsAsync(selection.Skills, profile, at, db, ct);
+            ApplyLanguages(selection.Languages, profile, at);
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
             return await ProfileQueries.LoadAsync(db, ct);
         }
         catch (InvalidProfileException ex)
         {
-            throw new InvalidProfileImportException($"{path}: {ex.Message}");
+            throw new InvalidProfileImportException($"{at.Value}: {ex.Message}");
         }
         catch (InvalidLocationException ex)
         {
-            throw new InvalidLocationException($"{path}.location: {ex.Message}");
+            throw new InvalidLocationException($"{at.Value}.location: {ex.Message}");
+        }
+    }
+
+    private static async Task ApplyBasicsAsync(ProfileCvImportSelection selection, Profile profile, ImportPath at, AppDbContext db, CancellationToken ct)
+    {
+        if (selection.Basics is { } basics)
+        {
+            if (basics.FullName.HasValue) { at.Value = "basics.fullName"; profile.FullName = Text(basics.FullName.Value, at.Value); }
+            if (basics.Headline.HasValue) { at.Value = "basics.headline"; profile.Headline = Text(basics.Headline.Value, at.Value); }
+            if (basics.Summary.HasValue) { at.Value = "basics.summary"; profile.Summary = Markdown(basics.Summary.Value, at.Value); }
+            if (basics.Email.HasValue) { at.Value = "basics.email"; profile.Email = Email(basics.Email.Value); }
+            if (basics.Phone.HasValue) { at.Value = "basics.phone"; profile.Phone = Text(basics.Phone.Value, at.Value); }
+            if (basics.Location.HasValue)
+            {
+                at.Value = "basics.location";
+                profile.Location = basics.Location.Value is { } location ? await LocationLookup.FindOrCreateAsync(location, db, ct) : null;
+                if (profile.Location is null) profile.LocationId = null;
+            }
+        }
+        if (selection.Links.HasValue)
+        {
+            at.Value = "links";
+            profile.Links = ValidateLinks(selection.Links.Value ?? throw new InvalidProfileImportException("links: use [] to clear the list, not null."));
+        }
+        if (selection.Hobbies.HasValue)
+        {
+            at.Value = "hobbies";
+            profile.Hobbies = ValidateHobbies(selection.Hobbies.Value ?? throw new InvalidProfileImportException("hobbies: use [] to clear the list, not null."));
+        }
+    }
+
+    private static async Task ApplyExperiencesAsync(List<ProfileCvExperienceSelection>? inputs, Profile profile, ImportPath at, AppDbContext db, CancellationToken ct)
+    {
+        for (var i = 0; i < (inputs?.Count ?? 0); i++)
+        {
+            var input = inputs![i]; at.Value = $"experiences[{i}]";
+            var entry = input.Id is { } id ? profile.Experiences.FirstOrDefault(e => e.Id == id)
+                ?? throw new ProfileEntryNotFoundException("Experience", id)
+                : new ProfileExperience { UserId = profile.UserId, ProfileId = profile.Id };
+            await ProfileEntryMutations.ApplyAsync(entry, input.Employer, input.Title, input.Location,
+                input.StartMonth ?? throw new InvalidProfileImportException(at.Value + ".startMonth: a reviewed month is required."),
+                input.EndMonth, input.SkillNames ?? [], db, ct);
+            ApplyBullets(entry.Bullets, input.Bullets, profile.UserId, at.Value);
+            if (input.Id is null) db.ProfileExperiences.Add(entry);
+        }
+    }
+
+    private static async Task ApplyEducationsAsync(List<ProfileCvEducationSelection>? inputs, Profile profile, ImportPath at, AppDbContext db, CancellationToken ct)
+    {
+        for (var i = 0; i < (inputs?.Count ?? 0); i++)
+        {
+            var input = inputs![i]; at.Value = $"educations[{i}]";
+            var entry = input.Id is { } id ? profile.Educations.FirstOrDefault(e => e.Id == id)
+                ?? throw new ProfileEntryNotFoundException("Education", id)
+                : new ProfileEducation { UserId = profile.UserId, ProfileId = profile.Id };
+            await ProfileEntryMutations.ApplyAsync(entry, input.School, input.Degree, input.Field, input.Location,
+                input.StartMonth ?? throw new InvalidProfileImportException(at.Value + ".startMonth: a reviewed month is required."),
+                input.EndMonth, db, ct);
+            ApplyBullets(entry.Bullets, input.Bullets, profile.UserId, at.Value);
+            if (input.Id is null) db.ProfileEducations.Add(entry);
+        }
+    }
+
+    private static void ApplyCertifications(List<ProfileCvCertificationSelection>? inputs, Profile profile, ImportPath at, AppDbContext db)
+    {
+        for (var i = 0; i < (inputs?.Count ?? 0); i++)
+        {
+            var input = inputs![i]; at.Value = $"certifications[{i}]";
+            var entry = input.Id is { } id ? profile.Certifications.FirstOrDefault(e => e.Id == id)
+                ?? throw new ProfileEntryNotFoundException("Certification", id)
+                : new ProfileCertification { UserId = profile.UserId, ProfileId = profile.Id };
+            ProfileEntryMutations.Apply(entry, input.Name, input.Issuer, input.IssuedMonth, input.ExpiresMonth, input.Url);
+            ApplyBullets(entry.Bullets, input.Bullets, profile.UserId, at.Value);
+            if (input.Id is null) db.ProfileCertifications.Add(entry);
+        }
+    }
+
+    private static async Task ApplyProjectsAsync(List<ProfileCvProjectSelection>? inputs, Profile profile, ImportPath at, AppDbContext db, CancellationToken ct)
+    {
+        for (var i = 0; i < (inputs?.Count ?? 0); i++)
+        {
+            var input = inputs![i]; at.Value = $"projects[{i}]";
+            var entry = input.Id is { } id ? profile.Projects.FirstOrDefault(e => e.Id == id)
+                ?? throw new ProfileEntryNotFoundException("Project", id)
+                : new ProfileProject { UserId = profile.UserId, ProfileId = profile.Id };
+            // The import format has no kind: an updated project keeps the one the user chose.
+            await ProfileEntryMutations.ApplyAsync(entry, input.Name, input.Url, input.Location,
+                input.StartMonth, input.EndMonth, entry.Kind, input.SkillNames ?? [], db, ct);
+            ApplyBullets(entry.Bullets, input.Bullets, profile.UserId, at.Value);
+            if (input.Id is null) db.ProfileProjects.Add(entry);
+        }
+    }
+
+    private static async Task ApplySkillsAsync(List<ProfileCvSkill>? inputs, Profile profile, ImportPath at, AppDbContext db, CancellationToken ct)
+    {
+        if (inputs is null) return;
+        var names = new List<string>();
+        for (var i = 0; i < inputs.Count; i++)
+        {
+            at.Value = $"skills[{i}]";
+            if (inputs[i].Level is not (>= 1 and <= 5))
+                throw new InvalidProfileImportException(at.Value + ".level: choose a reviewed level from 1 to 5.");
+            names.Add(Required(inputs[i].Name, "Skill name"));
+        }
+
+        // Looked up together, so a long skill list costs two queries instead of two per row.
+        var skills = (await FindOrCreateSkillsAsync(names, db, ct)).ToDictionary(s => s.NormalizedName);
+        var categories = await SkillCategoryPrompt.ByNormalizedNameAsync(inputs.Select(s => s.CategoryName), db, ct);
+        foreach (var input in inputs)
+        {
+            var skill = skills[Names.Normalize(input.Name!)];
+            if (skill.CategoryId is null && skill.Category is null && input.CategoryName is { } categoryName)
+                skill.Category = categories.GetValueOrDefault(Names.Normalize(categoryName));
+            var level = db.ProfileSkills.Local.FirstOrDefault(s => s.ProfileId == profile.Id
+                && (s.Skill == skill || (skill.Id != 0 && s.SkillId == skill.Id)));
+            if (level is null) db.ProfileSkills.Add(level = new ProfileSkill { ProfileId = profile.Id, Skill = skill });
+            level.Level = input.Level!.Value;
+        }
+    }
+
+    private static void ApplyLanguages(List<ProfileCvLanguage>? inputs, Profile profile, ImportPath at)
+    {
+        for (var i = 0; i < (inputs?.Count ?? 0); i++)
+        {
+            var input = inputs![i]; at.Value = $"languages[{i}]";
+            if (input.Written is null || input.Spoken is null)
+                throw new InvalidProfileImportException(at.Value + ": choose reviewed written and spoken levels.");
+            var name = LanguageName(input.Name);
+            var language = profile.Languages.FirstOrDefault(l => string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (language is null) profile.Languages.Add(language = new ProfileLanguage { ProfileId = profile.Id, Name = name });
+            language.Written = input.Written.Value;
+            language.Spoken = input.Spoken.Value;
         }
     }
 
@@ -158,7 +206,7 @@ public static class ProfileCvImportMutations
     {
         if (selected is null) return;
         if (existing.Count + selected.Count(b => b.Id is null) > ProfileBulletMutations.MaxPerEntry)
-            throw new InvalidProfileImportException(path + ".bullets: an entry can have at most 20 bullets.");
+            throw new InvalidProfileImportException($"{path}.bullets: an entry can have at most {ProfileBulletMutations.MaxPerEntry} bullets.");
         for (var i = 0; i < selected.Count; i++)
         {
             var input = selected[i];

@@ -200,14 +200,38 @@ public static class ListingMutations
         Listing entity, ListingInput input, DateTime now, AppDbContext db, CancellationToken ct)
     {
         Validate(input, DateOnly.FromDateTime(now));
-        JobRoleCategory? suggestedCategory = null;
-        if (!string.IsNullOrWhiteSpace(input.JobRoleCategoryName))
-        {
-            var categoryName = Names.Normalize(input.JobRoleCategoryName);
-            suggestedCategory = await db.JobRoleCategories.FirstOrDefaultAsync(c => c.NormalizedName == categoryName, ct)
-                ?? throw new InvalidListingException("Choose an existing job role category.");
-        }
+        var suggestedCategory = await SuggestedCategoryAsync(input.JobRoleCategoryName, db, ct);
+        ApplyFields(entity, input, now);
+        // One open listing per URL, archived ones included. Closed listings are earlier attempts.
+        if (!ApplicationStatuses.Final.Contains(entity.Status)
+            && await OpenListingIdWithUrlAsync(entity, db, ct) is { } existingId)
+            throw new DuplicateListingException(existingId);
 
+        entity.Company = await FindOrCreateCompanyAsync(input.CompanyName, entity.UserId, db, ct);
+        await ApplyContactsAsync(entity, input.Contacts, db, ct);
+        if (input.TrainingProgram.HasValue)
+            await ApplyTrainingProgramAsync(entity, input.TrainingProgram.Value, db, ct);
+        await ApplyJobRoleAsync(entity, input.JobRoleName, suggestedCategory, db, ct);
+        await ApplySkillsAsync(entity, input.Skills, db, ct);
+
+        entity.Languages.Clear();
+        entity.Languages.AddRange(input.Languages.Select(l =>
+            new ListingLanguage { Language = l.Language, Level = l.Level, IsRequired = l.IsRequired }));
+        entity.Locations.Clear();
+        foreach (var location in input.Locations)
+            entity.Locations.Add(new ListingLocation { Location = await LocationLookup.FindOrCreateAsync(location, db, ct) });
+    }
+
+    private static async Task<JobRoleCategory?> SuggestedCategoryAsync(string? name, AppDbContext db, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        var normalized = Names.Normalize(name);
+        return await db.JobRoleCategories.FirstOrDefaultAsync(c => c.NormalizedName == normalized, ct)
+            ?? throw new InvalidListingException("Choose an existing job role category.");
+    }
+
+    private static void ApplyFields(Listing entity, ListingInput input, DateTime now)
+    {
         entity.Kind = input.Kind;
         entity.Title = input.Title.Trim();
         entity.NormalizedTitle = Names.Normalize(entity.Title);
@@ -218,13 +242,6 @@ public static class ListingMutations
         entity.WorkMode = input.WorkMode;
         entity.Description = input.Description;
         entity.Url = string.IsNullOrWhiteSpace(input.Url) ? null : ListingUrls.Normalize(new Uri(input.Url.Trim()));
-        // One open listing per URL, archived ones included. Closed listings are earlier attempts.
-        if (!ApplicationStatuses.Final.Contains(entity.Status))
-        {
-            var existingId = await OpenListingIdWithUrlAsync(entity, db, ct);
-            if (existingId is not null)
-                throw new DuplicateListingException(existingId.Value);
-        }
         entity.PostedOn = input.PostedOn;
         entity.DeadlineType = input.DeadlineType;
         entity.DeadlineOn = input.DeadlineOn;
@@ -236,33 +253,38 @@ public static class ListingMutations
             entity.AnalyzedAt = null;
         if (input.Reanalyzed)
             entity.ReanalyzedAt = now;
+    }
 
-        entity.Company = await FindOrCreateCompanyAsync(input.CompanyName, entity.UserId, db, ct);
+    private static async Task ApplyContactsAsync(
+        Listing entity, List<ContactInput>? contacts, AppDbContext db, CancellationToken ct)
+    {
         // Contacts belong to the company, so a listing moved to another company can't keep the old ones.
         if (entity.CompanyId != entity.Company.Id)
             entity.Contacts.Clear();
-        if (input.Contacts is not null)
-        {
-            var (contacts, _) = await ContactLookup.UpsertAsync(entity.Company, input.Contacts, db, ct);
-            entity.Contacts.Clear();
-            entity.Contacts.AddRange(contacts.Select(c => new ListingContact { Contact = c }));
-        }
+        if (contacts is null) return;
+        var (found, _) = await ContactLookup.UpsertAsync(entity.Company, contacts, db, ct);
+        entity.Contacts.Clear();
+        entity.Contacts.AddRange(found.Select(c => new ListingContact { Contact = c }));
+    }
 
-        if (input.TrainingProgram.HasValue)
-            await ApplyTrainingProgramAsync(entity, input.TrainingProgram.Value, db, ct);
-
-        var jobRoleName = Names.Normalize(input.JobRoleName);
-        entity.JobRole = await db.JobRoles.Include(r => r.Category).FirstOrDefaultAsync(r => r.NormalizedName == jobRoleName, ct)
-            ?? new JobRole { UserId = entity.UserId, Name = input.JobRoleName.Trim(), NormalizedName = jobRoleName };
-
+    private static async Task ApplyJobRoleAsync(
+        Listing entity, string name, JobRoleCategory? suggestedCategory, AppDbContext db, CancellationToken ct)
+    {
+        var normalized = Names.Normalize(name);
+        entity.JobRole = await db.JobRoles.Include(r => r.Category).FirstOrDefaultAsync(r => r.NormalizedName == normalized, ct)
+            ?? new JobRole { UserId = entity.UserId, Name = name.Trim(), NormalizedName = normalized };
         if (entity.JobRole.CategoryId is null && entity.JobRole.Category is null && suggestedCategory is not null)
             entity.JobRole.Category = suggestedCategory;
+    }
 
-        var skills = (await SkillLookup.FindOrCreateAsync(input.Skills.Select(s => s.Name.Trim()), db, ct))
+    private static async Task ApplySkillsAsync(
+        Listing entity, List<ListingSkillInput> inputs, AppDbContext db, CancellationToken ct)
+    {
+        var skills = (await SkillLookup.FindOrCreateAsync(inputs.Select(s => s.Name.Trim()), db, ct))
             .ToDictionary(s => s.NormalizedName);
-        var categories = await SkillCategoryPrompt.ByNormalizedNameAsync(input.Skills.Select(s => s.CategoryName), db, ct);
+        var categories = await SkillCategoryPrompt.ByNormalizedNameAsync(inputs.Select(s => s.CategoryName), db, ct);
         entity.Skills.Clear();
-        foreach (var skill in input.Skills)
+        foreach (var skill in inputs)
         {
             var lookup = skills[Names.Normalize(skill.Name)];
             if (lookup.CategoryId is null && lookup.Category is null && skill.CategoryName is { } categoryName)
@@ -275,19 +297,6 @@ public static class ListingMutations
                 IsRequired = skill.IsRequired,
             });
         }
-
-        entity.Languages.Clear();
-        foreach (var language in input.Languages)
-            entity.Languages.Add(new ListingLanguage
-            {
-                Language = language.Language,
-                Level = language.Level,
-                IsRequired = language.IsRequired,
-            });
-
-        entity.Locations.Clear();
-        foreach (var location in input.Locations)
-            entity.Locations.Add(new ListingLocation { Location = await LocationLookup.FindOrCreateAsync(location, db, ct) });
     }
 
     private static async Task<Company> FindOrCreateCompanyAsync(
@@ -320,6 +329,19 @@ public static class ListingMutations
 
     private static void Validate(ListingInput input, DateOnly today)
     {
+        ValidateText(input);
+        ValidateKindAndDates(input, today);
+        if (input.PositionPercent is < 1 or > 100)
+            throw new InvalidListingException("Position percent must be 1–100.");
+        if ((input.PositionPercent, input.Schedule) is (100, Schedule.PartTime) or (< 100, Schedule.FullTime))
+            throw new InvalidListingException("Position percent doesn't match the schedule: 100 % is full time, less is part time.");
+        if (input.TrainingProgram.Value is { StartsOn: { } startsOn, EndsOn: { } endsOn } && startsOn > endsOn)
+            throw new InvalidListingException("Training program can't end before it starts.");
+        ValidateLists(input);
+    }
+
+    private static void ValidateText(ListingInput input)
+    {
         if (string.IsNullOrWhiteSpace(input.Title))
             throw new InvalidListingException("Title is required.");
         if (string.IsNullOrWhiteSpace(input.CompanyName))
@@ -332,6 +354,10 @@ public static class ListingMutations
         CheckNameLength(input.TrainingProgram.Value?.EndCompanyName, "End company name");
         if (input.Description?.Length > MaxDescriptionLength)
             throw new InvalidListingException($"Description is longer than {MaxDescriptionLength} characters.");
+    }
+
+    private static void ValidateKindAndDates(ListingInput input, DateOnly today)
+    {
         if (input.Kind == ListingKind.Unsolicited)
         {
             // Nothing was posted. A URL would make two applications to one careers page block each other.
@@ -354,13 +380,10 @@ public static class ListingMutations
             throw new InvalidListingException("Posted date can't be in the future.");
         if ((input.DeadlineType == DeadlineType.Date) != (input.DeadlineOn is not null))
             throw new InvalidListingException("Set deadlineOn if and only if deadlineType is DATE.");
-        if (input.PositionPercent is < 1 or > 100)
-            throw new InvalidListingException("Position percent must be 1–100.");
-        if ((input.PositionPercent, input.Schedule) is (100, Schedule.PartTime) or (< 100, Schedule.FullTime))
-            throw new InvalidListingException("Position percent doesn't match the schedule: 100 % is full time, less is part time.");
-        if (input.TrainingProgram.Value is { StartsOn: { } startsOn, EndsOn: { } endsOn } && startsOn > endsOn)
-            throw new InvalidListingException("Training program can't end before it starts.");
+    }
 
+    private static void ValidateLists(ListingInput input)
+    {
         foreach (var skill in input.Skills)
         {
             if (string.IsNullOrWhiteSpace(skill.Name))

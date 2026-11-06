@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using JobHunt.Api.Data;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Locations;
 
@@ -46,6 +47,11 @@ public class ProfileCvCandidate
 public static class ProfileCvDecoder
 {
     public const int MaxJsonLength = 200_000;
+    private const int MaxHistoryEntries = 100;
+    private const int MaxSkills = 200;
+    private const int MaxLanguages = 20;
+    private const int MaxSkillTags = 200;
+    private const int MaxWarnings = 1000;
     private static readonly JsonSerializerOptions Options = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -73,106 +79,152 @@ public static class ProfileCvDecoder
         if (candidate.SchemaVersion != 1 || candidate.ContentLanguage != Language.English)
             throw new InvalidProfileImportException("schemaVersion/contentLanguage: expected version 1 and ENGLISH.");
 
-        Limit(candidate.Links, 10, "links"); Limit(candidate.Hobbies, 20, "hobbies");
-        Limit(candidate.Experiences, 100, "experiences"); Limit(candidate.Educations, 100, "educations");
-        Limit(candidate.Certifications, 100, "certifications"); Limit(candidate.Projects, 100, "projects");
-        Limit(candidate.Skills, 200, "skills"); Limit(candidate.Languages, 20, "languages");
-        Limit(candidate.Warnings, 1000, "warnings");
+        Limit(candidate.Links, ProfileMutations.MaxLinks, "links");
+        Limit(candidate.Hobbies, ProfileMutations.MaxHobbies, "hobbies");
+        Limit(candidate.Experiences, MaxHistoryEntries, "experiences");
+        Limit(candidate.Educations, MaxHistoryEntries, "educations");
+        Limit(candidate.Certifications, MaxHistoryEntries, "certifications");
+        Limit(candidate.Projects, MaxHistoryEntries, "projects");
+        Limit(candidate.Skills, MaxSkills, "skills");
+        Limit(candidate.Languages, MaxLanguages, "languages");
+        Limit(candidate.Warnings, MaxWarnings, "warnings");
 
         if (candidate.Warnings.Any(w => string.IsNullOrWhiteSpace(w.Path) || string.IsNullOrWhiteSpace(w.Message)))
             throw new InvalidProfileImportException("warnings: path and message must be nonblank.");
-        var warnings = candidate.Warnings;
-        void Check(string path, Action validate)
+        new FieldReview(candidate.Warnings).Review(candidate);
+        return candidate;
+    }
+
+    // Candidates can be incomplete, so a value the profile would reject becomes a warning to review, not an error.
+    private sealed class FieldReview(List<ProfileCvWarning> warnings)
+    {
+        public void Review(ProfileCvCandidate candidate)
+        {
+            if (candidate.Basics is { } basics) Basics(basics);
+            for (var i = 0; i < candidate.Experiences.Count; i++) Experience(candidate.Experiences[i], $"experiences[{i}]");
+            for (var i = 0; i < candidate.Educations.Count; i++) Education(candidate.Educations[i], $"educations[{i}]");
+            for (var i = 0; i < candidate.Certifications.Count; i++) Certification(candidate.Certifications[i], $"certifications[{i}]");
+            for (var i = 0; i < candidate.Projects.Count; i++) Project(candidate.Projects[i], $"projects[{i}]");
+            for (var i = 0; i < candidate.Skills.Count; i++)
+            {
+                Required(candidate.Skills[i].Name, $"skills[{i}].name");
+                if (candidate.Skills[i].Level is not (>= 1 and <= 5))
+                    warnings.Add(new($"skills[{i}].level", "Choose a reviewed level from 1 to 5."));
+            }
+            for (var i = 0; i < candidate.Languages.Count; i++) LanguageEntry(candidate.Languages[i], $"languages[{i}]");
+            for (var i = 0; i < candidate.Hobbies.Count; i++) Text(candidate.Hobbies[i], $"hobbies[{i}]", ProfileMutations.MaxHobbyLength);
+            Check("links", () => ProfileMutations.ValidateLinks(
+                [.. candidate.Links.Select(l => new ProfileLinkInput(l.Kind, l.Label, l.Url ?? ""))]));
+        }
+
+        private void Basics(ProfileCvBasics basics)
+        {
+            Text(basics.FullName, "basics.fullName");
+            Text(basics.Headline, "basics.headline");
+            Text(basics.Summary, "basics.summary", Inputs.MaxMarkdownLength);
+            Text(basics.Phone, "basics.phone");
+            Check("basics.email", () => ProfileMutations.Email(basics.Email));
+            Location(basics.Location, "basics.location");
+        }
+
+        private void Experience(ProfileCvExperience e, string p)
+        {
+            Required(e.Employer, p + ".employer");
+            Required(e.Title, p + ".title");
+            Dates(e.StartMonth, e.EndMonth, p, "startMonth", "endMonth", true);
+            if (e.EndMonth is null) warnings.Add(new(p + ".endMonth", "Confirm this experience is current before saving a null end month."));
+            Location(e.Location, p + ".location");
+            Tags(e.SkillNames, p);
+            Bullets(e.Bullets, p);
+        }
+
+        private void Education(ProfileCvEducation e, string p)
+        {
+            Required(e.School, p + ".school");
+            Text(e.Degree, p + ".degree");
+            Text(e.Field, p + ".field");
+            Dates(e.StartMonth, e.EndMonth, p, "startMonth", "endMonth", true);
+            if (e.EndMonth is null) warnings.Add(new(p + ".endMonth", "Confirm this education is ongoing before saving a null end month."));
+            Location(e.Location, p + ".location");
+            Bullets(e.Bullets, p);
+        }
+
+        private void Certification(ProfileCvCertification e, string p)
+        {
+            Required(e.Name, p + ".name");
+            Text(e.Issuer, p + ".issuer");
+            Check(p + ".url", () => ProfileMutations.Url(e.Url));
+            Dates(e.IssuedMonth, e.ExpiresMonth, p, "issuedMonth", "expiresMonth");
+            Bullets(e.Bullets, p);
+        }
+
+        private void Project(ProfileCvProject e, string p)
+        {
+            Required(e.Name, p + ".name");
+            Check(p + ".url", () => ProfileMutations.Url(e.Url));
+            Dates(e.StartMonth, e.EndMonth, p, "startMonth", "endMonth");
+            Location(e.Location, p + ".location");
+            Tags(e.SkillNames, p);
+            Bullets(e.Bullets, p);
+        }
+
+        private void LanguageEntry(ProfileCvLanguage l, string p)
+        {
+            Required(l.Name, p + ".name");
+            Text(l.Name, p + ".name", ProfileLanguage.MaxNameLength);
+            if (l.Written is null) warnings.Add(new(p + ".written", "Choose a reviewed written level."));
+            if (l.Spoken is null) warnings.Add(new(p + ".spoken", "Choose a reviewed spoken level."));
+        }
+
+        private void Check(string path, Action validate)
         {
             try { validate(); }
             catch (InvalidProfileException) { warnings.Add(new(path, "Review this value against the profile field rules.")); }
         }
-        void Required(string? value, string path) => Check(path, () => ProfileMutations.Required(value, path));
-        void Text(string? value, string path, int max = 200) => Check(path, () => ProfileMutations.Text(value, path, max));
-        void Date(string? value, string path, bool required = false)
+
+        private void Required(string? value, string path) => Check(path, () => ProfileMutations.Required(value, path));
+
+        private void Text(string? value, string path, int max = ProfileMutations.MaxTextLength) =>
+            Check(path, () => ProfileMutations.Text(value, path, max));
+
+        private void Date(string? value, string path, bool required = false)
         {
             if (value is null && !required) return;
             if (!DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
                 || date.Day != 1)
                 warnings.Add(new(path, "Supply a known month as YYYY-MM-01; do not invent missing months."));
         }
-        void Dates(string? start, string? end, string path, string startField, string endField, bool required = false)
+
+        private void Dates(string? start, string? end, string path, string startField, string endField, bool required = false)
         {
-            Date(start, $"{path}.{startField}", required); Date(end, $"{path}.{endField}");
+            Date(start, $"{path}.{startField}", required);
+            Date(end, $"{path}.{endField}");
             if (DateOnly.TryParse(start, out var s) && DateOnly.TryParse(end, out var e) && e < s)
                 warnings.Add(new($"{path}.{endField}", "End must not precede start."));
         }
-        void Location(ProfileCvLocation? location, string path)
+
+        private void Location(ProfileCvLocation? location, string path)
         {
             if (location is null) return;
             Text(location.City, path + ".city");
             if (location.CountryCode is null || !LocationLookup.IsCountryCode(location.CountryCode.Trim().ToUpperInvariant()))
                 warnings.Add(new(path + ".countryCode", "Supply a valid ISO country code."));
         }
-        void Bullets(List<string>? bullets, string path)
+
+        private void Bullets(List<string>? bullets, string path)
         {
             if (bullets is null) return;
-            Limit(bullets, 20, path + ".bullets");
+            Limit(bullets, ProfileBulletMutations.MaxPerEntry, path + ".bullets");
             for (var b = 0; b < bullets.Count; b++)
-                Check($"{path}.bullets[{b}]", () => ProfileMutations.Required(bullets[b], "Bullet", 500));
-        }
-        void Tags(List<string>? names, string path)
-        {
-            if (names is null) return;
-            Limit(names, 200, path + ".skillNames");
-            for (var n = 0; n < names.Count; n++) Required(names[n], $"{path}.skillNames[{n}]");
+                Check($"{path}.bullets[{b}]", () => ProfileMutations.Required(bullets[b], "Bullet", ProfileBulletMutations.MaxTextLength));
         }
 
-        if (candidate.Basics is { } basics)
+        private void Tags(List<string>? names, string path)
         {
-            Text(basics.FullName, "basics.fullName"); Text(basics.Headline, "basics.headline");
-            Text(basics.Summary, "basics.summary", 10_000); Text(basics.Phone, "basics.phone");
-            Check("basics.email", () => ProfileMutations.Email(basics.Email)); Location(basics.Location, "basics.location");
+            if (names is null) return;
+            Limit(names, MaxSkillTags, path + ".skillNames");
+            for (var n = 0; n < names.Count; n++) Required(names[n], $"{path}.skillNames[{n}]");
         }
-        for (var i = 0; i < candidate.Experiences.Count; i++)
-        {
-            var e = candidate.Experiences[i]; var p = $"experiences[{i}]";
-            Required(e.Employer, p + ".employer"); Required(e.Title, p + ".title");
-            Dates(e.StartMonth, e.EndMonth, p, "startMonth", "endMonth", true);
-            if (e.EndMonth is null) warnings.Add(new(p + ".endMonth", "Confirm this experience is current before saving a null end month."));
-            Location(e.Location, p + ".location"); Tags(e.SkillNames, p); Bullets(e.Bullets, p);
-        }
-        for (var i = 0; i < candidate.Educations.Count; i++)
-        {
-            var e = candidate.Educations[i]; var p = $"educations[{i}]";
-            Required(e.School, p + ".school"); Text(e.Degree, p + ".degree"); Text(e.Field, p + ".field");
-            Dates(e.StartMonth, e.EndMonth, p, "startMonth", "endMonth", true);
-            if (e.EndMonth is null) warnings.Add(new(p + ".endMonth", "Confirm this education is ongoing before saving a null end month."));
-            Location(e.Location, p + ".location"); Bullets(e.Bullets, p);
-        }
-        for (var i = 0; i < candidate.Certifications.Count; i++)
-        {
-            var e = candidate.Certifications[i]; var p = $"certifications[{i}]";
-            Required(e.Name, p + ".name"); Text(e.Issuer, p + ".issuer"); Check(p + ".url", () => ProfileMutations.Url(e.Url));
-            Dates(e.IssuedMonth, e.ExpiresMonth, p, "issuedMonth", "expiresMonth"); Bullets(e.Bullets, p);
-        }
-        for (var i = 0; i < candidate.Projects.Count; i++)
-        {
-            var e = candidate.Projects[i]; var p = $"projects[{i}]";
-            Required(e.Name, p + ".name"); Check(p + ".url", () => ProfileMutations.Url(e.Url));
-            Dates(e.StartMonth, e.EndMonth, p, "startMonth", "endMonth");
-            Location(e.Location, p + ".location"); Tags(e.SkillNames, p); Bullets(e.Bullets, p);
-        }
-        for (var i = 0; i < candidate.Skills.Count; i++)
-        {
-            Required(candidate.Skills[i].Name, $"skills[{i}].name");
-            if (candidate.Skills[i].Level is not (>= 1 and <= 5)) warnings.Add(new($"skills[{i}].level", "Choose a reviewed level from 1 to 5."));
-        }
-        for (var i = 0; i < candidate.Languages.Count; i++)
-        {
-            var l = candidate.Languages[i]; var p = $"languages[{i}]";
-            Required(l.Name, p + ".name"); Text(l.Name, p + ".name", ProfileLanguage.MaxNameLength);
-            if (l.Written is null) warnings.Add(new(p + ".written", "Choose a reviewed written level."));
-            if (l.Spoken is null) warnings.Add(new(p + ".spoken", "Choose a reviewed spoken level."));
-        }
-        for (var i = 0; i < candidate.Hobbies.Count; i++) Text(candidate.Hobbies[i], $"hobbies[{i}]", 100);
-        Check("links", () => ProfileMutations.ValidateLinks(candidate.Links.Select(l => new ProfileLinkInput(l.Kind, l.Label, l.Url ?? "")).ToList()));
-        return candidate;
     }
 
     private static void Limit<T>(List<T>? items, int max, string path)

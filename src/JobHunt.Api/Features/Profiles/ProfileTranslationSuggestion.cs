@@ -260,6 +260,16 @@ public static class ProfileTranslationSuggestionMutations
             || experiences.DistinctBy(e => e.Id).Count() != experiences.Count
             || educations.DistinctBy(e => e.Id).Count() != educations.Count)
             throw new InvalidProfileException("An entry is listed twice.");
+        await ApplyBulletsAsync(language, bullets, db, ct);
+        await ApplyExperiencesAsync(language, experiences, db, ct);
+        await ApplyEducationsAsync(language, educations, db, ct);
+        await ApplyHeadlineAndSummaryAsync(language, headline, summary, db, ct);
+        await db.SaveChangesAsync(ct);
+        return await ProfileQueries.LoadAsync(db, ct);
+    }
+
+    private static async Task ApplyBulletsAsync(Language language, List<ProfileBulletText> bullets, AppDbContext db, CancellationToken ct)
+    {
         var ids = bullets.Select(b => b.Id).ToList();
         var rows = await db.ProfileBullets.Include(b => b.Translations)
             .Where(b => ids.Contains(b.Id)).ToDictionaryAsync(b => b.Id, ct);
@@ -273,26 +283,32 @@ public static class ProfileTranslationSuggestionMutations
             translation.SourceText = row.Text;
             translation.IsMachine = true;
         }
+    }
 
-        var experienceIds = experiences.Select(e => e.Id).ToList();
-        var experienceRows = await db.ProfileExperiences.Include(e => e.Translations)
-            .Where(e => experienceIds.Contains(e.Id)).ToDictionaryAsync(e => e.Id, ct);
+    private static async Task ApplyExperiencesAsync(Language language, List<ProfileExperienceTitleText> experiences, AppDbContext db, CancellationToken ct)
+    {
+        var ids = experiences.Select(e => e.Id).ToList();
+        var rows = await db.ProfileExperiences.Include(e => e.Translations)
+            .Where(e => ids.Contains(e.Id)).ToDictionaryAsync(e => e.Id, ct);
         foreach (var experience in experiences)
         {
-            var row = experienceRows.GetValueOrDefault(experience.Id)
+            var row = rows.GetValueOrDefault(experience.Id)
                 ?? throw new ProfileEntryNotFoundException("Experience", experience.Id);
             var translation = ProfileTranslationMutations.Translation(row, language);
             translation.Title = ProfileMutations.Required(experience.Title, "Title");
             translation.SourceTitle = row.Title;
             translation.IsMachine = true;
         }
+    }
 
-        var educationIds = educations.Select(e => e.Id).ToList();
-        var educationRows = await db.ProfileEducations.Include(e => e.Translations)
-            .Where(e => educationIds.Contains(e.Id)).ToDictionaryAsync(e => e.Id, ct);
+    private static async Task ApplyEducationsAsync(Language language, List<ProfileEducationText> educations, AppDbContext db, CancellationToken ct)
+    {
+        var ids = educations.Select(e => e.Id).ToList();
+        var rows = await db.ProfileEducations.Include(e => e.Translations)
+            .Where(e => ids.Contains(e.Id)).ToDictionaryAsync(e => e.Id, ct);
         foreach (var education in educations)
         {
-            var row = educationRows.GetValueOrDefault(education.Id)
+            var row = rows.GetValueOrDefault(education.Id)
                 ?? throw new ProfileEntryNotFoundException("Education", education.Id);
             var cleanDegree = ProfileMutations.Text(education.Degree, "Degree");
             var cleanField = ProfileMutations.Text(education.Field, "Field");
@@ -304,24 +320,23 @@ public static class ProfileTranslationSuggestionMutations
             if (cleanField is not null) (translation.Field, translation.SourceField) = (cleanField, row.Field);
             translation.IsMachine = true;
         }
+    }
 
+    private static async Task ApplyHeadlineAndSummaryAsync(Language language, string? headline, string? summary, AppDbContext db, CancellationToken ct)
+    {
         var cleanHeadline = ProfileMutations.Text(headline, "Headline");
         var cleanSummary = ProfileMutations.Markdown(summary, "Summary");
-        if (cleanHeadline is not null || cleanSummary is not null)
-        {
-            var profile = await db.Profiles.Include(p => p.Translations).SingleAsync(ct);
-            if (cleanHeadline is not null && profile.Headline is null)
-                throw new InvalidProfileException("The profile has no headline to translate.");
-            if (cleanSummary is not null && profile.Summary is null)
-                throw new InvalidProfileException("The profile has no summary to translate.");
-            var translation = profile.Translations.FirstOrDefault(t => t.Language == language);
-            if (translation is null)
-                profile.Translations.Add(translation = new ProfileTranslation { UserId = profile.UserId, Language = language });
-            if (cleanHeadline is not null) (translation.Headline, translation.SourceHeadline) = (cleanHeadline, profile.Headline);
-            if (cleanSummary is not null) (translation.Summary, translation.SourceSummary) = (cleanSummary, profile.Summary);
-            translation.IsMachine = true;
-        }
-        await db.SaveChangesAsync(ct);
-        return await ProfileQueries.LoadAsync(db, ct);
+        if (cleanHeadline is null && cleanSummary is null) return;
+        var profile = await db.Profiles.Include(p => p.Translations).SingleAsync(ct);
+        if (cleanHeadline is not null && profile.Headline is null)
+            throw new InvalidProfileException("The profile has no headline to translate.");
+        if (cleanSummary is not null && profile.Summary is null)
+            throw new InvalidProfileException("The profile has no summary to translate.");
+        var translation = profile.Translations.FirstOrDefault(t => t.Language == language);
+        if (translation is null)
+            profile.Translations.Add(translation = new ProfileTranslation { UserId = profile.UserId, Language = language });
+        if (cleanHeadline is not null) (translation.Headline, translation.SourceHeadline) = (cleanHeadline, profile.Headline);
+        if (cleanSummary is not null) (translation.Summary, translation.SourceSummary) = (cleanSummary, profile.Summary);
+        translation.IsMachine = true;
     }
 }

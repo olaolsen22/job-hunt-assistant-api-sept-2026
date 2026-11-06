@@ -20,10 +20,10 @@ public class ProfileEntryNotFoundException(string kind, object id) : Exception($
 public static class ProfileMutations
 {
     internal const int MaxTextLength = 200;
-    private const int MaxLinks = 10;
+    internal const int MaxLinks = 10;
     private const int MaxLinkLabelLength = 50;
-    private const int MaxHobbies = 20;
-    private const int MaxHobbyLength = 100;
+    internal const int MaxHobbies = 20;
+    internal const int MaxHobbyLength = 100;
 
     // Framework region data (ICU), like country codes, so there's no currency list to maintain.
     private static readonly HashSet<string> Currencies = CultureInfo.GetCultures(CultureTypes.SpecificCultures)
