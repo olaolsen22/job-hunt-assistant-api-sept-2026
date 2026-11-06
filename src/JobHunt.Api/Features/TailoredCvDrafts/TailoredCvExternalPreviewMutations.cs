@@ -72,9 +72,7 @@ public static class TailoredCvExternalPreviewMutations
     private static async Task<TailoredCvContent> KeepSourceWordsAsync(TailoredCvContent content, string listingText,
         AppDbContext db, CancellationToken ct)
     {
-        IEnumerable<TailoredCvBullet> All(IEnumerable<IEnumerable<TailoredCvBullet>>? bullets) => bullets?.SelectMany(b => b) ?? [];
-        var ids = All(content.Experiences?.Select(e => e.Bullets)).Concat(All(content.Educations?.Select(e => e.Bullets)))
-            .Concat(All(content.Certifications?.Select(e => e.Bullets))).Concat(All(content.Projects?.Select(e => e.Bullets)))
+        var ids = content.BulletGroups().SelectMany(g => g.Bullets)
             .Where(b => b.SourceBulletId is not null).Select(b => b.SourceBulletId!.Value).Distinct().ToArray();
         if (ids.Length == 0) return content;
         // Ids were already checked as the user's own by ValidateSourceIdsAsync.
@@ -86,12 +84,6 @@ public static class TailoredCvExternalPreviewMutations
             b.SourceBulletId is not { } id || TailoredCvWording.KeepsSourceWords(b.Text,
                 [sources[id].Text, sources[id].Translated ?? ""], listingText)
                 ? b : b with { Text = sources[id].Translated ?? sources[id].Text })];
-        return content with
-        {
-            Experiences = content.Experiences?.Select(e => e with { Bullets = Keep(e.Bullets) }).ToList(),
-            Educations = content.Educations?.Select(e => e with { Bullets = Keep(e.Bullets) }).ToList(),
-            Certifications = content.Certifications?.Select(e => e with { Bullets = Keep(e.Bullets) }).ToList(),
-            Projects = content.Projects?.Select(e => e with { Bullets = Keep(e.Bullets) }).ToList(),
-        };
+        return content.MapBullets(Keep);
     }
 }

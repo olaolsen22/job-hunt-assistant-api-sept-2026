@@ -18,9 +18,7 @@ internal static class BaseCvTranslator
         var original = profile.ContentLanguage;
         var translation = profile.Translations.FirstOrDefault(t => t.Language == to);
         var fromTranslation = profile.Translations.FirstOrDefault(t => t.Language == from);
-        var bullets = profile.Experiences.SelectMany(e => e.Bullets).Concat(profile.Educations.SelectMany(e => e.Bullets))
-            .Concat(profile.Certifications.SelectMany(c => c.Bullets)).Concat(profile.Projects.SelectMany(p => p.Bullets))
-            .ToDictionary(b => b.Id);
+        var bullets = profile.AllBullets().ToDictionary(b => b.Id);
         var experiences = profile.Experiences.ToDictionary(e => e.Id);
         var educations = profile.Educations.ToDictionary(e => e.Id);
         var projects = profile.Projects.ToDictionary(p => p.Id);

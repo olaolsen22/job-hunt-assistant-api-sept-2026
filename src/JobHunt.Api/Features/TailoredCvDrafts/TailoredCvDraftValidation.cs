@@ -25,19 +25,22 @@ public static class TailoredCvDraftValidation
 
     public static TailoredCvContent Normalize(TailoredCvContentInput input, Language? postingLanguage)
     {
-        if (input is null) throw new InvalidTailoredCvDraftException("content is required.");
+        // Null when an external reply leaves the list out, whatever the record type says.
+        List<TailoredCvBullet> Bullets(List<TailoredCvBulletInput>? bullets) =>
+            [.. (bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId))];
+
         var content = new TailoredCvContent(input.Summary?.Trim(),
             input.Experiences?.Select(e => new TailoredCvExperience(CleanRequired(e.Employer), CleanRequired(e.Title), e.StartMonth,
-                e.EndMonth, (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
+                e.EndMonth, Bullets(e.Bullets), e.SourceEntryId,
                 Inputs.Clean(e.Location), Inputs.Clean(e.Paragraph), CleanNames(e.Technologies))).ToList(),
             input.Educations?.Select(e => new TailoredCvEducation(CleanRequired(e.School), Inputs.Clean(e.Degree), Inputs.Clean(e.Field),
-                e.StartMonth, e.EndMonth, (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
+                e.StartMonth, e.EndMonth, Bullets(e.Bullets), e.SourceEntryId,
                 Inputs.Clean(e.Location), Inputs.Clean(e.Paragraph))).ToList(),
             input.Certifications?.Select(e => new TailoredCvCertification(CleanRequired(e.Name), Inputs.Clean(e.Issuer), e.IssuedMonth,
-                e.ExpiresMonth, Inputs.Clean(e.Url), (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
+                e.ExpiresMonth, Inputs.Clean(e.Url), Bullets(e.Bullets), e.SourceEntryId,
                 Inputs.Clean(e.Paragraph))).ToList(),
             input.Projects?.Select(e => new TailoredCvProject(CleanRequired(e.Name), Inputs.Clean(e.Url), e.StartMonth, e.EndMonth,
-                (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
+                Bullets(e.Bullets), e.SourceEntryId,
                 Inputs.Clean(e.Location), Inputs.Clean(e.Paragraph), e.Kind, CleanNames(e.Technologies))).ToList(),
             input.Skills?.Select(s => new TailoredCvSkill(CleanRequired(s.Name), s.Level, s.SourceSkillId, s.CategoryId,
                 Inputs.Clean(s.Group))).ToList(),
@@ -104,41 +107,23 @@ public static class TailoredCvDraftValidation
     public static async Task ValidateSourceIdsAsync(TailoredCvContent content, AppDbContext db,
         CancellationToken ct, bool requireSourceBulletText = false)
     {
-        var experienceIds = content.Experiences?.Where(e => e.SourceEntryId is not null)
-            .Select(e => e.SourceEntryId!.Value).Distinct().ToArray() ?? [];
-        var educationIds = content.Educations?.Where(e => e.SourceEntryId is not null)
-            .Select(e => e.SourceEntryId!.Value).Distinct().ToArray() ?? [];
-        var certificationIds = content.Certifications?.Where(e => e.SourceEntryId is not null)
-            .Select(e => e.SourceEntryId!.Value).Distinct().ToArray() ?? [];
-        var projectIds = content.Projects?.Where(e => e.SourceEntryId is not null)
-            .Select(e => e.SourceEntryId!.Value).Distinct().ToArray() ?? [];
-        var skillIds = content.Skills?.Where(s => s.SourceSkillId is not null)
-            .Select(s => s.SourceSkillId!.Value).Distinct().ToArray() ?? [];
+        await RequireOwnAsync(content.Experiences?.Select(e => e.SourceEntryId), "experiences.sourceEntryId",
+            ids => db.ProfileExperiences.CountAsync(e => ids.Contains(e.Id), ct));
+        await RequireOwnAsync(content.Educations?.Select(e => e.SourceEntryId), "educations.sourceEntryId",
+            ids => db.ProfileEducations.CountAsync(e => ids.Contains(e.Id), ct));
+        await RequireOwnAsync(content.Certifications?.Select(e => e.SourceEntryId), "certifications.sourceEntryId",
+            ids => db.ProfileCertifications.CountAsync(e => ids.Contains(e.Id), ct));
+        await RequireOwnAsync(content.Projects?.Select(e => e.SourceEntryId), "projects.sourceEntryId",
+            ids => db.ProfileProjects.CountAsync(e => ids.Contains(e.Id), ct));
+        await RequireOwnAsync(content.Skills?.Select(s => s.SourceSkillId), "skills.sourceSkillId",
+            ids => db.ProfileSkills.CountAsync(s => ids.Contains(s.SkillId), ct));
+        await RequireOwnAsync(content.Skills?.Select(s => s.CategoryId), "skills.categoryId",
+            ids => db.SkillCategories.CountAsync(c => ids.Contains(c.Id), ct));
 
-        if (experienceIds.Length > 0 && await db.ProfileExperiences.CountAsync(e => experienceIds.Contains(e.Id), ct) != experienceIds.Length)
-            throw InvalidSource("experiences.sourceEntryId");
-        if (educationIds.Length > 0 && await db.ProfileEducations.CountAsync(e => educationIds.Contains(e.Id), ct) != educationIds.Length)
-            throw InvalidSource("educations.sourceEntryId");
-        if (certificationIds.Length > 0 && await db.ProfileCertifications.CountAsync(e => certificationIds.Contains(e.Id), ct) != certificationIds.Length)
-            throw InvalidSource("certifications.sourceEntryId");
-        if (projectIds.Length > 0 && await db.ProfileProjects.CountAsync(e => projectIds.Contains(e.Id), ct) != projectIds.Length)
-            throw InvalidSource("projects.sourceEntryId");
-        if (skillIds.Length > 0 && await db.ProfileSkills.CountAsync(s => skillIds.Contains(s.SkillId), ct) != skillIds.Length)
-            throw InvalidSource("skills.sourceSkillId");
-        var categoryIds = content.Skills?.Where(s => s.CategoryId is not null)
-            .Select(s => s.CategoryId!.Value).Distinct().ToArray() ?? [];
-        if (categoryIds.Length > 0 && await db.SkillCategories.CountAsync(c => categoryIds.Contains(c.Id), ct) != categoryIds.Length)
-            throw InvalidSource("skills.categoryId");
-
-        var bulletReferences = new List<(int Id, int? EntryId, string Kind, string Text)>();
-        bulletReferences.AddRange(content.Experiences?.SelectMany(e => e.Bullets
-            .Where(b => b.SourceBulletId is not null).Select(b => (b.SourceBulletId!.Value, e.SourceEntryId, "experience", b.Text))) ?? []);
-        bulletReferences.AddRange(content.Educations?.SelectMany(e => e.Bullets
-            .Where(b => b.SourceBulletId is not null).Select(b => (b.SourceBulletId!.Value, e.SourceEntryId, "education", b.Text))) ?? []);
-        bulletReferences.AddRange(content.Certifications?.SelectMany(e => e.Bullets
-            .Where(b => b.SourceBulletId is not null).Select(b => (b.SourceBulletId!.Value, e.SourceEntryId, "certification", b.Text))) ?? []);
-        bulletReferences.AddRange(content.Projects?.SelectMany(e => e.Bullets
-            .Where(b => b.SourceBulletId is not null).Select(b => (b.SourceBulletId!.Value, e.SourceEntryId, "project", b.Text))) ?? []);
+        var bulletReferences = content.BulletGroups()
+            .SelectMany(g => g.Bullets.Where(b => b.SourceBulletId is not null)
+                .Select(b => (Id: b.SourceBulletId!.Value, g.EntryId, g.Kind, b.Text)))
+            .ToList();
         var bulletIds = bulletReferences.Select(b => b.Id).Distinct().ToArray();
         if (bulletIds.Length == 0) return;
         var bullets = await db.ProfileBullets.Where(b => bulletIds.Contains(b.Id))
@@ -158,6 +143,14 @@ public static class TailoredCvDraftValidation
                 && !string.Equals(reference.Text.Trim(), bullet.Translated?.Trim(), StringComparison.Ordinal))
                 throw Invalid("bullets.sourceBulletId", "text must match the source bullet");
         }
+    }
+
+    // Every id must be found among the user's own rows: the query filter hides the rest.
+    private static async Task RequireOwnAsync(IEnumerable<int?>? ids, string path, Func<int[], Task<int>> countOwn)
+    {
+        var distinct = ids?.OfType<int>().Distinct().ToArray() ?? [];
+        if (distinct.Length > 0 && await countOwn(distinct) != distinct.Length)
+            throw InvalidSource(path);
     }
 
     // The model or UI often leaves "location" out; entries linked to a profile entry fall back to its stored place.

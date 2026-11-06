@@ -50,10 +50,7 @@ public static class ProfileQueries
         profile.Languages = [.. profile.Languages.OrderByDescending(l => l.Spoken).ThenByDescending(l => l.Written).ThenBy(l => l.Name)];
         profile.References = [.. profile.References.OrderBy(r => r.Position).ThenBy(r => r.Id)];
         profile.JobRoles = [.. profile.JobRoles.OrderBy(r => r.Name)];
-        foreach (var bullets in profile.Experiences.Select(e => e.Bullets)
-                     .Concat(profile.Educations.Select(e => e.Bullets))
-                     .Concat(profile.Certifications.Select(c => c.Bullets))
-                     .Concat(profile.Projects.Select(p => p.Bullets)))
+        foreach (var bullets in profile.BulletLists())
             SortBullets(bullets);
         return profile;
     }

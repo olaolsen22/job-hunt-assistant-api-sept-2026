@@ -143,8 +143,7 @@ public static class BaseCvExternalPreviewMutations
     // Bullets may combine others from their entry, so words are checked against it; other wording falls back to source.
     private static TailoredCvContent KeepEntryWords(TailoredCvContent content, Profile profile)
     {
-        var sources = profile.Experiences.Select(e => e.Bullets).Concat(profile.Educations.Select(e => e.Bullets))
-            .Concat(profile.Certifications.Select(c => c.Bullets)).Concat(profile.Projects.Select(p => p.Bullets))
+        var sources = profile.BulletLists()
             .SelectMany(entry => entry.Select(bullet => (Bullet: bullet, Entry: entry)))
             .ToDictionary(s => s.Bullet.Id);
 
@@ -158,12 +157,6 @@ public static class BaseCvExternalPreviewMutations
                 ? b : b with { Text = TailoredCvLanguageText.Bullet(source, content.Language) };
         })];
 
-        return content with
-        {
-            Experiences = content.Experiences?.Select(e => e with { Bullets = Keep(e.Bullets) }).ToList(),
-            Educations = content.Educations?.Select(e => e with { Bullets = Keep(e.Bullets) }).ToList(),
-            Certifications = content.Certifications?.Select(e => e with { Bullets = Keep(e.Bullets) }).ToList(),
-            Projects = content.Projects?.Select(e => e with { Bullets = Keep(e.Bullets) }).ToList(),
-        };
+        return content.MapBullets(Keep);
     }
 }

@@ -54,6 +54,13 @@ public class Profile
     public List<ProfileLanguage> Languages { get; set; } = [];
     public List<ProfileReference> References { get; set; } = [];
     public List<ProfileTranslation> Translations { get; set; } = [];
+
+    // Internal, so Hot Chocolate doesn't expose them. Need the entries loaded.
+    internal IEnumerable<List<ProfileBullet>> BulletLists() =>
+        Experiences.Select(e => e.Bullets).Concat(Educations.Select(e => e.Bullets))
+            .Concat(Certifications.Select(c => c.Bullets)).Concat(Projects.Select(p => p.Bullets));
+
+    internal IEnumerable<ProfileBullet> AllBullets() => BulletLists().SelectMany(b => b);
 }
 
 // Names chosen so GraphQL shows GITHUB / LINKEDIN.

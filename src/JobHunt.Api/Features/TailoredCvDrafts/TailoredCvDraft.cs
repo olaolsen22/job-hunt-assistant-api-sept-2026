@@ -53,7 +53,23 @@ public record TailoredCvContent(
     bool ReferencesOnRequest = false,
     TailoredCvSectionOrder SectionOrder = TailoredCvSectionOrder.Standard,
     TailoredCvContentStyle ContentStyle = TailoredCvContentStyle.Bullets,
-    TailoredCvTemplate Template = TailoredCvTemplate.Detailed);
+    TailoredCvTemplate Template = TailoredCvTemplate.Detailed)
+{
+    // Every section with bullets, with what a bullet's source must belong to.
+    internal IEnumerable<(string Kind, int? EntryId, List<TailoredCvBullet> Bullets)> BulletGroups() =>
+        (Experiences ?? []).Select(e => ("experience", e.SourceEntryId, e.Bullets))
+            .Concat((Educations ?? []).Select(e => ("education", e.SourceEntryId, e.Bullets)))
+            .Concat((Certifications ?? []).Select(e => ("certification", e.SourceEntryId, e.Bullets)))
+            .Concat((Projects ?? []).Select(e => ("project", e.SourceEntryId, e.Bullets)));
+
+    internal TailoredCvContent MapBullets(Func<List<TailoredCvBullet>, List<TailoredCvBullet>> map) => this with
+    {
+        Experiences = Experiences?.Select(e => e with { Bullets = map(e.Bullets) }).ToList(),
+        Educations = Educations?.Select(e => e with { Bullets = map(e.Bullets) }).ToList(),
+        Certifications = Certifications?.Select(e => e with { Bullets = map(e.Bullets) }).ToList(),
+        Projects = Projects?.Select(e => e with { Bullets = map(e.Bullets) }).ToList(),
+    };
+}
 
 // Standard: NAV's order. Developer: links with contact lines, skills and projects earlier
 // (docs/norwegian-cv-formatting.md §10).
