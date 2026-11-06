@@ -6,7 +6,6 @@ using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Profiles;
 using JobHunt.Api.Features.Skills;
 using Microsoft.EntityFrameworkCore;
-using Location = JobHunt.Api.Features.Locations.Location;
 
 namespace JobHunt.Api.Features.TailoredCvDrafts;
 
@@ -17,7 +16,7 @@ public static class TailoredCvDraftValidation
     public const int MaxSummaryLength = 300;
     private const int MaxEntriesPerSection = 100;
     private const int MaxBulletsPerEntry = 20;
-    public const int MaxBulletLength = 500;
+    public const int MaxBulletLength = ProfileBulletMutations.MaxTextLength;
     internal const int MaxTextLength = 200;
     private const int MaxSkills = 200;
     private const int MaxLanguages = 20;
@@ -306,8 +305,8 @@ public static class TailoredCvDraftValidation
 
     private static void Paragraphs(IEnumerable<string?>? paragraphs, string path)
     {
-        if (paragraphs?.Any(p => p?.Length > 10_000) == true)
-            throw Invalid(path, "paragraphs must be at most 10000 characters");
+        if (paragraphs?.Any(p => p?.Length > Inputs.MaxMarkdownLength) == true)
+            throw Invalid(path, $"paragraphs must be at most {Inputs.MaxMarkdownLength} characters");
     }
 
     private static void Text(string? value, string path, int max)

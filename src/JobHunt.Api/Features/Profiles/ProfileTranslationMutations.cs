@@ -7,8 +7,6 @@ namespace JobHunt.Api.Features.Profiles;
 [MutationType]
 public static class ProfileTranslationMutations
 {
-    private const int MaxBulletLength = 500;
-
     // A separate mutation from updateProfile, which is a full replace of the basics.
     [Error<InvalidProfileException>]
     public static async Task<Profile> SetProfileContentLanguageAsync(Language language, AppDbContext db, CancellationToken ct)
@@ -33,7 +31,7 @@ public static class ProfileTranslationMutations
         var bullet = await db.ProfileBullets.FirstOrDefaultAsync(b => b.Id == bulletId, ct)
             ?? throw new ProfileEntryNotFoundException("Bullet", bulletId);
         await CheckLanguageAsync(language, db, ct);
-        var cleanText = ProfileMutations.Required(text, "Translation", MaxBulletLength);
+        var cleanText = ProfileMutations.Required(text, "Translation", ProfileBulletMutations.MaxTextLength);
 
         var translation = await db.ProfileBulletTranslations
             .FirstOrDefaultAsync(t => t.BulletId == bulletId && t.Language == language, ct);

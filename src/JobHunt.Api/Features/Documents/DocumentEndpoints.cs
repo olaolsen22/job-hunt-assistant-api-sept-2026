@@ -28,11 +28,16 @@ public static partial class DocumentEndpoints
             return TypedResults.NotFound();
         var fullName = await db.Profiles.Select(p => p.FullName).FirstOrDefaultAsync(ct);
 
-        // Inline opens the PDF in a browser tab; saving it (or an <a download>) still uses the download name.
+        return InlinePdf(context, file.Bytes, DownloadName(fullName, file.FileName));
+    }
+
+    // Inline opens the PDF in a browser tab; saving it (or an <a download>) still uses the name.
+    internal static FileContentHttpResult InlinePdf(HttpContext context, byte[] bytes, string fileName)
+    {
         context.Response.Headers.ContentDisposition =
-            new ContentDispositionHeaderValue("inline") { FileNameStar = DownloadName(fullName, file.FileName) }.ToString();
+            new ContentDispositionHeaderValue("inline") { FileNameStar = fileName }.ToString();
         context.Response.Headers.XContentTypeOptions = "nosniff";
-        return TypedResults.File(file.Bytes, "application/pdf");
+        return TypedResults.File(bytes, "application/pdf");
     }
 
     // The name a saved file gets: "Jane-Doe_Acme_Dev_Cv.pdf". The stored name's date helps in the app, but not on

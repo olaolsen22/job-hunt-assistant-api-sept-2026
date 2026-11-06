@@ -2,8 +2,6 @@ using JobHunt.Api.Features.JobRoles;
 using JobHunt.Api.Features.Profiles;
 using JobHunt.Api.Features.Skills;
 using Microsoft.EntityFrameworkCore;
-// Hot Chocolate also has a global Location type (a position in a query document).
-using Location = JobHunt.Api.Features.Locations.Location;
 
 namespace JobHunt.Api.Data;
 

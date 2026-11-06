@@ -67,17 +67,13 @@ public static class CoverLetterDraftMutations
     public static async Task<Document> GenerateCoverLetterDocumentAsync(
         int listingId, AppDbContext db, TimeProvider time, CancellationToken ct)
     {
-        var listing = await db.Listings
-            .Where(l => l.Id == listingId)
-            .Select(l => new { Company = l.Company.Name, JobRole = l.JobRole.Name })
-            .FirstOrDefaultAsync(ct)
-            ?? throw new ListingNotFoundException(listingId);
+        var names = await DocumentMutations.ListingNamesAsync(listingId, db, ct);
         var draft = await db.CoverLetterDrafts.AsNoTracking().FirstOrDefaultAsync(d => d.ListingId == listingId, ct)
             ?? throw new CoverLetterDraftNotFoundException(listingId);
 
         var bytes = CoverLetterPdfRenderer.Render(draft.Content);
-        var document = DocumentMutations.AddGenerated(db, listingId, listing.Company, listing.JobRole,
-            DocumentKind.CoverLetter, DocumentOrigin.Tailored, bytes, time.GetUtcNow().UtcDateTime);
+        var document = DocumentMutations.AddFile(db, listingId, names, DocumentKind.CoverLetter, DocumentOrigin.Tailored, bytes,
+            time.GetUtcNow().UtcDateTime);
         await db.SaveChangesAsync(ct);
         return document;
     }
@@ -120,7 +116,7 @@ internal static class CoverLetterValidation
 
     public static string? Text(string? value, string field, int maxLength)
     {
-        var text = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        var text = Inputs.Clean(value);
         if (text?.Length > maxLength)
             throw new InvalidCoverLetterException($"{field}: at most {maxLength} characters.");
         return text;

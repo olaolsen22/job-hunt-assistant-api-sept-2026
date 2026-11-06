@@ -12,11 +12,8 @@ public static class SkillCategoryQueries
     [UseProjection]
     [UseFiltering]
     [UseSorting]
-    public static IQueryable<SkillCategory> GetSkillCategories(AppDbContext db, ISortingContext sorting)
-    {
-        sorting.Handled(false);
-        return sorting.IsDefined ? db.SkillCategories : db.SkillCategories.OrderBy(c => c.SortOrder).ThenBy(c => c.Id);
-    }
+    public static IQueryable<SkillCategory> GetSkillCategories(AppDbContext db, ISortingContext sorting) =>
+        sorting.WithDefaultOrder(db.SkillCategories, q => q.OrderBy(c => c.SortOrder).ThenBy(c => c.Id));
 }
 
 [ObjectType<SkillCategory>]

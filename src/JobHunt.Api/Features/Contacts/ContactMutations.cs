@@ -63,7 +63,7 @@ public static class ContactMutations
 
     private static async Task ApplyAsync(Contact entity, ContactInput input, AppDbContext db, CancellationToken ct)
     {
-        Validate(input);
+        if (Problem(input) is { } problem) throw new InvalidContactException(problem);
         var normalizedName = Names.Normalize(input.Name);
         var existingId = await db.Contacts
             .Where(c => c.CompanyId == entity.CompanyId && c.NormalizedName == normalizedName && c.Id != entity.Id)
@@ -81,23 +81,31 @@ public static class ContactMutations
         entity.Notes = Inputs.Clean(input.Notes);
     }
 
-    // Shared with ListingInput.contacts, which throws its own error type around this.
-    internal static void Validate(ContactInput input)
+    // Null when valid. Listing and company input use it too, each throwing its own error type.
+    internal static string? Problem(ContactInput input)
     {
         if (string.IsNullOrWhiteSpace(input.Name))
-            throw new InvalidContactException("Contact name is required.");
+            return "Contact name is required.";
         string?[] fields = [input.Name, input.Title, input.Email, input.Phone, input.Url];
         if (fields.Any(f => f?.Trim().Length > MaxFieldLength))
-            throw new InvalidContactException($"Contact \"{input.Name.Trim()}\": fields are limited to {MaxFieldLength} characters.");
+            return $"Contact \"{input.Name.Trim()}\": fields are limited to {MaxFieldLength} characters.";
         // Only a sanity check: ads write emails in all sorts of ways ("kari (at) acme.no").
         if (Inputs.Clean(input.Email) is { } email && !email.Contains('@'))
-            throw new InvalidContactException($"Contact \"{input.Name.Trim()}\": email must contain @.");
+            return $"Contact \"{input.Name.Trim()}\": email must contain @.";
         if (Inputs.Clean(input.Url) is { } url && !Inputs.TryHttpUrl(url, out _))
-            throw new InvalidContactException($"Contact \"{input.Name.Trim()}\": url must be an http(s) link.");
+            return $"Contact \"{input.Name.Trim()}\": url must be an http(s) link.";
         if (input.Notes?.Length > Inputs.MaxMarkdownLength)
-            throw new InvalidContactException($"Contact notes are longer than {Inputs.MaxMarkdownLength} characters.");
+            return $"Contact notes are longer than {Inputs.MaxMarkdownLength} characters.";
+        return null;
     }
 
+    // The first problem in a batch, repeated names included.
+    internal static string? ProblemIn(IReadOnlyCollection<ContactInput> contacts)
+    {
+        if (contacts.Select(Problem).FirstOrDefault(p => p is not null) is { } problem) return problem;
+        var repeated = contacts.GroupBy(c => Names.Normalize(c.Name)).FirstOrDefault(g => g.Count() > 1);
+        return repeated is null ? null : $"Contact \"{repeated.First().Name.Trim()}\" is listed twice.";
+    }
 }
 
 [ObjectType<Contact>]

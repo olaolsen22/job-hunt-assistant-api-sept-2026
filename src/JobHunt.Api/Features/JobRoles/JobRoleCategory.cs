@@ -6,6 +6,8 @@ namespace JobHunt.Api.Features.JobRoles;
 
 public class JobRoleCategory
 {
+    public const int MaxNameLength = 100;
+
     public int Id { get; set; }
     public string UserId { get; set; } = null!;
     public string Name { get; set; } = null!;
@@ -18,7 +20,7 @@ public class JobRoleCategoryConfiguration : IEntityTypeConfiguration<JobRoleCate
     {
         builder.HasOne<AppUser>().WithMany().HasForeignKey(c => c.UserId).OnDelete(DeleteBehavior.Cascade);
         builder.HasIndex(c => new { c.UserId, c.NormalizedName }).IsUnique();
-        builder.Property(c => c.Name).HasMaxLength(100);
+        builder.Property(c => c.Name).HasMaxLength(JobRoleCategory.MaxNameLength);
     }
 }
 

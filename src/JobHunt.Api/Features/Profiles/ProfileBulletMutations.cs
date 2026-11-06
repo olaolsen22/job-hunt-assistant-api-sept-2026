@@ -72,9 +72,7 @@ public static class ProfileBulletMutations
         ProfileQueries.SortBullets(bullets);
         if (position < 0 || position >= bullets.Count)
             throw new InvalidProfileException($"Position must be 0–{bullets.Count - 1}.");
-        bullets.Remove(bullet);
-        bullets.Insert(position, bullet);
-        Renumber(bullets);
+        Positions.Move(bullets, bullet, position, (b, i) => b.Position = i);
         await db.SaveChangesAsync(ct);
         return bullets;
     }
@@ -87,7 +85,7 @@ public static class ProfileBulletMutations
             ?? throw new ProfileEntryNotFoundException("Bullet", id);
         var rest = await SameEntry(bullet, db).Where(b => b.Id != id).ToListAsync(ct);
         ProfileQueries.SortBullets(rest);
-        Renumber(rest);
+        Positions.Renumber(rest, (b, i) => b.Position = i);
         db.ProfileBullets.Remove(bullet);
         await db.SaveChangesAsync(ct);
         return id;
@@ -97,10 +95,4 @@ public static class ProfileBulletMutations
     private static IQueryable<ProfileBullet> SameEntry(ProfileBullet bullet, AppDbContext db) =>
         db.ProfileBullets.Where(b => b.ExperienceId == bullet.ExperienceId && b.EducationId == bullet.EducationId
             && b.CertificationId == bullet.CertificationId && b.ProjectId == bullet.ProjectId);
-
-    private static void Renumber(List<ProfileBullet> ordered)
-    {
-        for (var i = 0; i < ordered.Count; i++)
-            ordered[i].Position = i;
-    }
 }

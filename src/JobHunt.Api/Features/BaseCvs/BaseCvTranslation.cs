@@ -51,7 +51,7 @@ internal static class BaseCvTranslator
                 : b with { Text = Keep(b.Text, $"{path}.bullets[{i}]")! }),
         ];
 
-        string? Place(string? current, Locations.Location? location, string path) => Swap(current,
+        string? Place(string? current, Location? location, string path) => Swap(current,
             location is null ? null : TailoredCvDraftValidation.FormatPlace(location, from),
             location is null ? null : TailoredCvDraftValidation.FormatPlace(location, to), location is not null, path);
 

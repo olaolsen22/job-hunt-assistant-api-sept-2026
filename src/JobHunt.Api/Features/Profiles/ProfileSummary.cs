@@ -126,13 +126,9 @@ public class ProfileSummarySuggester(LlmExecution execution, LlmModelResolver mo
     // An over-long summary counts as unreadable: the UI would only show text the PDF can't fit.
     private static Reply? Decode(string text)
     {
-        try
-        {
-            var reply = JsonSerializer.Deserialize<Reply>(text, JsonSerializerOptions.Web);
-            var summary = Inputs.Clean(reply?.Summary);
-            return reply is null || summary?.Length > ProfileSummaryPromptQueries.MaxLength ? null : new(summary);
-        }
-        catch (JsonException) { return null; }
+        var reply = JsonReply.TryDecode<Reply>(text);
+        var summary = Inputs.Clean(reply?.Summary);
+        return reply is null || summary?.Length > ProfileSummaryPromptQueries.MaxLength ? null : new(summary);
     }
 }
 

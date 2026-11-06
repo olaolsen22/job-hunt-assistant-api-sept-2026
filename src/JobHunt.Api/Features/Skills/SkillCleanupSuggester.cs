@@ -1,8 +1,8 @@
-using System.Text.Json;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.AiSafeguards;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.LlmModels;
+using JobHunt.Api.Features.Parsing;
 using JobHunt.Api.Llm;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
@@ -36,17 +36,11 @@ public class SkillCleanupSuggester(LlmExecution execution, LlmModelResolver mode
         var call = await execution.RunJsonAsync(resolved,
             [new(ChatRole.System, SkillCleanupPromptQueries.Instructions), new(ChatRole.User, await SkillCleanupPromptQueries.SkillListAsync(db, ct))],
             new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0, MaxOutputTokens = 16_384 },
-            Operation, db, Decode, "The AI's answer couldn't be read. Try again.", ct);
+            Operation, db, JsonReply.TryDecode<Plan>, "The AI's answer couldn't be read. Try again.", ct);
         if (call.Value is not { } plan) return new(SkillCleanupSuggestStatus.Failed, null, null, null, null, call.Error);
         var known = await KnownAsync(plan, db, ct);
         return new(SkillCleanupSuggestStatus.Succeeded, known, await TranslationsAsync(plan, known, db, ct),
             await CategoriesAsync(plan, known, db, ct), await RemovalsAsync(plan, known, db, ct), null);
-    }
-
-    private static Plan? Decode(string text)
-    {
-        try { return JsonSerializer.Deserialize<Plan>(text, JsonSerializerOptions.Web); }
-        catch (JsonException) { return null; }
     }
 
     // Drops invented ids, blank names and no-op renames, so the review only shows changes cleanUpSkills can apply.

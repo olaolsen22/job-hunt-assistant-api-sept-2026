@@ -1,7 +1,7 @@
-using System.Text.Json;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.AiSafeguards;
 using JobHunt.Api.Features.LlmModels;
+using JobHunt.Api.Features.Parsing;
 using JobHunt.Api.Llm;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
@@ -83,16 +83,10 @@ public class ProfileSkillWordingSuggester(LlmExecution execution, LlmModelResolv
             [new(ChatRole.System, ProfileSkillWordingPromptQueries.Instructions),
              new(ChatRole.User, await ProfileSkillWordingPromptQueries.ContentAsync(db, ct))],
             new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0, MaxOutputTokens = 32_768 },
-            Operation, db, Decode, "The AI's answer couldn't be read. Try again.", ct);
+            Operation, db, JsonReply.TryDecode<Reply>, "The AI's answer couldn't be read. Try again.", ct);
         return call.Value is { } reply
             ? new(ProfileSkillWordingStatus.Succeeded, await ChangesAsync(reply, db, ct), null)
             : new(ProfileSkillWordingStatus.Failed, null, call.Error);
-    }
-
-    private static Reply? Decode(string text)
-    {
-        try { return JsonSerializer.Deserialize<Reply>(text, JsonSerializerOptions.Web); }
-        catch (JsonException) { return null; }
     }
 
     // Keeps only real changes that applyProfileSkillWording would accept, so the review shows nothing it would reject.

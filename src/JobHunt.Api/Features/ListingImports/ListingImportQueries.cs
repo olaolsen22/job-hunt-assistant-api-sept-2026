@@ -14,11 +14,7 @@ public static class ListingImportQueries
     [UseSorting]
     public static IQueryable<ListingImport> GetListingImports(bool? isReviewed, AppDbContext db, ISortingContext sorting)
     {
-        // Handled(false) keeps automatic sorting; the default order only applies without a client `order`.
-        sorting.Handled(false);
-        IQueryable<ListingImport> imports = sorting.IsDefined
-            ? db.ListingImports
-            : db.ListingImports.OrderByDescending(i => i.GeneratedAt).ThenByDescending(i => i.Id);
+        var imports = sorting.WithDefaultOrder(db.ListingImports, q => q.OrderByDescending(i => i.GeneratedAt).ThenByDescending(i => i.Id));
         return isReviewed switch
         {
             true => imports.Where(i => i.ReviewedAt != null),

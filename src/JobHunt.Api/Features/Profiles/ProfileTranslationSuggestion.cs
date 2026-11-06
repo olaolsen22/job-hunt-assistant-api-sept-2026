@@ -198,16 +198,10 @@ public class ProfileTranslationSuggester(LlmExecution execution, LlmModelResolve
             [new(ChatRole.System, ProfileTranslationPromptQueries.Instructions(language, external: false)),
              new(ChatRole.User, await ProfileTranslationPromptQueries.ContentAsync(language, db, ct))],
             new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0.3f, MaxOutputTokens = 32_768 },
-            Operation, db, Decode, "The AI's answer couldn't be read. Try again.", ct);
+            Operation, db, JsonReply.TryDecode<Reply>, "The AI's answer couldn't be read. Try again.", ct);
         return call.Value is { } reply
             ? new(ProfileTranslationStatus.Succeeded, await TargetsAsync(reply, language, db, ct), null)
             : new(ProfileTranslationStatus.Failed, null, call.Error);
-    }
-
-    private static Reply? Decode(string text)
-    {
-        try { return JsonSerializer.Deserialize<Reply>(text, JsonSerializerOptions.Web); }
-        catch (JsonException) { return null; }
     }
 
     // Keeps only missing or stale items applyProfileTranslation would accept.

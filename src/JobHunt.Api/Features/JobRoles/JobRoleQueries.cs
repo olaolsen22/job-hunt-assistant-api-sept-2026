@@ -14,9 +14,7 @@ public static class JobRoleQueries
     [UseSorting]
     public static IQueryable<JobRole> GetJobRoles(string? search, AppDbContext db, ISortingContext sorting)
     {
-        // Default order only without a client `order`, which Hot Chocolate adds as ThenBy.
-        sorting.Handled(false);
-        IQueryable<JobRole> jobRoles = sorting.IsDefined ? db.JobRoles : db.JobRoles.OrderBy(r => r.Name);
+        var jobRoles = sorting.WithDefaultOrder(db.JobRoles, q => q.OrderBy(r => r.Name));
         if (search is null) return jobRoles;
         var name = Names.Normalize(search);
         return jobRoles.Where(r => r.NormalizedName.Contains(name));

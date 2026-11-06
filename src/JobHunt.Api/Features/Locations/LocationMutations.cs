@@ -35,7 +35,7 @@ public static class LocationLookup
         if (!IsCountryCode(countryCode))
             throw new InvalidLocationException($"\"{input.CountryCode}\" is not an ISO 3166 country code, e.g. NO.");
 
-        var city = string.IsNullOrWhiteSpace(input.City) ? null : input.City.Trim();
+        var city = Inputs.Clean(input.City);
         var normalizedCity = city is null ? "" : Names.Normalize(city);
         return db.Locations.Local.FirstOrDefault(l => l.UserId == db.CurrentUserId
                 && l.CountryCode == countryCode && l.NormalizedCity == normalizedCity)

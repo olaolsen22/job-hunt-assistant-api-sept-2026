@@ -89,17 +89,13 @@ public static class TailoredCvDraftMutations
     public static async Task<Document> GenerateCvDocumentAsync(
         int listingId, AppDbContext db, TimeProvider time, CancellationToken ct)
     {
-        var listing = await db.Listings
-            .Where(l => l.Id == listingId)
-            .Select(l => new { Company = l.Company.Name, JobRole = l.JobRole.Name })
-            .FirstOrDefaultAsync(ct)
-            ?? throw new ListingNotFoundException(listingId);
+        var names = await DocumentMutations.ListingNamesAsync(listingId, db, ct);
         var draft = await db.TailoredCvDrafts.AsNoTracking().FirstOrDefaultAsync(d => d.ListingId == listingId, ct)
             ?? throw new TailoredCvDraftNotFoundException(listingId);
 
         var bytes = await RenderPdfAsync(draft.Content, db, ct);
-        var document = DocumentMutations.AddGenerated(db, listingId, listing.Company, listing.JobRole,
-            DocumentKind.Cv, DocumentOrigin.Tailored, bytes, time.GetUtcNow().UtcDateTime);
+        var document = DocumentMutations.AddFile(db, listingId, names, DocumentKind.Cv, DocumentOrigin.Tailored, bytes,
+            time.GetUtcNow().UtcDateTime);
         await db.SaveChangesAsync(ct);
         return document;
     }

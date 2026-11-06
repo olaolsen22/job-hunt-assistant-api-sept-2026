@@ -14,11 +14,7 @@ public static class LocationQueries
     [UseSorting]
     public static IQueryable<Location> GetLocations(string? search, AppDbContext db, ISortingContext sorting)
     {
-        // Default order only without a client `order`, which Hot Chocolate adds as ThenBy.
-        sorting.Handled(false);
-        IQueryable<Location> locations = sorting.IsDefined
-            ? db.Locations
-            : db.Locations.OrderBy(l => l.CountryCode).ThenBy(l => l.City);
+        var locations = sorting.WithDefaultOrder(db.Locations, q => q.OrderBy(l => l.CountryCode).ThenBy(l => l.City));
         if (search is null) return locations;
         var city = Names.Normalize(search);
         return locations.Where(l => l.NormalizedCity.Contains(city));

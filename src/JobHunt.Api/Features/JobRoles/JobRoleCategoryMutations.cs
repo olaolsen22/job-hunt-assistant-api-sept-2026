@@ -63,8 +63,8 @@ public static class JobRoleCategoryMutations
     private static string ValidateName(string name)
     {
         name = name.Trim();
-        if (name.Length is 0 or > 100)
-            throw new InvalidJobRoleCategoryException("Category names must contain 1 to 100 characters.");
+        if (name.Length is 0 or > JobRoleCategory.MaxNameLength)
+            throw new InvalidJobRoleCategoryException($"Category names must contain 1 to {JobRoleCategory.MaxNameLength} characters.");
         return name;
     }
 }

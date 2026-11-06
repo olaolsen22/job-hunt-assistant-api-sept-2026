@@ -14,9 +14,7 @@ public static class SkillQueries
     [UseSorting]
     public static IQueryable<Skill> GetSkills(string? search, AppDbContext db, ISortingContext sorting)
     {
-        // Default order only without a client `order`, which Hot Chocolate adds as ThenBy.
-        sorting.Handled(false);
-        IQueryable<Skill> skills = sorting.IsDefined ? db.Skills : db.Skills.OrderBy(s => s.Name);
+        var skills = sorting.WithDefaultOrder(db.Skills, q => q.OrderBy(s => s.Name));
         if (search is null) return skills;
         var name = Names.Normalize(search);
         return skills.Where(s => s.NormalizedName.Contains(name));

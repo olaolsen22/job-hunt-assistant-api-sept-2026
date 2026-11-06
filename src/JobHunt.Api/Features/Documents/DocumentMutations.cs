@@ -13,6 +13,9 @@ public class DocumentNotFoundException(int id) : Exception($"Document {id} was n
 
 public class DocumentSentException(int id) : Exception($"Document {id} has been sent and can't be deleted. Undo the application first.");
 
+// What a generated or uploaded file is named after.
+internal record ListingNames(string Company, string JobRole);
+
 [MutationType]
 public static partial class DocumentMutations
 {
@@ -23,11 +26,7 @@ public static partial class DocumentMutations
     public static async Task<Document> UploadDocumentAsync(
         int listingId, DocumentKind kind, IFile file, AppDbContext db, TimeProvider time, CancellationToken ct)
     {
-        var listing = await db.Listings
-            .Where(l => l.Id == listingId)
-            .Select(l => new { Company = l.Company.Name, JobRole = l.JobRole.Name })
-            .FirstOrDefaultAsync(ct)
-            ?? throw new ListingNotFoundException(listingId);
+        var names = await ListingNamesAsync(listingId, db, ct);
 
         // Length can be unknown up front, so check the bytes actually read too.
         if (file.Length > MaxBytes)
@@ -41,36 +40,30 @@ public static partial class DocumentMutations
         if (!bytes.AsSpan().StartsWith("%PDF-"u8))
             throw new InvalidDocumentException("Only PDF files are allowed.");
 
-        var now = time.GetUtcNow().UtcDateTime;
-        var document = new Document
-        {
-            UserId = db.CurrentUserId!,
-            ListingId = listingId,
-            Kind = kind,
-            FileName = FileName(listing.Company, listing.JobRole, kind, now),
-            OriginalFileName = file.Name,
-            SizeBytes = bytes.Length,
-            ContentHash = Convert.ToHexStringLower(SHA256.HashData(bytes)),
-            CreatedAt = now,
-            Origin = DocumentOrigin.Uploaded,
-        };
-        db.Add(new DocumentContent { Document = document, Bytes = bytes });
+        var document = AddFile(db, listingId, names, kind, DocumentOrigin.Uploaded, bytes, time.GetUtcNow().UtcDateTime, file.Name);
         await db.SaveChangesAsync(ct);
         return document;
     }
 
-    // A PDF the app rendered for a listing: named like an upload, unsent. The caller saves.
-    internal static Document AddGenerated(AppDbContext db, int listingId, string company, string jobRole,
-        DocumentKind kind, DocumentOrigin origin, byte[] bytes, DateTime now, int? baseCvVersionId = null)
+    internal static async Task<ListingNames> ListingNamesAsync(int listingId, AppDbContext db, CancellationToken ct) =>
+        await db.Listings
+            .Where(l => l.Id == listingId)
+            .Select(l => new ListingNames(l.Company.Name, l.JobRole.Name))
+            .FirstOrDefaultAsync(ct)
+            ?? throw new ListingNotFoundException(listingId);
+
+    // An uploaded or rendered PDF, unsent. The caller saves.
+    internal static Document AddFile(AppDbContext db, int listingId, ListingNames names, DocumentKind kind,
+        DocumentOrigin origin, byte[] bytes, DateTime now, string? originalFileName = null, int? baseCvVersionId = null)
     {
-        var fileName = FileName(company, jobRole, kind, now);
+        var fileName = FileName(names.Company, names.JobRole, kind, now);
         var document = new Document
         {
             UserId = db.CurrentUserId!,
             ListingId = listingId,
             Kind = kind,
             FileName = fileName,
-            OriginalFileName = fileName,
+            OriginalFileName = originalFileName ?? fileName,
             SizeBytes = bytes.Length,
             ContentHash = Convert.ToHexStringLower(SHA256.HashData(bytes)),
             CreatedAt = now,

@@ -52,9 +52,7 @@ public static class ProfileReferenceMutations
         var reference = references.Find(r => r.Id == id) ?? throw new ProfileEntryNotFoundException("Reference", id);
         if (position < 0 || position >= references.Count)
             throw new InvalidProfileException($"Position must be 0–{references.Count - 1}.");
-        references.Remove(reference);
-        references.Insert(position, reference);
-        Renumber(references);
+        Positions.Move(references, reference, position, (r, i) => r.Position = i);
         await db.SaveChangesAsync(ct);
         return references;
     }
@@ -66,7 +64,7 @@ public static class ProfileReferenceMutations
         var references = await SortedAsync(db, ct);
         var reference = references.Find(r => r.Id == id) ?? throw new ProfileEntryNotFoundException("Reference", id);
         references.Remove(reference);
-        Renumber(references);
+        Positions.Renumber(references, (r, i) => r.Position = i);
         db.ProfileReferences.Remove(reference);
         await db.SaveChangesAsync(ct);
         return id;
@@ -87,10 +85,4 @@ public static class ProfileReferenceMutations
     // The user filter limits this to the caller's references, so a foreign id is "not found".
     private static Task<List<ProfileReference>> SortedAsync(AppDbContext db, CancellationToken ct) =>
         db.ProfileReferences.OrderBy(r => r.Position).ThenBy(r => r.Id).ToListAsync(ct);
-
-    private static void Renumber(List<ProfileReference> ordered)
-    {
-        for (var i = 0; i < ordered.Count; i++)
-            ordered[i].Position = i;
-    }
 }

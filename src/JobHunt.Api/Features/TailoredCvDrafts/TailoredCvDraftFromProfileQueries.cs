@@ -25,7 +25,7 @@ public static class TailoredCvDraftFromProfileQueries
 
         List<TailoredCvBullet> Bullets(IEnumerable<ProfileBullet> bullets) =>
             [.. bullets.Select(b => new TailoredCvBullet(TailoredCvLanguageText.Bullet(b, target), b.Id))];
-        string? Place(Locations.Location? location) =>
+        string? Place(Location? location) =>
             location is null ? null : TailoredCvDraftValidation.FormatPlace(location, target);
 
         return new TailoredCvContent(

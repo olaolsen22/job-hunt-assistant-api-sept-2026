@@ -13,9 +13,7 @@ public static class ContactQueries
     [UseSorting]
     public static IQueryable<Contact> GetContacts(string? search, AppDbContext db, ISortingContext sorting)
     {
-        // Same as companies: a default order only without a client `order`.
-        sorting.Handled(false);
-        IQueryable<Contact> contacts = sorting.IsDefined ? db.Contacts : db.Contacts.OrderBy(c => c.Name);
+        var contacts = sorting.WithDefaultOrder(db.Contacts, q => q.OrderBy(c => c.Name));
         if (search is null) return contacts;
         var name = Names.Normalize(search);
         return contacts.Where(c => c.NormalizedName.Contains(name));

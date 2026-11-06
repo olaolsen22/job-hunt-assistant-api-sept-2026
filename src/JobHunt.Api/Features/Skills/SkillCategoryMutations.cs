@@ -66,9 +66,7 @@ public static class SkillCategoryMutations
         var category = categories.Find(c => c.Id == id) ?? throw new SkillCategoryNotFoundException(id);
         if (position < 0 || position >= categories.Count)
             throw new InvalidSkillCategoryException($"Position must be 0–{categories.Count - 1}.");
-        categories.Remove(category);
-        categories.Insert(position, category);
-        for (var i = 0; i < categories.Count; i++) categories[i].SortOrder = i;
+        Positions.Move(categories, category, position, (c, i) => c.SortOrder = i);
         await db.SaveChangesAsync(ct);
         return categories;
     }

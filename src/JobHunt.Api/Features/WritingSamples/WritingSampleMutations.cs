@@ -15,11 +15,8 @@ public static class WritingSampleQueries
     [UseProjection]
     [UseFiltering]
     [UseSorting]
-    public static IQueryable<WritingSample> GetWritingSamples(AppDbContext db, ISortingContext sorting)
-    {
-        sorting.Handled(false);
-        return sorting.IsDefined ? db.WritingSamples : db.WritingSamples.OrderByDescending(s => s.UpdatedAt);
-    }
+    public static IQueryable<WritingSample> GetWritingSamples(AppDbContext db, ISortingContext sorting) =>
+        sorting.WithDefaultOrder(db.WritingSamples, q => q.OrderByDescending(s => s.UpdatedAt));
 }
 
 [MutationType]

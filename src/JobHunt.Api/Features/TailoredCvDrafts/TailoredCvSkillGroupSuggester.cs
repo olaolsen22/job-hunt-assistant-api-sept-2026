@@ -1,4 +1,3 @@
-using System.Text.Json;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.AiSafeguards;
 using JobHunt.Api.Features.Listings;
@@ -57,7 +56,7 @@ public class TailoredCvSkillGroupSuggester(LlmExecution execution, LlmModelResol
         var call = await execution.RunJsonAsync(resolved,
             [new(ChatRole.System, Instructions(language, external: false)), new(ChatRole.User, SkillList(names))],
             new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0, MaxOutputTokens = 4096 },
-            Operation, db, Decode, "The AI's answer couldn't be read. Try again.", ct);
+            Operation, db, JsonReply.TryDecode<Plan>, "The AI's answer couldn't be read. Try again.", ct);
         if (call.Value is not { } plan) return new(TailoredCvSkillGroupStatus.Failed, null, call.Error);
 
         // Only the sent skills, once each, in the draft's order; the label keeps the AI's first spelling so the
@@ -73,12 +72,6 @@ public class TailoredCvSkillGroupSuggester(LlmExecution execution, LlmModelResol
         return new(TailoredCvSkillGroupStatus.Succeeded,
             [.. names.Distinct(StringComparer.OrdinalIgnoreCase).Where(byName.ContainsKey).Select(n => new TailoredCvSkillGroup(n, byName[n]))],
             null);
-    }
-
-    private static Plan? Decode(string text)
-    {
-        try { return JsonSerializer.Deserialize<Plan>(text, JsonSerializerOptions.Web); }
-        catch (JsonException) { return null; }
     }
 
     public static string Instructions(Language language, bool external) => $$"""

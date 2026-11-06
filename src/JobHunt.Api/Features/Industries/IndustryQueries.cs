@@ -14,9 +14,7 @@ public static class IndustryQueries
     [UseSorting]
     public static IQueryable<Industry> GetIndustries(string? search, AppDbContext db, ISortingContext sorting)
     {
-        // Default order only without a client `order`, which Hot Chocolate adds as ThenBy.
-        sorting.Handled(false);
-        IQueryable<Industry> industries = sorting.IsDefined ? db.Industries : db.Industries.OrderBy(i => i.Name);
+        var industries = sorting.WithDefaultOrder(db.Industries, q => q.OrderBy(i => i.Name));
         if (search is null) return industries;
         var name = Names.Normalize(search);
         return industries.Where(i => i.NormalizedName.Contains(name));

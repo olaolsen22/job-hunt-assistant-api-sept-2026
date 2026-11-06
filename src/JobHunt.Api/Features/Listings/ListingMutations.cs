@@ -382,14 +382,8 @@ public static class ListingMutations
         if (input.Locations.GroupBy(LocationLookup.Key).Any(g => g.Count() > 1))
             throw new InvalidListingException("A location is listed twice.");
 
-        foreach (var contact in input.Contacts ?? [])
-        {
-            try { ContactMutations.Validate(contact); }
-            catch (InvalidContactException e) { throw new InvalidListingException(e.Message); }
-        }
-        var duplicateContact = (input.Contacts ?? []).GroupBy(c => Names.Normalize(c.Name)).FirstOrDefault(g => g.Count() > 1);
-        if (duplicateContact is not null)
-            throw new InvalidListingException($"Contact \"{duplicateContact.First().Name.Trim()}\" is listed twice.");
+        if (ContactMutations.ProblemIn(input.Contacts ?? []) is { } contactProblem)
+            throw new InvalidListingException(contactProblem);
     }
 
     private static void CheckNameLength(string? value, string field)

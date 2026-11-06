@@ -119,17 +119,13 @@ public static class BaseCvMutations
     public static async Task<Document> GenerateBaseCvDocumentAsync(int listingId, int baseCvVersionId,
         AppDbContext db, TimeProvider time, CancellationToken ct)
     {
-        var listing = await db.Listings
-            .Where(l => l.Id == listingId)
-            .Select(l => new { Company = l.Company.Name, JobRole = l.JobRole.Name })
-            .FirstOrDefaultAsync(ct)
-            ?? throw new ListingNotFoundException(listingId);
+        var names = await DocumentMutations.ListingNamesAsync(listingId, db, ct);
         var version = await db.BaseCvVersions.AsNoTracking().FirstOrDefaultAsync(v => v.Id == baseCvVersionId, ct)
             ?? throw new BaseCvVersionNotFoundException(baseCvVersionId);
 
         var bytes = await TailoredCvDraftMutations.RenderPdfAsync(version.Content, db, ct);
-        var document = DocumentMutations.AddGenerated(db, listingId, listing.Company, listing.JobRole,
-            DocumentKind.Cv, DocumentOrigin.BaseCv, bytes, time.GetUtcNow().UtcDateTime, version.Id);
+        var document = DocumentMutations.AddFile(db, listingId, names, DocumentKind.Cv, DocumentOrigin.BaseCv, bytes,
+            time.GetUtcNow().UtcDateTime, baseCvVersionId: version.Id);
         await db.SaveChangesAsync(ct);
         return document;
     }

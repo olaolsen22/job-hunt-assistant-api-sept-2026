@@ -1,4 +1,3 @@
-using System.Net.Http.Headers;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Documents;
 using JobHunt.Api.Features.Listings;
@@ -32,9 +31,6 @@ public static class BaseCvEndpoints
 
         var language = version.Language == Language.Norwegian ? "NO" : "EN";
         var fileName = $"{DocumentMutations.Slug(version.BaseCv.Name)}_{language}_v{version.Number}.pdf";
-        context.Response.Headers.ContentDisposition =
-            new ContentDispositionHeaderValue("inline") { FileNameStar = fileName }.ToString();
-        context.Response.Headers.XContentTypeOptions = "nosniff";
-        return TypedResults.File(bytes, "application/pdf");
+        return DocumentEndpoints.InlinePdf(context, bytes, fileName);
     }
 }

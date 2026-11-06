@@ -61,7 +61,7 @@ public static class InterviewMutations
 
     private static void Apply(Interview interview, DateTimeOffset scheduledAt, string? title, string? notes, DateTime now)
     {
-        interview.Title = string.IsNullOrWhiteSpace(title) ? null : title.Trim();
+        interview.Title = Inputs.Clean(title);
         interview.Notes = Inputs.Clean(notes);
         if (interview.Title?.Length > MaxTitleLength)
             throw new InvalidInterviewException($"The title is longer than {MaxTitleLength} characters.");

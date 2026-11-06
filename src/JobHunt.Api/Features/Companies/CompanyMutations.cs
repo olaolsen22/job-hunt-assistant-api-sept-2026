@@ -3,9 +3,7 @@ using JobHunt.Api.Features.Contacts;
 using JobHunt.Api.Features.Industries;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Skills;
-// Hot Chocolate also has a global Location type (a position in a query document).
 using JobHunt.Api.Features.Locations;
-using Location = JobHunt.Api.Features.Locations.Location;
 using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.Companies;
@@ -220,14 +218,8 @@ public static class CompanyMutations
         var contacts = details.Contacts ?? [];
         if (contacts.Count > MaxContacts)
             throw new InvalidCompanyException($"A company can bring at most {MaxContacts} contacts at a time.");
-        foreach (var contact in contacts)
-        {
-            try { ContactMutations.Validate(contact); }
-            catch (InvalidContactException e) { throw new InvalidCompanyException(e.Message); }
-        }
-        var repeated = contacts.GroupBy(c => Names.Normalize(c.Name)).FirstOrDefault(g => g.Count() > 1);
-        if (repeated is not null)
-            throw new InvalidCompanyException($"Contact \"{repeated.First().Name.Trim()}\" is listed twice.");
+        if (ContactMutations.ProblemIn(contacts) is { } contactProblem)
+            throw new InvalidCompanyException(contactProblem);
 
         return details with
         {

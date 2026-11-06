@@ -12,8 +12,7 @@ public static class JobRoleCategoryQueries
     [UseSorting]
     public static IQueryable<JobRoleCategory> GetJobRoleCategories(string? search, AppDbContext db, ISortingContext sorting)
     {
-        sorting.Handled(false);
-        IQueryable<JobRoleCategory> query = sorting.IsDefined ? db.JobRoleCategories : db.JobRoleCategories.OrderBy(c => c.Name);
+        var query = sorting.WithDefaultOrder(db.JobRoleCategories, q => q.OrderBy(c => c.Name));
         if (string.IsNullOrWhiteSpace(search)) return query;
         var name = Names.Normalize(search);
         return query.Where(c => c.NormalizedName.Contains(name));
