@@ -6,6 +6,7 @@ using JobHunt.Api.Features.LlmModels;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Parsing;
 using JobHunt.Api.Features.TailoredCvDrafts;
+using JobHunt.Api.Features.Prompts;
 using JobHunt.Api.Llm;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
@@ -87,11 +88,11 @@ public static class ProfileSummaryPromptQueries
         - Use only facts in the profile. Do not add skills, seniority, years, achievements, or qualifications it
           does not support. Count years only from the experience dates.
         - If the profile has a summary, keep what still holds and improve it rather than starting over.
-        - {{TailoredCvAnalyzer.SeniorityGuidance.ReplaceLineEndings(" ")}}
-        - {{TailoredCvAnalyzer.SpecializationGuidance.ReplaceLineEndings(" ")}}
-        - {{TailoredCvAnalyzer.HonestClaimsGuidance.ReplaceLineEndings(" ")}}
+        - {{CvGuidance.Seniority.ReplaceLineEndings(" ")}}
+        - {{CvGuidance.Specialization.ReplaceLineEndings(" ")}}
+        - {{CvGuidance.HonestClaims.ReplaceLineEndings(" ")}}
         - Favour concrete evidence over a list of technology names.
-        - {{TailoredCvAnalyzer.VoiceGuidance.ReplaceLineEndings(" ")}}
+        - {{CvGuidance.Voice.ReplaceLineEndings(" ")}}
         - 3 short sentences of plain text (no Markdown, headings, or lists), at most {{MaxLength}} characters
           including spaces, so it fits three lines.
         - Write in {{TailoredCvLanguageText.Name(language)}}.

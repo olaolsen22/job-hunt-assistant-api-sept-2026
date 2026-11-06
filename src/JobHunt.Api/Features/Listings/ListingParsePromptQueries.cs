@@ -1,7 +1,7 @@
-using System.Text.RegularExpressions;
 using System.Text.Json;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Parsing;
+using JobHunt.Api.Features.Prompts;
 using JobHunt.Api.Features.Skills;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,7 +11,7 @@ namespace JobHunt.Api.Features.Listings;
 public record ListingParsePrompt(int Version, string Instructions);
 
 [QueryType]
-public static partial class ListingParsePromptQueries
+public static class ListingParsePromptQueries
 {
     // Bump whenever the prompt or output shape changes.
     public const int Version = 18;
@@ -19,17 +19,14 @@ public static partial class ListingParsePromptQueries
     // Separate from Version: the quick prompt changes on its own schedule.
     public const int QuickVersion = 8;
 
-    // Keeps the prompt short (and cheap on the API-key path) for users with many roles/skills.
-    private const int MaxNames = 100;
-
     public static Task<ListingParsePrompt> GetListingParsePromptAsync(
         AppDbContext db, TimeProvider time, CancellationToken ct) => BuildFullAsync(db, time, external: true, ct);
 
     internal static async Task<ListingParsePrompt> BuildFullAsync(
         AppDbContext db, TimeProvider time, bool external, CancellationToken ct)
     {
-        var jobRoles = await db.JobRoles.OrderBy(r => r.Name).Select(r => r.Name).Take(MaxNames).ToListAsync(ct);
-        var skills = await db.Skills.OrderBy(s => s.Name).Select(s => s.Name).Take(MaxNames).ToListAsync(ct);
+        var jobRoles = await db.JobRoles.OrderBy(r => r.Name).Select(r => r.Name).Take(PromptText.MaxNames).ToListAsync(ct);
+        var skills = await db.Skills.OrderBy(s => s.Name).Select(s => s.Name).Take(PromptText.MaxNames).ToListAsync(ct);
         var categoryInstructions = await CategoryInstructionsAsync(db, ct);
         var skillCategoryGuidance = await SkillCategoryPrompt.GuidanceAsync(db, "  categoryName", ct);
         var today = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
@@ -49,18 +46,18 @@ public static partial class ListingParsePromptQueries
               "companyName": string,
               "jobRoleName": string,        // core role in English, no seniority or tech: "Backend Developer", "Warehouse Worker"
               "jobRoleCategoryName": string | null,
-              "seniority": {{Values<Seniority>()}} | null,
-              "employmentType": {{Values<EmploymentType>()}} | null,
-              "schedule": {{Values<Schedule>()}} | null,
+              "seniority": {{PromptText.Values<Seniority>()}} | null,
+              "employmentType": {{PromptText.Values<EmploymentType>()}} | null,
+              "schedule": {{PromptText.Values<Schedule>()}} | null,
               "positionPercent": 1-100 | null,
-              "workMode": {{Values<WorkMode>()}} | null,
+              "workMode": {{PromptText.Values<WorkMode>()}} | null,
               "description": string,        // key points translated to English, format under Rules
               "postedOn": "YYYY-MM-DD" | null,
-              "deadlineType": {{Values<DeadlineType>()}},
+              "deadlineType": {{PromptText.Values<DeadlineType>()}},
               "deadlineOn": "YYYY-MM-DD" | null,
-              "postingLanguage": {{Values<Language>()}} | null,
+              "postingLanguage": {{PromptText.Values<Language>()}} | null,
               "skills":    [{ "name": string, "level": 1-5, "minYears": number | null, "isRequired": boolean, "categoryName": string | null }],
-              "languages": [{ "language": {{Values<Language>()}}, "level": {{Values<CefrLevel>()}} | null, "isRequired": boolean }],
+              "languages": [{ "language": {{PromptText.Values<Language>()}}, "level": {{PromptText.Values<CefrLevel>()}} | null, "isRequired": boolean }],
               "locations": [{ "city": string | null, "countryCode": string }],  // ISO 3166-1 alpha-2, e.g. "NO"
               "contacts":  [{ "name": string, "title": string | null, "email": string | null, "phone": string | null, "url": string | null }],
               "trainingProgram": {
@@ -68,7 +65,7 @@ public static partial class ListingParsePromptQueries
                 "startsOn": "YYYY-MM-DD" | null,
                 "endsOn": "YYYY-MM-DD" | null,
                 "isPaid": boolean | null,
-                "jobOffer": {{Values<JobOfferType>()}}
+                "jobOffer": {{PromptText.Values<JobOfferType>()}}
               } | null
             }
             Infer from clear signals in the ad; use null only when it gives nothing to go on.
@@ -78,8 +75,8 @@ public static partial class ListingParsePromptQueries
             Reuse an existing name when it means the same thing, even if the ad words it differently.
             Otherwise use the most common established name: the official product or certification name
             ("PostgreSQL", not "Postgres"; "Kubernetes", not "k8s"), or the standard English job title for roles.
-            Existing job roles: {{NameList(jobRoles)}}
-            Existing skills: {{NameList(skills)}}
+            Existing job roles: {{PromptText.NameList(jobRoles)}}
+            Existing skills: {{PromptText.NameList(skills)}}
 
             {{categoryInstructions}}
 
@@ -87,12 +84,9 @@ public static partial class ListingParsePromptQueries
             ("internationalization", "optimize", "color"), even when the ad uses British spelling.
 
             # Rules
-            title: a short, direct job title in natural English, based on the "Stillingstittel"/"Job title" field when the
-              page has one, otherwise the ad's heading. Translate it if the ad isn't in English. Keep seniority and
-              specialty; drop company, location, workload/employment type, slogans and duplicate bilingual variants.
-              "Senior systemutvikler .NET – Oslo, 100 % fast" → "Senior .NET Developer".
+            {{TitleRule}}
             {{KindRule}}
-            companyName: as the company calls itself, without legal suffixes (AS, ASA, AB, GmbH, Ltd, Inc).
+            {{CompanyNameRule}}
             seniority: a word in the title or text wins (Senior, Junior, Lead, "Trainee" = JUNIOR). Otherwise infer from the experience asked for:
               0–1 years or graduate → JUNIOR, 2–4 years → MID, 5+ years or "erfaren"/"experienced" → SENIOR,
               leading people or a team → LEAD.
@@ -105,11 +99,8 @@ public static partial class ListingParsePromptQueries
               "Deltid"/"part time" without a number → null. Must agree with schedule: 100 → FULL_TIME, under 100 → PART_TIME.
             workMode: from explicit wording only. "Hjemmekontor"/"hybrid" → HYBRID, "fjernarbeid"/"fully remote" → REMOTE,
               explicitly on site → ONSITE. Flexible hours alone → null.
-            postedOn: the publication date only. "Sist endret"/"last modified"/"oppdatert" is not postedOn.
-            deadline: a date → DATE + deadlineOn (dates without a year: the next such date after today).
-              "i dag"/"today" → DATE with today's date, "i morgen"/"tomorrow" → DATE with tomorrow's date.
-              "Snarest"/"ASAP"/"straks"/"Løpende"/"fortløpende"/"rolling" → ASAP, never a date: "snarest" means "as soon
-              as possible", not today. None given → UNSPECIFIED. deadlineOn only with DATE.
+            {{PostedOnRule}}
+            {{DeadlineRule}}
 
             description: always in English; translate if the ad is in another language.
               Plain text (no Markdown), max 1000 characters, not counting a requirements list kept as below.
@@ -146,13 +137,9 @@ public static partial class ListingParsePromptQueries
               isRequired: false for "fordel", "et pluss", "ønskelig", "nice to have", "bonus"; otherwise true.
             {{skillCategoryGuidance}}
 
-            languages: requirements for the candidate, not the ad's language.
-              "flytende"/"fluent"/"excellent" → C1. "morsmål"/"native" → C2. "god muntlig og skriftlig"/"good" → B2.
-              "skandinavisk språk" → NORWEGIAN. No level stated → null.
-              If the ad states no language requirement, add its postingLanguage with isRequired true and level null.
+            {{LanguagesRule}}
 
-            locations: every city the job can be based in. Remote limited to a country → { "city": null, "countryCode": "NO" }.
-              Remote anywhere → []. Use the city name as written locally ("Tromsø", not "Tromso").
+            {{LocationsRule}}
 
             contacts: people the ad names as contacts for the job ("Kontaktperson", "Spørsmål om stillingen?", "Contact").
               Copy name, title, email, phone and url exactly as written; null for anything not given, never invented.
@@ -180,7 +167,7 @@ public static partial class ListingParsePromptQueries
     internal static async Task<ListingParsePrompt> BuildQuickAsync(
         AppDbContext db, TimeProvider time, bool external, CancellationToken ct)
     {
-        var jobRoles = await db.JobRoles.OrderBy(r => r.Name).Select(r => r.Name).Take(MaxNames).ToListAsync(ct);
+        var jobRoles = await db.JobRoles.OrderBy(r => r.Name).Select(r => r.Name).Take(PromptText.MaxNames).ToListAsync(ct);
         var categoryInstructions = await CategoryInstructionsAsync(db, ct);
         var today = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
 
@@ -202,10 +189,10 @@ public static partial class ListingParsePromptQueries
               "jobRoleCategoryName": string | null,
               "url": string | null,         // the ad's own link if the text has one; never invent one
               "postedOn": "YYYY-MM-DD" | null,
-              "deadlineType": {{Values<DeadlineType>()}},
+              "deadlineType": {{PromptText.Values<DeadlineType>()}},
               "deadlineOn": "YYYY-MM-DD" | null,
-              "postingLanguage": {{Values<Language>()}} | null,
-              "languages": [{ "language": {{Values<Language>()}}, "level": {{Values<CefrLevel>()}} | null, "isRequired": boolean }],
+              "postingLanguage": {{PromptText.Values<Language>()}} | null,
+              "languages": [{ "language": {{PromptText.Values<Language>()}}, "level": {{PromptText.Values<CefrLevel>()}} | null, "isRequired": boolean }],
               "locations": [{ "city": string | null, "countryCode": string }]   // ISO 3166-1 alpha-2, e.g. "NO"
             }]
             Infer from clear signals in the text; use null only when it gives nothing to go on.
@@ -214,30 +201,55 @@ public static partial class ListingParsePromptQueries
             {{categoryInstructions}}
 
             # Rules
-            title: a short, direct job title in natural English, based on the "Stillingstittel"/"Job title" field when the
-              page has one, otherwise the ad's heading. Translate it if the ad isn't in English. Keep seniority and
-              specialty; drop company, location, workload/employment type, slogans and duplicate bilingual variants.
-              "Senior systemutvikler .NET – Oslo, 100 % fast" → "Senior .NET Developer".
+            {{TitleRule}}
             {{KindRule}}
             jobRoleName: reuse an existing role when it means the same thing, otherwise the standard English job title.
-              Existing job roles: {{NameList(jobRoles)}}
-            companyName: as the company calls itself, without legal suffixes (AS, ASA, AB, GmbH, Ltd, Inc).
-            postedOn: the publication date only. "Sist endret"/"last modified"/"oppdatert" is not postedOn.
-            deadline: a date → DATE + deadlineOn (dates without a year: the next such date after today).
-              "i dag"/"today" → DATE with today's date, "i morgen"/"tomorrow" → DATE with tomorrow's date.
-              "Snarest"/"ASAP"/"straks"/"Løpende"/"fortløpende"/"rolling" → ASAP, never a date: "snarest" means "as soon
-              as possible", not today. None given → UNSPECIFIED. deadlineOn only with DATE.
+              Existing job roles: {{PromptText.NameList(jobRoles)}}
+            {{CompanyNameRule}}
+            {{PostedOnRule}}
+            {{DeadlineRule}}
             postingLanguage: the language the ad itself is written in.
-            languages: requirements for the candidate, not the ad's language.
-              "flytende"/"fluent"/"excellent" → C1. "morsmål"/"native" → C2. "god muntlig og skriftlig"/"good" → B2.
-              "skandinavisk språk" → NORWEGIAN. No level stated → null.
-              If the ad states no language requirement, add its postingLanguage with isRequired true and level null.
-            locations: every city the job can be based in. Remote limited to a country → { "city": null, "countryCode": "NO" }.
-              Remote anywhere → []. Use the city name as written locally ("Tromsø", not "Tromso").
+            {{LanguagesRule}}
+            {{LocationsRule}}
             """;
 
         return new ListingParsePrompt(QuickVersion, instructions);
     }
+
+    // Rules both listing prompts share, word for word.
+    private const string TitleRule = """
+        title: a short, direct job title in natural English, based on the "Stillingstittel"/"Job title" field when the
+          page has one, otherwise the ad's heading. Translate it if the ad isn't in English. Keep seniority and
+          specialty; drop company, location, workload/employment type, slogans and duplicate bilingual variants.
+          "Senior systemutvikler .NET – Oslo, 100 % fast" → "Senior .NET Developer".
+        """;
+
+    private const string CompanyNameRule = """
+        companyName: as the company calls itself, without legal suffixes (AS, ASA, AB, GmbH, Ltd, Inc).
+        """;
+
+    private const string PostedOnRule = """
+        postedOn: the publication date only. "Sist endret"/"last modified"/"oppdatert" is not postedOn.
+        """;
+
+    private const string DeadlineRule = """
+        deadline: a date → DATE + deadlineOn (dates without a year: the next such date after today).
+          "i dag"/"today" → DATE with today's date, "i morgen"/"tomorrow" → DATE with tomorrow's date.
+          "Snarest"/"ASAP"/"straks"/"Løpende"/"fortløpende"/"rolling" → ASAP, never a date: "snarest" means "as soon
+          as possible", not today. None given → UNSPECIFIED. deadlineOn only with DATE.
+        """;
+
+    private const string LanguagesRule = """
+        languages: requirements for the candidate, not the ad's language.
+          "flytende"/"fluent"/"excellent" → C1. "morsmål"/"native" → C2. "god muntlig og skriftlig"/"good" → B2.
+          "skandinavisk språk" → NORWEGIAN. No level stated → null.
+          If the ad states no language requirement, add its postingLanguage with isRequired true and level null.
+        """;
+
+    private const string LocationsRule = """
+        locations: every city the job can be based in. Remote limited to a country → { "city": null, "countryCode": "NO" }.
+          Remote anywhere → []. Use the city name as written locally ("Tromsø", not "Tromso").
+        """;
 
     // Only external chats can browse. Boards often show a summary; the employer's page has the full requirements.
     private const string ExternalSourcesRule = """
@@ -274,13 +286,4 @@ public static partial class ListingParsePromptQueries
               only if IT exists. When uncertain or no existing category fits, return null. Never invent category names.
             """;
     }
-
-    // Built from the C# enums, using Hot Chocolate's naming (FixedTerm → FIXED_TERM), so values can't drift.
-    internal static string Values<TEnum>() where TEnum : struct, Enum =>
-        string.Join(" | ", Enum.GetNames<TEnum>().Select(n => $"\"{WordBoundary().Replace(n, "_").ToUpperInvariant()}\""));
-
-    private static string NameList(List<string> names) => names.Count == 0 ? "(none yet)" : string.Join(", ", names);
-
-    [GeneratedRegex("(?<=[a-z0-9])(?=[A-Z])")]
-    private static partial Regex WordBoundary();
 }

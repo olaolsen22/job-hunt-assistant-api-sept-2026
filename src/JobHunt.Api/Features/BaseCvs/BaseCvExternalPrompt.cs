@@ -3,6 +3,7 @@ using JobHunt.Api.Data;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Profiles;
 using JobHunt.Api.Features.TailoredCvDrafts;
+using JobHunt.Api.Features.Prompts;
 
 namespace JobHunt.Api.Features.BaseCvs;
 
@@ -29,7 +30,7 @@ public static class BaseCvExternalPromptQueries
         var profileJson = await TailoredCvExternalPromptQueries.ProfileJsonAsync(profile, language, db, ct);
         if (profileJson.Length > TailoredCvAnalyzer.MaxContextLength)
             throw new GraphQLException($"Prompt context must be at most {TailoredCvAnalyzer.MaxContextLength} characters.");
-        var targetJson = JsonSerializer.Serialize(new { Role = role, Notes = cleanNotes }, TailoredCvExternalPromptQueries.JsonOptions);
+        var targetJson = JsonSerializer.Serialize(new { Role = role, Notes = cleanNotes }, TailoredCvJson.Options);
 
         var templateValue = template ?? TailoredCvTemplate.Detailed;
         var concise = templateValue == TailoredCvTemplate.Concise;
@@ -41,13 +42,13 @@ public static class BaseCvExternalPromptQueries
               """
             : "Relevant to the target: copy the bullet exactly as supplied.";
         var layout = concise
-            ? TailoredCvExternalPromptQueries.ConciseLayoutGuidance + " Combined bullets count toward these limits."
+            ? CvGuidance.ConciseLayout + " Combined bullets count toward these limits."
             : """
               For every entry with selected bullets, also return a concise natural paragraph based only on those bullet
               facts; rephrase or combine facts, but do not infer facts or invent achievements; never leave paragraph null
               on an entry with selected bullets. Set content.contentStyle to BULLETS by default so the user can choose the
               presentation for the whole CV.
-              """ + " " + TailoredCvAnalyzer.CoverageGuidance;
+              """ + " " + CvGuidance.Coverage;
 
         var instructions = $$"""
             Build a reusable base CV for the target role below from the candidate's master CV (the profile data). The user
@@ -79,26 +80,24 @@ public static class BaseCvExternalPromptQueries
             3. Neither: omit it.
             A bullet changed beyond these rules is replaced by its source text, and every bullet needs a sourceBulletId.
             {{layout}}
-            {{TailoredCvAnalyzer.LanguageEvidenceGuidance}}
+            {{CvGuidance.LanguageEvidence}}
             Omit projects or certifications that are irrelevant. Do not present the same work in full under both an
             experience and a project, and never present a personal or school project as employment. Copy each project's
             kind from the profile (null when it has none). For every experience and project, set "technologies" to the
-            names, exactly as supplied in its skills, of {{TailoredCvAnalyzer.TechnologiesGuidance}} Select profile skills by sourceSkillId: {{TailoredCvAnalyzer.SkillSelectionGuidance(templateValue)}}
+            names, exactly as supplied in its skills, of {{CvGuidance.Technologies}} Select profile skills by sourceSkillId: {{CvGuidance.SkillSelection(templateValue)}}
             Copy each skill's categoryId from the profile; only when it is null, suggest one using the rule below. Include
             languages only when present in the profile. Write a concise summary for this kind of role from supported profile
             facts, starting from the profile's own headline and summary and adjusting their emphasis rather than rewriting
-            them, or null when there is not enough evidence. {{TailoredCvAnalyzer.SummaryConsistencyGuidance}}
-            {{TailoredCvAnalyzer.SeniorityGuidance}} {{TailoredCvAnalyzer.SpecializationGuidance}}
-            Set content.{{TailoredCvAnalyzer.HeadlineGuidance}}
-            For the summary{{(concise ? ", bullets," : " and paragraphs")}}: {{TailoredCvAnalyzer.VoiceGuidance}} {{TailoredCvAnalyzer.StyleGuidance}} {{TailoredCvAnalyzer.HonestClaimsGuidance}}
-            {{TailoredCvAnalyzer.GapGuidance}} Follow Norwegian CV guidance for an ordinary job application. {{TailoredCvAnalyzer.BulletStrengthGuidance(templateValue)}}
+            them, or null when there is not enough evidence. {{CvGuidance.SummaryConsistency}}
+            {{CvGuidance.ExternalWriting(concise)}}
+            {{CvGuidance.Gap}} Follow Norwegian CV guidance for an ordinary job application. {{CvGuidance.BulletStrength(templateValue)}}
             Order experiences, educations, certifications, and projects newest first (ongoing entries first). The CV language is {{TailoredCvLanguageText.Name(language)}}:
             set "language" to "{{(language == Language.Norwegian ? "NORWEGIAN" : "ENGLISH")}}" and write the headline, the summary and every paragraph in that
-            language, the summary as plain text without Markdown, {{TailoredCvAnalyzer.SummaryLength(templateValue)}}.
+            language, the summary as plain text without Markdown, {{CvGuidance.SummaryLength(templateValue)}}.
             Keep each bullet in the language it is supplied in; the user translates it in the UI.
-            {{TailoredCvExternalPromptQueries.OutputRules}}
+            {{CvGuidance.OutputRules}}
 
-            {{TailoredCvExternalPromptQueries.ContentShape(concise)}}
+            {{CvGuidance.ContentShape(concise)}}
             Use empty arrays for sections with no selected content. Dates must be copied from the profile unchanged.
 
             Profile data:

@@ -4,8 +4,6 @@ schema {
 }
 
 type Query {
-  listingParsePrompt: ListingParsePrompt! @cost(weight: "10")
-  listingQuickParsePrompt: ListingParsePrompt! @cost(weight: "10")
   llmCallLimits: [LlmCallLimit!]! @cost(weight: "10")
   applicationAnswerExternalPrompt(questionId: Int!): ApplicationAnswerExternalPrompt!
     @cost(weight: "10")
@@ -155,6 +153,8 @@ type Query {
     )
     @cost(weight: "10")
   pendingListingImportCount: Int! @cost(weight: "10")
+  listingParsePrompt: ListingParsePrompt! @cost(weight: "10")
+  listingQuickParsePrompt: ListingParsePrompt! @cost(weight: "10")
   checkListingUrls(urls: [String!]!): [ListingUrlCheckResult!]!
     @cost(weight: "10")
   listings(

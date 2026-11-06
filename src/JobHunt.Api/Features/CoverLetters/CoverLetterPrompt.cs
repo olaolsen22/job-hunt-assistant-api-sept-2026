@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.TailoredCvDrafts;
+using JobHunt.Api.Features.Prompts;
 
 namespace JobHunt.Api.Features.CoverLetters;
 
@@ -43,7 +44,7 @@ public static class CoverLetterPrompt
             {{(kind == ListingKind.Unsolicited ? UnsolicitedListing : VacancyListing)}}
 
             {{TruthGuidance}}
-            {{TailoredCvAnalyzer.SpecializationGuidance}}
+            {{CvGuidance.Specialization}}
 
             Purpose: give this employer a reason to interview the candidate. The CV records experience; the letter
             selects evidence and explains why it matters for this job. Do not retell the CV or list technologies the

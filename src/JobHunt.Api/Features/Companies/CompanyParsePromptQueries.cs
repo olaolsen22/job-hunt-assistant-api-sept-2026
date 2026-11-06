@@ -1,6 +1,7 @@
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Parsing;
+using JobHunt.Api.Features.Prompts;
 using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.Companies;
@@ -14,18 +15,13 @@ public static class CompanyParsePromptQueries
     // Bump whenever the prompt or output shape changes.
     public const int Version = 4;
 
-    // Keeps the prompt short (and cheap on the API-key path) for users with many industries or skills.
-    private const int MaxNames = 100;
-
     public static Task<CompanyParsePrompt> GetCompanyParsePromptAsync(AppDbContext db, CancellationToken ct) =>
         BuildAsync(db, external: true, ct);
 
     internal static async Task<CompanyParsePrompt> BuildAsync(AppDbContext db, bool external, CancellationToken ct)
     {
-        var industries = await db.Industries.OrderBy(i => i.Name).Select(i => i.Name).Take(MaxNames).ToListAsync(ct);
-        var skills = await db.Skills.OrderBy(s => s.Name).Select(s => s.Name).Take(MaxNames).ToListAsync(ct);
-        var names = industries.Count == 0 ? "(none yet)" : string.Join(", ", industries);
-        var skillNames = skills.Count == 0 ? "(none yet)" : string.Join(", ", skills);
+        var industries = await db.Industries.OrderBy(i => i.Name).Select(i => i.Name).Take(PromptText.MaxNames).ToListAsync(ct);
+        var skills = await db.Skills.OrderBy(s => s.Name).Select(s => s.Name).Take(PromptText.MaxNames).ToListAsync(ct);
 
         // Only an external chat can browse; the built-in call sees nothing but the pasted or fetched text.
         var contactSource = external ? " or on the company's own site and LinkedIn pages you open" : "";
@@ -48,19 +44,19 @@ public static class CompanyParsePromptQueries
               "websiteUrl": string | null,
               "careersUrl": string | null,    // the page listing open positions
               "linkedInUrl": string | null,
-              "kind": {{ListingParsePromptQueries.Values<CompanyKind>()}} | null,
-              "sizeBand": {{ListingParsePromptQueries.Values<CompanySize>()}} | null,
+              "kind": {{PromptText.Values<CompanyKind>()}} | null,
+              "sizeBand": {{PromptText.Values<CompanySize>()}} | null,
               "foundedYear": number | null,
               "description": string | null,   // what the company does, at most 500 characters
-              "workMode": {{ListingParsePromptQueries.Values<WorkMode>()}} | null,   // general remote policy
-              "workingLanguage": {{ListingParsePromptQueries.Values<Language>()}} | null,
+              "workMode": {{PromptText.Values<WorkMode>()}} | null,   // general remote policy
+              "workingLanguage": {{PromptText.Values<Language>()}} | null,
               "skills": string[],             // technologies the company is known to use
               "contacts": [{ "name": string, "title": string | null, "email": string | null, "phone": string | null, "url": string | null }]
             }]
 
             # Rules
             industryName: one short English name for the main business. Reuse an existing industry when it means the same thing.
-              Existing industries: {{names}}
+              Existing industries: {{PromptText.NameList(industries)}}
             locations: offices the text mentions. Use the city name as written locally ("Tromsø", not "Tromso").
               A country with no city → { "city": null, "countryCode": "NO" }.
             orgNumber: only when you know it for certain (e.g. from Brønnøysundregistrene); digits only.
@@ -75,7 +71,7 @@ public static class CompanyParsePromptQueries
             description: one or two plain sentences in English, no marketing language.
             workingLanguage: the language used day to day at work, not only in ads.
             skills: concrete technologies (languages, frameworks, cloud, tools), not soft skills. Reuse an existing
-              name when it means the same thing. Existing skills: {{skillNames}}
+              name when it means the same thing. Existing skills: {{PromptText.NameList(skills)}}
             contacts: named people a job seeker could contact about work there: recruitment or HR, a department or team
               lead, a CTO, or a founder at a small company. Only people named in the text{{contactSource}}; never from
               memory, and never invent anyone. Copy name, title, email, phone and url (LinkedIn or profile page) exactly

@@ -7,6 +7,7 @@ using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Parsing;
 using JobHunt.Api.Features.TailoredCvDrafts;
 using JobHunt.Api.Features.WritingSamples;
+using JobHunt.Api.Features.Prompts;
 using JobHunt.Api.Llm;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
@@ -161,7 +162,7 @@ public static class ProfileTranslationPromptQueries
         - Learn how the candidate writes in the target language from the writing samples and the "current"
           translations: their word choice, phrasing, sentence length, formality and recurring terms. Write the
           translations the way they would, not as generic CV language.
-        - {{TailoredCvAnalyzer.VoiceGuidance.ReplaceLineEndings(" ")}}
+        - {{CvGuidance.Voice.ReplaceLineEndings(" ")}}
         - Keep each bullet's meaning, register and length: terse CV bullets stay terse, same person and tense.
           Add, drop or strengthen no facts, numbers or skills.
         - For a "stale" item, start from its old translation and change only what the original changed.

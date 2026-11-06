@@ -5,6 +5,7 @@ using JobHunt.Api.Features.CoverLetters;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Profiles;
 using JobHunt.Api.Features.TailoredCvDrafts;
+using JobHunt.Api.Features.Prompts;
 using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.ApplicationQuestions;
@@ -108,7 +109,7 @@ public static class ApplicationAnswerPrompt
         a start date beyond the notice period, work authorization, security clearance, references, or an example the
         candidate data lacks, write a bracketed placeholder such as [fill in: salary expectation] instead of guessing
         or stretching unrelated experience.
-        {{TailoredCvAnalyzer.SpecializationGuidance}}
+        {{CvGuidance.Specialization}}
 
         Question: answer exactly what the question in application_question asks, starting with the answer itself
         rather than restating the question. Make it specific to this employer with the listing and companyResearch, and back
