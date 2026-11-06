@@ -50,12 +50,16 @@ public record CoverLetterExternalPrompt(int Version, string Instructions);
 [QueryType]
 public static class CoverLetterExternalPromptQueries
 {
-    [Error<ListingNotFoundException>]
-    [Error<InvalidCoverLetterException>]
     public static async Task<CoverLetterExternalPrompt> GetCoverLetterExternalPromptAsync(
         int listingId, AppDbContext db, TimeProvider time, CancellationToken ct)
     {
-        var context = await CoverLetterContext.BuildAsync(listingId, db, time, ct);
+        CoverLetterPromptContext context;
+        try { context = await CoverLetterContext.BuildAsync(listingId, db, time, ct); }
+        // Typed errors are a mutation convention; a query reports them as GraphQL errors.
+        catch (Exception e) when (e is ListingNotFoundException or InvalidCoverLetterException)
+        {
+            throw new GraphQLException(e.Message);
+        }
         var prompt = $$"""
             {{CoverLetterPrompt.Instructions(context.Language, context.Kind)}}
             Return it in a single ```json code block without prose, and include "schemaVersion": {{CoverLetterPrompt.Version}} in the object.

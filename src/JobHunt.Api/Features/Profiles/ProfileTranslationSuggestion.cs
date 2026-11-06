@@ -44,11 +44,12 @@ public static class ProfileTranslationPromptQueries
 
     internal enum TranslationState { Missing, Stale, Current }
 
-    [Error<InvalidProfileException>]
     public static async Task<ProfileTranslationPrompt> GetProfileTranslationPromptAsync(
         Language language, AppDbContext db, CancellationToken ct)
     {
-        await ProfileTranslationMutations.CheckLanguageAsync(language, db, ct);
+        try { await ProfileTranslationMutations.CheckLanguageAsync(language, db, ct); }
+        // Typed errors are a mutation convention; a query reports them as GraphQL errors.
+        catch (InvalidProfileException e) { throw new GraphQLException(e.Message); }
         return new(Version, $"{Instructions(language, external: true)}\n\n{await ContentAsync(language, db, ct)}");
     }
 

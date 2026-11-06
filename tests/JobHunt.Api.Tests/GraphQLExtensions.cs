@@ -16,4 +16,12 @@ public static class GraphQLExtensions
         response.EnsureSuccessStatusCode();
         return body.GetProperty("data");
     }
+
+    // For queries, which report bad input as a top-level error: returns its message.
+    public static async Task<string> GraphQLErrorAsync(this HttpClient client, string query, object? variables = null)
+    {
+        var response = await client.PostAsJsonAsync("/graphql", new { query, variables });
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        return body.GetProperty("errors")[0].GetProperty("message").GetString()!;
+    }
 }

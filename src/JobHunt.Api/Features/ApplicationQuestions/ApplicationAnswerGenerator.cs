@@ -66,12 +66,16 @@ public record ApplicationAnswerExternalPrompt(int Version, string Instructions);
 [QueryType]
 public static class ApplicationAnswerExternalPromptQueries
 {
-    [Error<ApplicationQuestionNotFoundException>]
-    [Error<InvalidCoverLetterException>]
     public static async Task<ApplicationAnswerExternalPrompt> GetApplicationAnswerExternalPromptAsync(
         int questionId, AppDbContext db, TimeProvider time, CancellationToken ct)
     {
-        var context = await ApplicationAnswerPrompt.BuildAsync(questionId, db, time, ct);
+        ApplicationAnswerPromptContext context;
+        try { context = await ApplicationAnswerPrompt.BuildAsync(questionId, db, time, ct); }
+        // Typed errors are a mutation convention; a query reports them as GraphQL errors.
+        catch (Exception e) when (e is ApplicationQuestionNotFoundException or InvalidCoverLetterException)
+        {
+            throw new GraphQLException(e.Message);
+        }
         var prompt = $$"""
             {{context.Instructions}}
             Return it in a single ```json code block without prose, and include "schemaVersion": {{ApplicationAnswerPrompt.Version}} in the object.

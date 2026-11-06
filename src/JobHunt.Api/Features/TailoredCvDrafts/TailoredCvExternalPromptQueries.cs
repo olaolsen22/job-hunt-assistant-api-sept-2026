@@ -19,8 +19,6 @@ public static class TailoredCvExternalPromptQueries
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseUpper, allowIntegerValues: false) },
     };
 
-    [Error<ListingNotFoundException>]
-    [Error<InvalidTailoredCvAnalysisException>]
     public static async Task<TailoredCvExternalPrompt> GetTailoredCvExternalPromptAsync(
         int listingId, AppDbContext db, CancellationToken ct, TailoredCvTemplate? template = null, Language? language = null)
     {
@@ -29,7 +27,7 @@ public static class TailoredCvExternalPromptQueries
             .Include(l => l.Skills).ThenInclude(s => s.Skill)
             .Include(l => l.Languages)
             .FirstOrDefaultAsync(l => l.Id == listingId, ct)
-            ?? throw new ListingNotFoundException(listingId);
+            ?? throw new GraphQLException(new ListingNotFoundException(listingId).Message);
         var profile = await ProfileQueries.LoadAsync(db, ct);
         var target = await TailoredCvLanguageText.TargetLanguageAsync(listing, language, db, ct);
         // Listing first and separate from the profile, so it is easy to spot in the pasted prompt.
@@ -46,8 +44,7 @@ public static class TailoredCvExternalPromptQueries
         }, JsonOptions);
         var serialized = await ProfileJsonAsync(profile, target, db, ct);
         if (listingJson.Length + serialized.Length > TailoredCvAnalyzer.MaxContextLength)
-            throw new InvalidTailoredCvAnalysisException(
-                $"Prompt context must be at most {TailoredCvAnalyzer.MaxContextLength} characters.");
+            throw new GraphQLException($"Prompt context must be at most {TailoredCvAnalyzer.MaxContextLength} characters.");
 
         var concise = template == TailoredCvTemplate.Concise;
         var templateValue = template ?? TailoredCvTemplate.Detailed;
