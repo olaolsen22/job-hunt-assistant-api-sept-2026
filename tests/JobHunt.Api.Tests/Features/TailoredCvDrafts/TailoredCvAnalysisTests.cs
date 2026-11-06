@@ -15,7 +15,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
     private const string Analyze = """
         mutation ($listingId: Int!, $section: TailoredCvSection!, $sourceEntryId: Int) {
           analyzeTailoredCvSection(input: { listingId: $listingId, section: $section, sourceEntryId: $sourceEntryId }) {
-            result { status section sourceEntryId selectedBulletIds selectedSkillIds summary paragraph technologies error }
+            result { status section sourceEntryId selectedBulletIds selectedSkillIds summary headline paragraph technologies error }
             errors { __typename ... on Error { message } }
           }
         }
@@ -31,7 +31,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
     private const string PreviewExternal = """
         mutation ($listingId: Int!, $json: String!) {
           previewTailoredCvDraft(input: { listingId: $listingId, json: $json }) {
-            candidate { schemaVersion content { summary experiences { sourceEntryId employer title bullets { sourceBulletId text } } skills { sourceSkillId name level } } }
+            candidate { schemaVersion content { headline summary experiences { sourceEntryId employer title bullets { sourceBulletId text } } skills { sourceSkillId name level } } }
             errors { __typename ... on Error { message } }
           }
         }
@@ -218,17 +218,51 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
             """);
         var listingId = await CreateListingAsync(client, "Vue developer", "Build Vue applications", ["Vue"]);
         factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant,
-            "{\"summary\":\"Frontend developer focused on Vue applications.\"}"));
+            "{\"summary\":\"Frontend developer focused on Vue applications.\",\"headline\":\" Frontend developer | Vue \"}"));
 
         var result = (await AnalyzeAsync(client, listingId, "SUMMARY", null)).GetProperty("result");
 
         Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
         Assert.Equal("Frontend developer focused on Vue applications.", result.GetProperty("summary").GetString());
+        Assert.Equal("Frontend developer | Vue", result.GetProperty("headline").GetString());
         Assert.Contains("Builds Vue applications", string.Join("\n", factory.Llm.LastMessages.Select(m => m.Text)));
         Assert.Contains("\"employer\":\"Summary Context Employer\",\"startMonth\":\"2019-04-01\"", factory.Llm.LastMessages[1].Text);
         Assert.Contains("Summary Context School", factory.Llm.LastMessages[1].Text);
         Assert.Contains("years alone are not", factory.Llm.LastMessages[0].Text);
         Assert.Contains("never claim it", factory.Llm.LastMessages[0].Text);
+        Assert.Contains("never relabel them as fullstack", factory.Llm.LastMessages[0].Text);
+        Assert.Contains("null keeps the current headline", factory.Llm.LastMessages[0].Text);
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("\"   \"")]
+    [InlineData("TOO_LONG")]
+    public async Task SummaryAnalysis_MissingOrUnusableHeadline_IsNoSuggestion(string headline)
+    {
+        var client = await factory.GetGuestClientAsync();
+        var listingId = await CreateListingAsync(client, "Vue developer", "Build Vue applications", ["Vue"]);
+        var value = headline == "TOO_LONG" ? $"\"{new string('a', 201)}\"" : headline;
+        factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant,
+            $"{{\"summary\":\"Builds Vue applications.\",\"headline\":{value}}}"));
+
+        var result = (await AnalyzeAsync(client, listingId, "SUMMARY", null)).GetProperty("result");
+
+        Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("headline").ValueKind);
+    }
+
+    [Fact]
+    public async Task SummaryAnalysis_HeadlineOfTheWrongType_IsUnreadable()
+    {
+        var client = await factory.GetGuestClientAsync();
+        var listingId = await CreateListingAsync(client, "Vue developer", "Build Vue applications", ["Vue"]);
+        factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant,
+            "{\"summary\":\"Builds Vue applications.\",\"headline\":42}"));
+
+        var result = (await AnalyzeAsync(client, listingId, "SUMMARY", null)).GetProperty("result");
+
+        Assert.Equal("FAILED", result.GetProperty("status").GetString());
     }
 
     [Fact]
@@ -286,6 +320,42 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Contains("Write the paragraph in Norwegian (bokmål)", factory.Llm.LastMessages[0].Text.ReplaceLineEndings(" "));
         Assert.Contains("Bygde betalingstjenester", factory.Llm.LastMessages[1].Text);
         Assert.DoesNotContain("Built payment services", factory.Llm.LastMessages[1].Text);
+    }
+
+    [Fact]
+    public async Task ExperienceAnalysis_RequestedEnglish_OnNorwegianListing_SendsOriginalBullets()
+    {
+        var client = await factory.GetGuestClientAsync();
+        var experience = await ProfileEntryTests.AddExperienceAsync(client, employer: "Switch Employer", skills: []);
+        var entryId = experience.GetProperty("id").GetInt32();
+        var bulletId = (await client.GraphQLAsync("""
+            mutation ($entryId: Int!) {
+              addProfileBullet(input: { kind: EXPERIENCE, entryId: $entryId, text: "Built billing services" }) { profileBullet { id } }
+            }
+            """, new { entryId })).GetProperty("addProfileBullet").GetProperty("profileBullet").GetProperty("id").GetInt32();
+        await client.GraphQLAsync("""
+            mutation ($bulletId: Int!) {
+              setProfileBulletTranslation(input: { bulletId: $bulletId, language: NORWEGIAN, text: "Bygde fakturatjenester" }) {
+                profileBulletTranslation { id }
+              }
+            }
+            """, new { bulletId });
+        var listingId = await CreateListingAsync(client, "Utvikler", "Bygg fakturatjenester", [], "NORWEGIAN");
+        factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant,
+            $$"""{"selectedBulletIds":[{{bulletId}}],"paragraph":"Built billing services."}"""));
+
+        var result = (await client.GraphQLAsync("""
+            mutation ($listingId: Int!, $sourceEntryId: Int) {
+              analyzeTailoredCvSection(input: { listingId: $listingId, section: EXPERIENCE, sourceEntryId: $sourceEntryId, language: ENGLISH }) {
+                result { status }
+              }
+            }
+            """, new { listingId, sourceEntryId = entryId })).GetProperty("analyzeTailoredCvSection").GetProperty("result");
+
+        Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
+        Assert.DoesNotContain("Norwegian (bokmål)", factory.Llm.LastMessages[0].Text.ReplaceLineEndings(" "));
+        Assert.Contains("Built billing services", factory.Llm.LastMessages[1].Text);
+        Assert.DoesNotContain("Bygde fakturatjenester", factory.Llm.LastMessages[1].Text);
     }
 
     [Fact]
@@ -405,6 +475,28 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
     }
 
     [Fact]
+    public async Task ExternalPromptAndPreview_RequestedLanguage_OverridesListingAndPastedLanguage()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var listingId = await CreateListingAsync(client, "Developer", "Build services", [], "ENGLISH");
+
+        var instructions = (await client.GraphQLAsync("""
+            query ($listingId: Int!) { tailoredCvExternalPrompt(listingId: $listingId, language: NORWEGIAN) { instructions } }
+            """, new { listingId })).GetProperty("tailoredCvExternalPrompt").GetProperty("instructions").GetString()!;
+        var json = JsonSerializer.Serialize(new { schemaVersion = 1, content = new { language = "ENGLISH" } });
+        var candidate = (await client.GraphQLAsync("""
+            mutation ($listingId: Int!, $json: String!) {
+              previewTailoredCvDraft(input: { listingId: $listingId, json: $json, language: NORWEGIAN }) {
+                candidate { content { language } }
+              }
+            }
+            """, new { listingId, json })).GetProperty("previewTailoredCvDraft").GetProperty("candidate");
+
+        Assert.Contains("\"NORWEGIAN\"", instructions);
+        Assert.Equal("NORWEGIAN", candidate.GetProperty("content").GetProperty("language").GetString());
+    }
+
+    [Fact]
     public async Task ExternalPrompt_ContainsListingAndProfileSourcesButExcludesPrivateFields()
     {
         var client = await factory.GetOwnerClientAsync();
@@ -420,6 +512,11 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         var bulletId = bulletData.GetProperty("addProfileBullet").GetProperty("profileBullet").GetProperty("id").GetInt32();
         await AddPrivateProfileDetailsAsync(client);
         var listingId = await CreateListingAsync(client, "Go developer", "Build Go services", ["Go"]);
+        var companyId = (await client.GraphQLAsync("query ($id: Int!) { listingById(id: $id) { company { id } } }", new { id = listingId }))
+            .GetProperty("listingById").GetProperty("company").GetProperty("id").GetInt32();
+        await client.GraphQLAsync("""
+            mutation ($id: Int!) { updateCompanyDetails(input: { id: $id, details: { kind: BROKER, skills: [] } }) { errors { __typename } } }
+            """, new { id = companyId });
 
         var data = await client.GraphQLAsync("""
             query ($listingId: Int!) { tailoredCvExternalPrompt(listingId: $listingId) { version instructions } }
@@ -435,7 +532,8 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Contains("candidate's own voice", instructions);
         Assert.Contains("sourceBulletId", instructions);
         Assert.Contains("https://tailored-cv-analysis.example/", instructions);
-        Assert.Contains("open its url", instructions);
+        Assert.Contains("open exactly its url", instructions);
+        Assert.Contains("Never search the web for the posting", instructions);
         Assert.Contains("core professional", instructions);
         Assert.Contains("complete timeline", instructions);
         Assert.Contains("never leave paragraph null", instructions);
@@ -443,6 +541,11 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Contains("every paragraph in that", instructions);
         Assert.Contains("do not turn \"helped\" into \"led\"", instructions);
         Assert.Contains("never claim it", instructions);
+        Assert.Contains("\"companyResearch\":{\"kind\":\"BROKER\"", instructions);
+        Assert.Contains("CONSULTANCY or BROKER", instructions);
+        Assert.Contains("\"headline\": null", instructions);
+        Assert.Contains("Set content.headline: one short title line", instructions);
+        Assert.Contains("never relabel them as fullstack", instructions);
         Assert.True(instructions.IndexOf("Go developer", StringComparison.Ordinal)
             < instructions.IndexOf("Prompt Employer", StringComparison.Ordinal));
         Assert.DoesNotContain("PRIVATE_", instructions, StringComparison.Ordinal);
@@ -468,6 +571,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
             schemaVersion = 1,
             content = new
             {
+                headline = "Frontend developer | Vue",
                 summary = "Tailored summary",
                 experiences = new[] { new
                 {
@@ -485,6 +589,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Equal(JsonValueKind.Null, payload.GetProperty("errors").ValueKind);
         var candidate = payload.GetProperty("candidate");
         Assert.Equal(1, candidate.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal("Frontend developer | Vue", candidate.GetProperty("content").GetProperty("headline").GetString());
         var selected = candidate.GetProperty("content").GetProperty("experiences")[0];
         Assert.Equal(entryId, selected.GetProperty("sourceEntryId").GetInt32());
         Assert.Equal(bulletId, selected.GetProperty("bullets")[0].GetProperty("sourceBulletId").GetInt32());
@@ -769,7 +874,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         return data.GetProperty("analyzeTailoredCvSection");
     }
 
-    private static async Task<int> CreateListingAsync(HttpClient client, string title, string description, string[] skills,
+    internal static async Task<int> CreateListingAsync(HttpClient client, string title, string description, string[] skills,
         string? postingLanguage = null)
     {
         var listing = new

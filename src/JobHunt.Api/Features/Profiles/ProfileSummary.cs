@@ -23,7 +23,7 @@ public record ProfileSummarySuggestion(ProfileSummaryStatus Status, string? Summ
 [QueryType]
 public static class ProfileSummaryPromptQueries
 {
-    public const int Version = 2;
+    public const int Version = 3;
     // Same cap as a tailored CV summary: about three lines in the PDF.
     public const int MaxLength = TailoredCvDraftValidation.MaxSummaryLength;
 
@@ -89,6 +89,7 @@ public static class ProfileSummaryPromptQueries
           does not support. Count years only from the experience dates.
         - If the profile has a summary, keep what still holds and improve it rather than starting over.
         - {{TailoredCvAnalyzer.SeniorityGuidance.ReplaceLineEndings(" ")}}
+        - {{TailoredCvAnalyzer.SpecializationGuidance.ReplaceLineEndings(" ")}}
         - {{TailoredCvAnalyzer.HonestClaimsGuidance.ReplaceLineEndings(" ")}}
         - Favour concrete evidence over a list of technology names.
         - {{TailoredCvAnalyzer.VoiceGuidance.ReplaceLineEndings(" ")}}

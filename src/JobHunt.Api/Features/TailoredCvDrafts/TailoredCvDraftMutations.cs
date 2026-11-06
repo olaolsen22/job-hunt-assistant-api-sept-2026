@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Documents;
 using JobHunt.Api.Features.Listings;
@@ -20,7 +19,8 @@ public record TailoredCvCertificationInput(string Name, string? Issuer, DateOnly
 public record TailoredCvProjectInput(string Name, string? Url, DateOnly? StartMonth, DateOnly? EndMonth,
     List<TailoredCvBulletInput> Bullets, int? SourceEntryId = null, string? Location = null,
     string? Paragraph = null, ProjectKind? Kind = null, List<string>? Technologies = null);
-public record TailoredCvSkillInput(string Name, int? Level, int? SourceSkillId = null, int? CategoryId = null);
+public record TailoredCvSkillInput(string Name, int? Level, int? SourceSkillId = null, int? CategoryId = null,
+    string? Group = null);
 public record TailoredCvLanguageInput(string Name, LanguageProficiency? Written, LanguageProficiency? Spoken);
 // A null Language means the listing's posting language, or English when the listing has none.
 public record TailoredCvContentInput(string? Summary = null,
@@ -40,7 +40,8 @@ public record TailoredCvContentInput(string? Summary = null,
     DateOnly? DateOfBirth = null,
     bool ReferencesOnRequest = false,
     TailoredCvSectionOrder? SectionOrder = null,
-    TailoredCvContentStyle? ContentStyle = null);
+    TailoredCvContentStyle? ContentStyle = null,
+    TailoredCvTemplate? Template = null);
 public record TailoredCvLinkInput(string Label, string Url);
 
 public class InvalidTailoredCvDraftException(string message) : Exception(message);
@@ -96,25 +97,19 @@ public static class TailoredCvDraftMutations
         var draft = await db.TailoredCvDrafts.AsNoTracking().FirstOrDefaultAsync(d => d.ListingId == listingId, ct)
             ?? throw new TailoredCvDraftNotFoundException(listingId);
 
-        var categories = await db.SkillCategories.AsNoTracking().Include(c => c.Translations)
-            .OrderBy(c => c.SortOrder).ThenBy(c => c.Id).ToListAsync(ct);
-        var bytes = TailoredCvPdfRenderer.Render(draft.Content, categories);
-        var now = time.GetUtcNow().UtcDateTime;
-        var fileName = DocumentMutations.FileName(listing.Company, listing.JobRole, DocumentKind.Cv, now);
-        var document = new Document
-        {
-            UserId = db.CurrentUserId!,
-            ListingId = listingId,
-            Kind = DocumentKind.Cv,
-            FileName = fileName,
-            OriginalFileName = fileName,
-            SizeBytes = bytes.Length,
-            ContentHash = Convert.ToHexStringLower(SHA256.HashData(bytes)),
-            CreatedAt = now,
-        };
-        db.Add(new DocumentContent { Document = document, Bytes = bytes });
+        var bytes = await RenderPdfAsync(draft.Content, db, ct);
+        var document = DocumentMutations.AddGenerated(db, listingId, listing.Company, listing.JobRole,
+            DocumentKind.Cv, DocumentOrigin.Tailored, bytes, time.GetUtcNow().UtcDateTime);
         await db.SaveChangesAsync(ct);
         return document;
+    }
+
+    // With the user's skill categories, which the developer layout groups skills by.
+    internal static async Task<byte[]> RenderPdfAsync(TailoredCvContent content, AppDbContext db, CancellationToken ct)
+    {
+        var categories = await db.SkillCategories.AsNoTracking().Include(c => c.Translations)
+            .OrderBy(c => c.SortOrder).ThenBy(c => c.Id).ToListAsync(ct);
+        return TailoredCvPdfRenderer.Render(content, categories);
     }
 }
 

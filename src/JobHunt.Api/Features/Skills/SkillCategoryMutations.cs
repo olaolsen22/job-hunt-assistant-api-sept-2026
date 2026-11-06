@@ -81,7 +81,7 @@ public static class SkillCategoryMutations
         var category = await db.SkillCategories.FirstOrDefaultAsync(c => c.Id == id, ct)
             ?? throw new SkillCategoryNotFoundException(id);
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
-        TailoredCvDraftSkills.Rewrite(await db.TailoredCvDrafts.ToListAsync(ct),
+        TailoredCvDraftSkills.Rewrite(await TailoredCvDraftSkills.LoadAllAsync(db, ct),
             s => s.CategoryId == id ? s with { CategoryId = null } : s);
         db.SkillCategories.Remove(category);
         await db.SaveChangesAsync(ct);

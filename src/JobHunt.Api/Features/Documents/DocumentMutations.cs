@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using JobHunt.Api.Data;
+using JobHunt.Api.Features.BaseCvs;
 using JobHunt.Api.Features.Listings;
 using Microsoft.EntityFrameworkCore;
 
@@ -51,9 +52,32 @@ public static partial class DocumentMutations
             SizeBytes = bytes.Length,
             ContentHash = Convert.ToHexStringLower(SHA256.HashData(bytes)),
             CreatedAt = now,
+            Origin = DocumentOrigin.Uploaded,
         };
         db.Add(new DocumentContent { Document = document, Bytes = bytes });
         await db.SaveChangesAsync(ct);
+        return document;
+    }
+
+    // A PDF the app rendered for a listing: named like an upload, unsent. The caller saves.
+    internal static Document AddGenerated(AppDbContext db, int listingId, string company, string jobRole,
+        DocumentKind kind, DocumentOrigin origin, byte[] bytes, DateTime now, int? baseCvVersionId = null)
+    {
+        var fileName = FileName(company, jobRole, kind, now);
+        var document = new Document
+        {
+            UserId = db.CurrentUserId!,
+            ListingId = listingId,
+            Kind = kind,
+            FileName = fileName,
+            OriginalFileName = fileName,
+            SizeBytes = bytes.Length,
+            ContentHash = Convert.ToHexStringLower(SHA256.HashData(bytes)),
+            CreatedAt = now,
+            Origin = origin,
+            BaseCvVersionId = baseCvVersionId,
+        };
+        db.Add(new DocumentContent { Document = document, Bytes = bytes });
         return document;
     }
 
@@ -87,5 +111,10 @@ public static partial class DocumentNode
     static partial void Configure(IObjectTypeDescriptor<Document> descriptor)
     {
         descriptor.Ignore(d => d.UserId);
+        descriptor.Field(d => d.BaseCvVersionId).IsProjected();
     }
+
+    public static async Task<BaseCvVersion?> GetBaseCvVersionAsync(
+        [Parent] Document document, IBaseCvVersionByIdDataLoader versions, CancellationToken ct) =>
+        document.BaseCvVersionId is { } id ? await versions.LoadAsync(id, ct) : null;
 }

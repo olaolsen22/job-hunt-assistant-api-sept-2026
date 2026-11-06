@@ -17,8 +17,8 @@ public static class TailoredCvDraftValidation
     public const int MaxSummaryLength = 300;
     private const int MaxEntriesPerSection = 100;
     private const int MaxBulletsPerEntry = 20;
-    private const int MaxBulletLength = 500;
-    private const int MaxTextLength = 200;
+    public const int MaxBulletLength = 500;
+    internal const int MaxTextLength = 200;
     private const int MaxSkills = 200;
     private const int MaxLanguages = 20;
     private const int MaxAddressLength = 300;
@@ -40,13 +40,15 @@ public static class TailoredCvDraftValidation
             input.Projects?.Select(e => new TailoredCvProject(CleanRequired(e.Name), Inputs.Clean(e.Url), e.StartMonth, e.EndMonth,
                 (e.Bullets ?? []).Select(b => new TailoredCvBullet(CleanRequired(b.Text), b.SourceBulletId)).ToList(), e.SourceEntryId,
                 Inputs.Clean(e.Location), Inputs.Clean(e.Paragraph), e.Kind, CleanNames(e.Technologies))).ToList(),
-            input.Skills?.Select(s => new TailoredCvSkill(CleanRequired(s.Name), s.Level, s.SourceSkillId, s.CategoryId)).ToList(),
+            input.Skills?.Select(s => new TailoredCvSkill(CleanRequired(s.Name), s.Level, s.SourceSkillId, s.CategoryId,
+                Inputs.Clean(s.Group))).ToList(),
             input.Languages?.Select(l => new TailoredCvLanguage(CleanRequired(l.Name), l.Written, l.Spoken)).ToList(),
             Inputs.Clean(input.FullName), Inputs.Clean(input.Headline), Inputs.Clean(input.Email), Inputs.Clean(input.Phone), Inputs.Clean(input.Address),
             input.Links?.Select(l => new TailoredCvLink(CleanRequired(l.Label), CleanRequired(l.Url))).ToList(),
             input.Language ?? postingLanguage ?? Language.English, input.DateOfBirth, input.ReferencesOnRequest,
             input.SectionOrder ?? TailoredCvSectionOrder.Standard,
-            input.ContentStyle ?? TailoredCvContentStyle.Bullets);
+            input.ContentStyle ?? TailoredCvContentStyle.Bullets,
+            input.Template ?? TailoredCvTemplate.Detailed);
 
         Validate(content);
         if (JsonSerializer.Serialize(content, TailoredCvJson.Options).Length > MaxJsonLength)
@@ -239,6 +241,9 @@ public static class TailoredCvDraftValidation
         if (c.Projects?.Any(e => Blank(e.Name)) == true) throw Invalid("projects", "name is required");
         if (c.Skills?.Any(s => Blank(s.Name) || s.Level is < 1 or > 5) == true)
             throw Invalid("skills", "name is required and level must be 1–5");
+        // A label prints in front of every line of the section, so it stays short like a category name.
+        if (c.Skills?.Any(s => s.Group?.Length > TailoredCvSkillGroupSuggester.MaxGroupLength) == true)
+            throw Invalid("skills.group", $"must be at most {TailoredCvSkillGroupSuggester.MaxGroupLength} characters");
         ValidateFields(c.Experiences?.SelectMany(e => new[] { e.Employer, e.Title, e.Location }), "experiences");
         ValidateFields(c.Educations?.SelectMany(e => new[] { e.School, e.Degree, e.Field, e.Location }), "educations");
         ValidateFields(c.Certifications?.SelectMany(e => new[] { e.Name, e.Issuer }), "certifications");

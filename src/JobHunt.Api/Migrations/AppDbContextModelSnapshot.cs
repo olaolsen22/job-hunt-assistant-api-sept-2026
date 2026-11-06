@@ -285,6 +285,85 @@ namespace JobHunt.Api.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("JobHunt.Api.Features.BaseCvs.BaseCv", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("ArchivedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "NormalizedName")
+                        .IsUnique();
+
+                    b.ToTable("BaseCvs");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.BaseCvs.BaseCvVersion", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("BaseCvId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ContentJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("BaseCvId", "Language", "Number")
+                        .IsUnique();
+
+                    b.ToTable("BaseCvVersions");
+                });
+
             modelBuilder.Entity("JobHunt.Api.Features.Companies.Company", b =>
                 {
                     b.Property<int>("Id")
@@ -405,6 +484,12 @@ namespace JobHunt.Api.Migrations
                     b.Property<string>("Email")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateOnly?>("FollowUpOn")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastInteractionAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -431,12 +516,54 @@ namespace JobHunt.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId");
-
                     b.HasIndex("CompanyId", "NormalizedName")
                         .IsUnique();
 
+                    b.HasIndex("UserId", "FollowUpOn");
+
                     b.ToTable("Contacts");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.Contacts.ContactInteraction", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ContactId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Direction")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly?>("FollowUpOn")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ContactId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("ContactInteractions");
                 });
 
             modelBuilder.Entity("JobHunt.Api.Features.Contacts.ListingContact", b =>
@@ -524,6 +651,9 @@ namespace JobHunt.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("BaseCvVersionId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("ContentHash")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -543,6 +673,9 @@ namespace JobHunt.Api.Migrations
                     b.Property<int>("ListingId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Origin")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("OriginalFileName")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -558,6 +691,8 @@ namespace JobHunt.Api.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("BaseCvVersionId");
 
                     b.HasIndex("ListingId");
 
@@ -664,6 +799,54 @@ namespace JobHunt.Api.Migrations
                     b.ToTable("JobRoleCategories");
                 });
 
+            modelBuilder.Entity("JobHunt.Api.Features.ListingImports.ListingImport", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Content")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("GeneratedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ImportedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ItemCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "FileName")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "ReviewedAt", "GeneratedAt");
+
+                    b.ToTable("ListingImports");
+                });
+
             modelBuilder.Entity("JobHunt.Api.Features.Listings.Listing", b =>
                 {
                     b.Property<int>("Id")
@@ -708,6 +891,9 @@ namespace JobHunt.Api.Migrations
                     b.Property<string>("NormalizedTitle")
                         .IsRequired()
                         .HasColumnType("TEXT");
+
+                    b.Property<int?>("PositionPercent")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateOnly?>("PostedOn")
                         .HasColumnType("TEXT");
@@ -1262,6 +1448,48 @@ namespace JobHunt.Api.Migrations
                     b.ToTable("ProfileEducations");
                 });
 
+            modelBuilder.Entity("JobHunt.Api.Features.Profiles.ProfileEducationTranslation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Degree")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("EducationId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Field")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsMachine")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceDegree")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceField")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("EducationId", "Language")
+                        .IsUnique();
+
+                    b.ToTable("ProfileEducationTranslations");
+                });
+
             modelBuilder.Entity("JobHunt.Api.Features.Profiles.ProfileEmploymentType", b =>
                 {
                     b.Property<int>("ProfileId")
@@ -1314,6 +1542,44 @@ namespace JobHunt.Api.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("ProfileExperiences");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.Profiles.ProfileExperienceTranslation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ExperienceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsMachine")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceTitle")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("ExperienceId", "Language")
+                        .IsUnique();
+
+                    b.ToTable("ProfileExperienceTranslations");
                 });
 
             modelBuilder.Entity("JobHunt.Api.Features.Profiles.ProfileLanguage", b =>
@@ -2025,6 +2291,32 @@ namespace JobHunt.Api.Migrations
                     b.Navigation("Listing");
                 });
 
+            modelBuilder.Entity("JobHunt.Api.Features.BaseCvs.BaseCv", b =>
+                {
+                    b.HasOne("JobHunt.Api.Features.Auth.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.BaseCvs.BaseCvVersion", b =>
+                {
+                    b.HasOne("JobHunt.Api.Features.BaseCvs.BaseCv", "BaseCv")
+                        .WithMany("Versions")
+                        .HasForeignKey("BaseCvId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("JobHunt.Api.Features.Auth.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("BaseCv");
+                });
+
             modelBuilder.Entity("JobHunt.Api.Features.Companies.Company", b =>
                 {
                     b.HasOne("JobHunt.Api.Features.Industries.Industry", "Industry")
@@ -2096,6 +2388,23 @@ namespace JobHunt.Api.Migrations
                     b.Navigation("Company");
                 });
 
+            modelBuilder.Entity("JobHunt.Api.Features.Contacts.ContactInteraction", b =>
+                {
+                    b.HasOne("JobHunt.Api.Features.Contacts.Contact", "Contact")
+                        .WithMany("Interactions")
+                        .HasForeignKey("ContactId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("JobHunt.Api.Features.Auth.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Contact");
+                });
+
             modelBuilder.Entity("JobHunt.Api.Features.Contacts.ListingContact", b =>
                 {
                     b.HasOne("JobHunt.Api.Features.Contacts.Contact", "Contact")
@@ -2143,6 +2452,11 @@ namespace JobHunt.Api.Migrations
 
             modelBuilder.Entity("JobHunt.Api.Features.Documents.Document", b =>
                 {
+                    b.HasOne("JobHunt.Api.Features.BaseCvs.BaseCvVersion", null)
+                        .WithMany()
+                        .HasForeignKey("BaseCvVersionId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.HasOne("JobHunt.Api.Features.Listings.Listing", "Listing")
                         .WithMany("Documents")
                         .HasForeignKey("ListingId")
@@ -2195,6 +2509,15 @@ namespace JobHunt.Api.Migrations
                 });
 
             modelBuilder.Entity("JobHunt.Api.Features.JobRoles.JobRoleCategory", b =>
+                {
+                    b.HasOne("JobHunt.Api.Features.Auth.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.ListingImports.ListingImport", b =>
                 {
                     b.HasOne("JobHunt.Api.Features.Auth.AppUser", null)
                         .WithMany()
@@ -2464,6 +2787,23 @@ namespace JobHunt.Api.Migrations
                     b.Navigation("Profile");
                 });
 
+            modelBuilder.Entity("JobHunt.Api.Features.Profiles.ProfileEducationTranslation", b =>
+                {
+                    b.HasOne("JobHunt.Api.Features.Profiles.ProfileEducation", "Education")
+                        .WithMany("Translations")
+                        .HasForeignKey("EducationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("JobHunt.Api.Features.Auth.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Education");
+                });
+
             modelBuilder.Entity("JobHunt.Api.Features.Profiles.ProfileEmploymentType", b =>
                 {
                     b.HasOne("JobHunt.Api.Features.Profiles.Profile", "Profile")
@@ -2497,6 +2837,23 @@ namespace JobHunt.Api.Migrations
                     b.Navigation("Location");
 
                     b.Navigation("Profile");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.Profiles.ProfileExperienceTranslation", b =>
+                {
+                    b.HasOne("JobHunt.Api.Features.Profiles.ProfileExperience", "Experience")
+                        .WithMany("Translations")
+                        .HasForeignKey("ExperienceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("JobHunt.Api.Features.Auth.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Experience");
                 });
 
             modelBuilder.Entity("JobHunt.Api.Features.Profiles.ProfileLanguage", b =>
@@ -2790,6 +3147,11 @@ namespace JobHunt.Api.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("JobHunt.Api.Features.BaseCvs.BaseCv", b =>
+                {
+                    b.Navigation("Versions");
+                });
+
             modelBuilder.Entity("JobHunt.Api.Features.Companies.Company", b =>
                 {
                     b.Navigation("Contacts");
@@ -2797,6 +3159,11 @@ namespace JobHunt.Api.Migrations
                     b.Navigation("Locations");
 
                     b.Navigation("Skills");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.Contacts.Contact", b =>
+                {
+                    b.Navigation("Interactions");
                 });
 
             modelBuilder.Entity("JobHunt.Api.Features.Listings.Listing", b =>
@@ -2856,11 +3223,15 @@ namespace JobHunt.Api.Migrations
             modelBuilder.Entity("JobHunt.Api.Features.Profiles.ProfileEducation", b =>
                 {
                     b.Navigation("Bullets");
+
+                    b.Navigation("Translations");
                 });
 
             modelBuilder.Entity("JobHunt.Api.Features.Profiles.ProfileExperience", b =>
                 {
                     b.Navigation("Bullets");
+
+                    b.Navigation("Translations");
                 });
 
             modelBuilder.Entity("JobHunt.Api.Features.Profiles.ProfileProject", b =>

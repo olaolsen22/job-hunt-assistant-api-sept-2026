@@ -22,9 +22,11 @@ public static class ProfileQueries
             .Include(p => p.EmploymentTypes)
             .Include(p => p.Experiences).ThenInclude(e => e.Skills)
             .Include(p => p.Experiences).ThenInclude(e => e.Location)
+            .Include(p => p.Experiences).ThenInclude(e => e.Translations)
             .Include(p => p.Experiences).ThenInclude(e => e.Bullets).ThenInclude(b => b.Translations)
             .Include(p => p.Educations).ThenInclude(e => e.Bullets).ThenInclude(b => b.Translations)
             .Include(p => p.Educations).ThenInclude(e => e.Location)
+            .Include(p => p.Educations).ThenInclude(e => e.Translations)
             .Include(p => p.Certifications).ThenInclude(c => c.Bullets).ThenInclude(b => b.Translations)
             .Include(p => p.Projects).ThenInclude(p => p.Skills)
             .Include(p => p.Projects).ThenInclude(p => p.Location)
@@ -98,7 +100,11 @@ public static partial class ProfileExperienceNode
         descriptor.Ignore(e => e.ProfileId);
         descriptor.Ignore(e => e.Profile);
         descriptor.Ignore(e => e.LocationId);
+        descriptor.Ignore(e => e.Translations);
     }
+
+    public static IEnumerable<ProfileExperienceTranslation> GetTranslations([Parent] ProfileExperience experience) =>
+        experience.Translations.OrderBy(t => t.Language);
 }
 
 [ObjectType<ProfileEducation>]
@@ -110,7 +116,11 @@ public static partial class ProfileEducationNode
         descriptor.Ignore(e => e.ProfileId);
         descriptor.Ignore(e => e.Profile);
         descriptor.Ignore(e => e.LocationId);
+        descriptor.Ignore(e => e.Translations);
     }
+
+    public static IEnumerable<ProfileEducationTranslation> GetTranslations([Parent] ProfileEducation education) =>
+        education.Translations.OrderBy(t => t.Language);
 }
 
 [ObjectType<ProfileCertification>]
@@ -186,6 +196,28 @@ public static partial class ProfileTranslationNode
     }
 }
 
+[ObjectType<ProfileExperienceTranslation>]
+public static partial class ProfileExperienceTranslationNode
+{
+    static partial void Configure(IObjectTypeDescriptor<ProfileExperienceTranslation> descriptor)
+    {
+        descriptor.Ignore(t => t.UserId);
+        descriptor.Ignore(t => t.ExperienceId);
+        descriptor.Ignore(t => t.Experience);
+    }
+}
+
+[ObjectType<ProfileEducationTranslation>]
+public static partial class ProfileEducationTranslationNode
+{
+    static partial void Configure(IObjectTypeDescriptor<ProfileEducationTranslation> descriptor)
+    {
+        descriptor.Ignore(t => t.UserId);
+        descriptor.Ignore(t => t.EducationId);
+        descriptor.Ignore(t => t.Education);
+    }
+}
+
 [ObjectType<ProfileSkill>]
 public static partial class ProfileSkillNode
 {
@@ -215,8 +247,12 @@ internal static class ProfileDataLoaders
         var today = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
         return ranges
             .GroupBy(r => r.SkillId)
-            .ToDictionary(g => g.Key, g => CountMonths(g.Select(r => (MonthIndex(r.StartMonth), MonthIndex(r.EndMonth ?? today)))));
+            .ToDictionary(g => g.Key, g => ExperienceMonths(g.Select(r => (r.StartMonth, r.EndMonth)), today));
     }
+
+    // Shared with the application answer prompt, so "years with X" answers use the same count as the profile.
+    internal static int ExperienceMonths(IEnumerable<(DateOnly Start, DateOnly? End)> ranges, DateOnly today) =>
+        CountMonths(ranges.Select(r => (MonthIndex(r.Start), MonthIndex(r.End ?? today))));
 
     private static int MonthIndex(DateOnly date) => date.Year * 12 + date.Month - 1;
 

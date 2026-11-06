@@ -9,9 +9,12 @@ namespace JobHunt.Api.Features.TailoredCvDrafts;
 // Shared by both AI paths so they write in the language the draft will be rendered in.
 public static class TailoredCvLanguageText
 {
-    // A saved draft keeps its chosen language; otherwise the listing's posting language decides.
-    public static async Task<Language> TargetLanguageAsync(Listing listing, AppDbContext db, CancellationToken ct)
+    // A language the UI asks for wins (switching regenerates the one draft); else a saved draft keeps its language,
+    // else the listing's posting language decides.
+    public static async Task<Language> TargetLanguageAsync(Listing listing, Language? requested, AppDbContext db,
+        CancellationToken ct)
     {
+        if (requested is { } language) return language;
         var draft = await db.TailoredCvDrafts.AsNoTracking().FirstOrDefaultAsync(d => d.ListingId == listing.Id, ct);
         return draft?.Content.Language ?? listing.PostingLanguage ?? Language.English;
     }

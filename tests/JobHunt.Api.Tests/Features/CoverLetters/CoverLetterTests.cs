@@ -1,5 +1,7 @@
 using System.Text.Json;
 using JobHunt.Api.Data;
+using JobHunt.Api.Tests.Features.Listings;
+using JobHunt.Api.Tests.Features.Profiles;
 using JobHunt.Api.Tests.Features.WritingSamples;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
@@ -136,14 +138,36 @@ public class CoverLetterTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var listingId = await CreateListingAsync(client);
         await client.GraphQLAsync("""
             mutation ($listingId: Int!) {
-              saveTailoredCvDraft(input: { listingId: $listingId, content: { summary: "CV_DRAFT_SUMMARY" } }) { errors { __typename } }
+              saveTailoredCvDraft(input: { listingId: $listingId, content: { summary: "CV_DRAFT_SUMMARY",
+                experiences: [{ employer: "Tech Co", title: "Dev", technologies: ["CV_TECH"], bullets: [] }] } }) { errors { __typename } }
             }
             """, new { listingId });
         factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant, LetterJson));
 
         await client.GraphQLAsync(Generate, new { listingId });
 
-        Assert.Contains("CV_DRAFT_SUMMARY", string.Join("\n", factory.Llm.LastMessages.Select(m => m.Text)));
+        var prompt = string.Join("\n", factory.Llm.LastMessages.Select(m => m.Text));
+        Assert.Contains("CV_DRAFT_SUMMARY", prompt);
+        Assert.Contains("\"technologies\":[\"CV_TECH\"]", prompt);
+    }
+
+    [Fact]
+    public async Task Generate_SendsEntryTechnologies_AndApplicationRules()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var skill = ListingTests.Unique("Svelte");
+        await ProfileEntryTests.AddExperienceAsync(client, employer: "Tech Co", skills: [skill]);
+        var listingId = await CreateListingAsync(client);
+        factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant, LetterJson));
+
+        await client.GraphQLAsync(Generate, new { listingId });
+
+        var instructions = factory.Llm.LastMessages[0].Text;
+        Assert.Contains("writing in a language is not evidence of speaking it", instructions);
+        Assert.Contains("A BROKER listing is usually a client", instructions);
+        Assert.Contains("never relabel them as fullstack", instructions);
+        Assert.Contains("reference number from the description's Application section", instructions);
+        Assert.Contains($"\"technologies\":[\"{skill}\"]", factory.Llm.LastMessages[1].Text);
     }
 
     [Fact]
@@ -174,15 +198,16 @@ public class CoverLetterTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var prompt = (await client.GraphQLAsync("""
             query ($listingId: Int!) { coverLetterExternalPrompt(listingId: $listingId) { version instructions } }
             """, new { listingId })).GetProperty("coverLetterExternalPrompt");
-        Assert.Equal(3, prompt.GetProperty("version").GetInt32());
+        Assert.Equal(5, prompt.GetProperty("version").GetInt32());
         Assert.Contains("Build services", prompt.GetProperty("instructions").GetString());
-        Assert.Contains("\"schemaVersion\": 3", prompt.GetProperty("instructions").GetString());
+        Assert.Contains("Never search the web for the posting", prompt.GetProperty("instructions").GetString());
+        Assert.Contains("\"schemaVersion\": 5", prompt.GetProperty("instructions").GetString());
 
-        var valid = (await client.GraphQLAsync(Preview, new { listingId, json = LetterJson.Replace("{\"subject\"", "{\"schemaVersion\":3,\"subject\"") }))
+        var valid = (await client.GraphQLAsync(Preview, new { listingId, json = LetterJson.Replace("{\"subject\"", "{\"schemaVersion\":5,\"subject\"") }))
             .GetProperty("previewCoverLetterDraft");
         Assert.Equal("Dear Kari,", valid.GetProperty("candidate").GetProperty("greeting").GetString());
 
-        foreach (var json in new[] { LetterJson, """{"schemaVersion":2,"subject":null,"greeting":"Hi","paragraphs":["x"],"closing":"Bye","extra":1}""", "not json" })
+        foreach (var json in new[] { LetterJson, """{"schemaVersion":3,"subject":null,"greeting":"Hi","paragraphs":["x"],"closing":"Bye","extra":1}""", "not json" })
         {
             var invalid = (await client.GraphQLAsync(Preview, new { listingId, json })).GetProperty("previewCoverLetterDraft");
             Assert.Equal("InvalidCoverLetterError", invalid.GetProperty("errors")[0].GetProperty("__typename").GetString());

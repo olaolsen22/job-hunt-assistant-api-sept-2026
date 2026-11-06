@@ -177,6 +177,60 @@ public class ParseTests(ApiFactory factory) : IClassFixture<ApiFactory>
         }
         """;
 
+    private const string ParseUrlWithMode = """
+        mutation ($url: String!, $mode: ParseMode!) {
+          parseUrl(input: { url: $url, mode: $mode }) {
+            parseJob { mode status result }
+            errors { __typename }
+          }
+        }
+        """;
+
+    [Fact]
+    public async Task ParseUrl_Companies_SendsThePageWithFooterAndContactLinks()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var filler = new string('x', 250);
+        factory.Pages.Respond = () => Page($$"""
+            <html><head><script>track()</script></head><body><nav>Menu</nav>
+            <main><h1>Om oss</h1><p>Kari Nordmann, CTO {{filler}}</p></main>
+            <footer><a href="mailto:kari@acme.no?subject=Hei">Send e-post</a> <a href="tel:+4712345678">Ring</a></footer>
+            </body></html>
+            """);
+        var rows = """[{ "name": "Acme", "contacts": [{ "name": "Kari Nordmann" }] }]""";
+        factory.Llm.Respond = () => Answer(rows);
+
+        var job = (await client.GraphQLAsync(ParseUrlWithMode, new { url = ListingTests.UniqueUrl(), mode = "COMPANIES" }))
+            .GetProperty("parseUrl").GetProperty("parseJob");
+
+        Assert.Equal("SUCCEEDED", job.GetProperty("status").GetString());
+        Assert.Equal("COMPANIES", job.GetProperty("mode").GetString());
+        Assert.Equal(rows, job.GetProperty("result").GetString());
+        var sent = factory.Llm.LastMessages[1].Text;
+        Assert.Contains("company's web page", sent);
+        Assert.Contains("Kari Nordmann, CTO", sent);
+        Assert.Contains("kari@acme.no", sent);
+        Assert.Contains("+4712345678", sent);
+        Assert.DoesNotContain("Menu", sent);
+        Assert.DoesNotContain("track()", sent);
+        Assert.Contains("\"contacts\"", factory.Llm.LastMessages[0].Text);
+    }
+
+    [Fact]
+    public async Task ParseUrl_Quick_ReturnsError_WithoutFetching()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var requests = factory.Pages.Requests;
+        var before = await CountsAsync();
+
+        var errors = (await client.GraphQLAsync(ParseUrlWithMode, new { url = ListingTests.UniqueUrl(), mode = "QUICK" }))
+            .GetProperty("parseUrl").GetProperty("errors");
+
+        Assert.Equal("InvalidParseRequestError", errors[0].GetProperty("__typename").GetString());
+        Assert.Equal(requests, factory.Pages.Requests);
+        Assert.Equal(before, await CountsAsync());
+    }
+
     private const string AdPage = """
         <html><head><script type="application/ld+json">{"@type":"JobPosting","title":"Backend Engineer",
         "hiringOrganization":{"name":"Six Robotics"},"description":"<p>Build things.</p>"}</script></head>

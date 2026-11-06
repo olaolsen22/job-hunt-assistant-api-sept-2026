@@ -1,4 +1,5 @@
 using JobHunt.Api.Features.Auth;
+using JobHunt.Api.Features.BaseCvs;
 using JobHunt.Api.Features.Listings;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -22,7 +23,15 @@ public class Document
     public DateTime CreatedAt { get; set; }
     // Null = not sent. Set by applyToListing; a sent document is the record of an application, so it can't be deleted.
     public DateTime? SentAt { get; set; }
+    // How the file was made, so outcomes can be compared by CV source. Null = created before it was recorded.
+    public DocumentOrigin? Origin { get; set; }
+    // The base CV version sent as-is; null for tailored or uploaded files. No navigation: GraphQL resolves it by id
+    // (DocumentNode), so mutation results and projected listings show it alike.
+    public int? BaseCvVersionId { get; set; }
 }
+
+// Tailored = rendered from this listing's own CV or cover letter draft.
+public enum DocumentOrigin { Uploaded, Tailored, BaseCv }
 
 // Its own table so loading documents (or listings with their documents) never pulls the file bytes.
 public class DocumentContent
@@ -42,6 +51,10 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.HasOne(d => d.Listing).WithMany(l => l.Documents).OnDelete(DeleteBehavior.Cascade);
         builder.Property(d => d.ContentHash).HasMaxLength(64);
         builder.HasIndex(d => new { d.UserId, d.ContentHash });
+        // NoAction, not Restrict: a version an application used can't be deleted, but SQLite checks NoAction at the
+        // end of the statement, so deleting a user still cascades through both sides.
+        builder.HasOne<BaseCvVersion>().WithMany().HasForeignKey(d => d.BaseCvVersionId)
+            .OnDelete(DeleteBehavior.NoAction);
     }
 }
 

@@ -43,6 +43,8 @@ public static class TailoredCvPdfRenderer
                 page.Content().Column(column =>
                 {
                     column.Spacing(4);
+                    var style = content.Template == TailoredCvTemplate.Concise
+                        ? TailoredCvContentStyle.Bullets : content.ContentStyle;
                     AddContact(column, content, t);
                     if (content.SectionOrder == TailoredCvSectionOrder.Developer)
                     {
@@ -51,20 +53,20 @@ public static class TailoredCvPdfRenderer
                             AddLabelledLine(column, link.Label, link.Url);
                         AddTextSection(column, t.Summary, content.Summary);
                         AddGroupedSkillsSection(column, content.Skills, categories ?? [], content.Language, t);
-                        AddExperienceSection(column, content.ContentStyle, content.Experiences, t, showTechnologies: true);
-                        AddProjectSection(column, t.SelectedProjects, content.ContentStyle, content.Projects, t,
+                        AddExperienceSection(column, style, content.Experiences, t, showTechnologies: true);
+                        AddProjectSection(column, t.SelectedProjects, style, content.Projects, t,
                             showTechnologies: true);
-                        AddEducationSection(column, content.ContentStyle, content.Educations, t);
-                        AddCertificationSection(column, content.ContentStyle, content.Certifications, t);
+                        AddEducationSection(column, style, content.Educations, t);
+                        AddCertificationSection(column, style, content.Certifications, t);
                         AddLanguagesSection(column, content.Languages, t);
                     }
                     else
                     {
                         AddTextSection(column, t.Summary, content.Summary);
-                        AddExperienceSection(column, content.ContentStyle, content.Experiences, t);
-                        AddEducationSection(column, content.ContentStyle, content.Educations, t);
-                        AddCertificationSection(column, content.ContentStyle, content.Certifications, t);
-                        AddProjectSection(column, t.Projects, content.ContentStyle, content.Projects, t);
+                        AddExperienceSection(column, style, content.Experiences, t);
+                        AddEducationSection(column, style, content.Educations, t);
+                        AddCertificationSection(column, style, content.Certifications, t);
+                        AddProjectSection(column, t.Projects, style, content.Projects, t);
                         AddLanguagesSection(column, content.Languages, t);
                         AddSkillsSection(column, content.Skills, t);
                         AddLinksSection(column, content.Links, t);
@@ -239,18 +241,27 @@ public static class TailoredCvPdfRenderer
             AddTextSection(column, t.Skills, string.Join(", ", skills.Select(s => s.Name)));
     }
 
-    // Developer CVs: one labelled line per category in the user's category order, uncategorized (or a category
-    // deleted since) last. Each line keeps the draft's order, which is relevance order, so the strongest match leads.
+    // Developer CVs: one labelled line per group. A skill's draft-only Group wins over its category; lines with the
+    // same label merge (case-insensitive). Custom groups lead in first-appearance order, then categories in the
+    // user's category order, then uncategorized (or a category deleted since). Each line keeps the draft's order,
+    // which is relevance order, so the strongest match leads.
     private static void AddGroupedSkillsSection(ColumnDescriptor column, List<TailoredCvSkill>? skills,
         IReadOnlyList<SkillCategory> categories, Language language, CvText t)
     {
         if (skills is not { Count: > 0 })
             return;
         var positions = categories.Select((c, i) => (c, i)).ToDictionary(x => x.c.Id, x => (Category: x.c, Position: x.i));
-        var lines = skills.GroupBy(s => s.CategoryId is { } id && positions.ContainsKey(id) ? id : (int?)null)
-            .OrderBy(g => g.Key is { } id ? positions[id].Position : int.MaxValue)
-            .Select(g => (Label: g.Key is { } id ? positions[id].Category.NameIn(language) : t.OtherSkills,
-                Names: string.Join(", ", g.Select(s => s.Name))));
+        var lines = skills.Select((s, i) =>
+            {
+                var category = s.CategoryId is { } id && positions.TryGetValue(id, out var p) ? p : default;
+                var (label, rank) = s.Group is { } group ? (group, (0, i))
+                    : category.Category is { } c ? (c.NameIn(language), (1, category.Position))
+                    : (t.OtherSkills, (2, 0));
+                return (Skill: s, Label: label, Rank: rank);
+            })
+            .GroupBy(x => x.Label, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(g => g.Min(x => x.Rank))
+            .Select(g => (Label: g.Key, Names: string.Join(", ", g.Select(x => x.Skill.Name))));
         column.Item().EnsureSpace(MinTextSectionStart).Column(section =>
         {
             AddHeading(section, t.TechnicalSkills);

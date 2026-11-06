@@ -22,6 +22,19 @@ public class Contact
     // LinkedIn or a profile page.
     public string? Url { get; set; }
     public string? Notes { get; set; }
+    // Copied from the latest interaction, like Listing.StatusChangedAt, so the people list can filter and sort on
+    // them with plain SQL. Only ContactInteractionMutations changes them, through Refresh.
+    public DateTime? LastInteractionAt { get; set; }
+    public DateOnly? FollowUpOn { get; set; }
+    public List<ContactInteraction> Interactions { get; set; } = [];
+
+    // Needs Interactions loaded.
+    internal void Refresh()
+    {
+        var latest = Interactions.OrderBy(i => i.OccurredAt).ThenBy(i => i.Id).LastOrDefault();
+        LastInteractionAt = latest?.OccurredAt;
+        FollowUpOn = latest?.FollowUpOn;
+    }
 }
 
 public class ListingContact
@@ -39,6 +52,8 @@ public class ContactConfiguration : IEntityTypeConfiguration<Contact>
         builder.HasOne<AppUser>().WithMany().HasForeignKey(c => c.UserId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(c => c.Company).WithMany(c => c.Contacts).OnDelete(DeleteBehavior.Cascade);
         builder.HasIndex(c => new { c.CompanyId, c.NormalizedName }).IsUnique();
+        // The follow-ups widget: contacts due by a date.
+        builder.HasIndex(c => new { c.UserId, c.FollowUpOn });
     }
 }
 

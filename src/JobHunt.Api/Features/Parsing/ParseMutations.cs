@@ -63,24 +63,34 @@ public static class ParseMutations
             }, Outcome, ct);
     }
 
-    // For a listing that isn't saved yet, so the URL has to come from the client. The fetcher's public-address
-    // check is what keeps this from reaching internal hosts.
+    // For a listing that isn't saved yet, or a company page (COMPANIES: its about, team or contact page), so the URL
+    // has to come from the client. The fetcher's public-address check is what keeps this from reaching internal hosts.
     [Error<InvalidParseRequestException>]
     [Error<UnknownLlmModelException>]
     [Error<AiSafetyException>]
     public static async Task<ParseJob> ParseUrlAsync(
         string url, string? model, AppDbContext db, ListingParser parser, LlmModelResolver models,
-        ListingPageFetcher fetcher, AiOperations operations, TimeProvider time, CancellationToken ct, Guid? requestId = null)
+        ListingPageFetcher fetcher, AiOperations operations, TimeProvider time, CancellationToken ct,
+        Guid? requestId = null, ParseMode? mode = null)
     {
+        // Nullable rather than defaulted: Hot Chocolate can't print an enum default on a mutation-convention input.
+        var parseMode = mode ?? ParseMode.Full;
+        // Quick add reads a pasted search page, which a fetched page isn't.
+        if (parseMode == ParseMode.Quick)
+            throw new InvalidParseRequestException("Quick add works on pasted text, not a link.");
         url = url.Trim();
         if (!Inputs.TryHttpUrl(url, out var uri))
-            throw new InvalidParseRequestException("Enter a full http(s) link to the job ad.");
+            throw new InvalidParseRequestException(parseMode == ParseMode.Companies
+                ? "Enter a full http(s) link to the company's page."
+                : "Enter a full http(s) link to the job ad.");
 
-        return await operations.RunAsync("parse-url", new { url, model }, requestId, db,
+        return await operations.RunAsync("parse-url", new { url, model, mode = parseMode }, requestId, db,
             () => models.ResolveAsync(model, db, ct), async resolved =>
             {
-                var text = await fetcher.GetListingTextAsync(uri, ct);
-                return await RunJobAsync(text, ParseMode.Full, resolved, db, parser, time, ct);
+                var text = parseMode == ParseMode.Companies
+                    ? await fetcher.GetCompanyTextAsync(uri, ct)
+                    : await fetcher.GetListingTextAsync(uri, ct);
+                return await RunJobAsync(text, parseMode, resolved, db, parser, time, ct);
             }, Outcome, ct);
     }
 

@@ -383,10 +383,10 @@ public class CompanyTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     private static object Researched(string name, string? orgNumber = null, string[]? skills = null,
-        string? websiteUrl = "https://acme.example", int? foundedYear = 2010) => new
+        string? websiteUrl = "https://acme.example", int? foundedYear = 2010, string kind = "CONSULTANCY") => new
     {
         name, industryName = (string?)null, locations = Array.Empty<object>(), orgNumber, websiteUrl,
-        careersUrl = "https://acme.example/jobs", linkedInUrl = (string?)null, kind = "CONSULTANCY",
+        careersUrl = "https://acme.example/jobs", linkedInUrl = (string?)null, kind,
         sizeBand = "MEDIUM", foundedYear, description = " Builds things. ", workMode = "HYBRID",
         workingLanguage = "NORWEGIAN", skills = skills ?? [],
     };
@@ -424,6 +424,21 @@ public class CompanyTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal("NORWEGIAN", company.GetProperty("workingLanguage").GetString());
         Assert.NotEqual(JsonValueKind.Null, company.GetProperty("researchedAt").ValueKind);
         Assert.Equal([skill], SkillNames(company));
+    }
+
+    [Theory]
+    [InlineData("RECRUITMENT")]
+    [InlineData("BROKER")]
+    public async Task CreateCompanies_SavesAgencyKinds(string kind)
+    {
+        var client = await factory.GetOwnerClientAsync();
+
+        var company = Results(await client.GraphQLAsync(CreateResearched, new
+        {
+            companies = new[] { Researched(ListingTests.Unique("Agency"), kind: kind) },
+        })).Single().GetProperty("company");
+
+        Assert.Equal(kind, company.GetProperty("kind").GetString());
     }
 
     [Fact]
@@ -887,6 +902,112 @@ public class CompanyTests(ApiFactory factory) : IClassFixture<ApiFactory>
     private static async Task<JsonElement> FavoriteAsync(HttpClient client, int id, bool isFavorite) =>
         (await client.GraphQLAsync(SetFavorite, new { id, isFavorite }))
         .GetProperty("setCompanyFavorite").GetProperty("company");
+
+    private const string CreateCompaniesWithContacts = """
+        mutation ($companies: [CompanyInput!]!) {
+          createCompanies(input: { companies: $companies }) {
+            results { created filled company { id researchedAt contacts { name title email } } }
+            errors { __typename ... on Error { message } }
+          }
+        }
+        """;
+
+    private static object Person(string name, string? title = null, string? email = null) =>
+        new { name, title, email };
+
+    [Fact]
+    public async Task CreateCompanies_WithContacts_AddsPeopleAndOnlyFillsKnownOnes()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var name = ListingTests.Unique("Consult");
+
+        // The second row is the same new company: its repeat of Kari must reuse the contact the first row added.
+        var first = (await client.GraphQLAsync(CreateCompaniesWithContacts, new
+        {
+            companies = new object[]
+            {
+                new { name, locations = Array.Empty<object>(), contacts = new[] { Person("Kari Nordmann", email: "kari@acme.no") } },
+                new { name, locations = Array.Empty<object>(), contacts = new[] { Person("kari nordmann", title: "CTO") } },
+            },
+        })).GetProperty("createCompanies").GetProperty("results");
+        var company = first[1].GetProperty("company");
+        var kari = Assert.Single(company.GetProperty("contacts").EnumerateArray());
+        Assert.Equal(("kari@acme.no", "CTO"), (kari.GetProperty("email").GetString(), kari.GetProperty("title").GetString()));
+        Assert.NotEqual(JsonValueKind.Null, company.GetProperty("researchedAt").ValueKind);
+
+        var again = (await client.GraphQLAsync(CreateCompaniesWithContacts, new
+        {
+            companies = new[]
+            {
+                new { name, locations = Array.Empty<object>(), contacts = new[]
+                {
+                    Person("Kari Nordmann", title: "Recruiter", email: "other@acme.no"), Person("Ola Hansen"),
+                } },
+            },
+        })).GetProperty("createCompanies").GetProperty("results")[0];
+
+        Assert.False(again.GetProperty("created").GetBoolean());
+        Assert.True(again.GetProperty("filled").GetBoolean());
+        var contacts = again.GetProperty("company").GetProperty("contacts").EnumerateArray()
+            .ToDictionary(c => c.GetProperty("name").GetString()!);
+        Assert.Equal(["Kari Nordmann", "Ola Hansen"], contacts.Keys.Order());
+        Assert.Equal("kari@acme.no", contacts["Kari Nordmann"].GetProperty("email").GetString());
+        Assert.Equal("CTO", contacts["Kari Nordmann"].GetProperty("title").GetString());
+
+        var unchanged = (await client.GraphQLAsync(CreateCompaniesWithContacts, new
+        {
+            companies = new[] { new { name, locations = Array.Empty<object>(), contacts = new[] { Person("Ola Hansen") } } },
+        })).GetProperty("createCompanies").GetProperty("results")[0];
+        Assert.False(unchanged.GetProperty("filled").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData("REPEATED")]
+    [InlineData("BAD_EMAIL")]
+    [InlineData("TOO_MANY")]
+    public async Task CreateCompanies_WithBadContacts_ReturnsInvalidCompanyError_AndSavesNothing(string problem)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var name = ListingTests.Unique("Consult");
+        object[] contacts = problem switch
+        {
+            "REPEATED" => [Person("Kari"), Person(" kari ")],
+            "BAD_EMAIL" => [Person("Kari", email: "not-an-email")],
+            _ => [.. Enumerable.Range(0, 21).Select(i => Person($"Person {i}"))],
+        };
+
+        var data = await client.GraphQLAsync(CreateCompaniesWithContacts, new
+        {
+            companies = new[] { new { name, locations = Array.Empty<object>(), contacts } },
+        });
+
+        Assert.Equal("InvalidCompanyError",
+            data.GetProperty("createCompanies").GetProperty("errors")[0].GetProperty("__typename").GetString());
+        var found = await client.GraphQLAsync("query ($s: String) { companies(search: $s) { totalCount } }", new { s = name });
+        Assert.Equal(0, found.GetProperty("companies").GetProperty("totalCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task UpdateCompanyDetails_AddsContacts_AndNullKeepsThem()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var id = await CompanyIdAsync(client, ListingTests.Unique("Acme"));
+        const string update = """
+            mutation ($id: Int!, $details: CompanyDetailsInput!) {
+              updateCompanyDetails(input: { id: $id, details: $details }) {
+                company { contacts { name title } }
+                errors { __typename }
+              }
+            }
+            """;
+
+        await client.GraphQLAsync(update, new { id, details = new { skills = Array.Empty<string>(), contacts = new[] { Person("Kari", title: "CTO") } } });
+        var kept = (await client.GraphQLAsync(update, new { id, details = new { description = "Consultancy", skills = Array.Empty<string>() } }))
+            .GetProperty("updateCompanyDetails").GetProperty("company");
+
+        var kari = Assert.Single(kept.GetProperty("contacts").EnumerateArray());
+        Assert.Equal("CTO", kari.GetProperty("title").GetString());
+    }
 
     private static async Task<int> CompanyIdAsync(HttpClient client, string name)
     {

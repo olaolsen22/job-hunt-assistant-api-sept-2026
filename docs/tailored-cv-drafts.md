@@ -60,6 +60,12 @@ written/spoken scale (`BEGINNER`, `GOOD`, `VERY_GOOD`, `NATIVE`). `referencesOnR
 The UI fills draft bullets/summary from profile translations in the draft language where they exist; both
 AI paths also write the summary in that language and the external prompt supplies translated bullet text.
 
+The draft language is resolved as: the optional `language` argument, else the saved draft's `language`,
+else the listing's `postingLanguage`, else English. `tailoredCvDraftFromProfile`, both analysis mutations,
+`tailoredCvExternalPrompt`, and `previewTailoredCvDraft` (overrides the pasted `content.language`) accept it,
+so the UI can switch language and regenerate before saving. There is still one draft per listing; saving
+with the new `content.language` replaces it.
+
 `sectionOrder` picks the PDF's section order; saving `null` keeps `STANDARD`. The UI offers it as a per-draft
 toggle (e.g. "Developer layout"); neither AI path sets it.
 
@@ -89,11 +95,17 @@ The API can analyze one profile section at a time. For work experience, educatio
 ```graphql
 mutation ($input: AnalyzeTailoredCvSectionInput!) {
   analyzeTailoredCvSection(input: $input) {
-    result { status section sourceEntryId selectedBulletIds selectedSkillIds summary paragraph technologies error }
+    result { status section sourceEntryId selectedBulletIds selectedSkillIds summary headline paragraph technologies bullets { sourceBulletId text } error }
     errors { __typename ... on Error { message } }
   }
 }
 ```
+
+The `SUMMARY` result also carries `headline`: a suggested title line for this CV (≤80 characters asked, in the
+draft language), starting from the profile headline and naming the specialization the job titles show, never
+relabelled as fullstack or another role they don't show. `null` means no suggestion, so keep the draft's headline.
+
+Entry results (experience, education, project) also return `bullets`: the selected bullets' text to apply, in selection order. With the `DETAILED` template it is the source text in the draft language; with `CONCISE` it is the shortened text (see [Templates](#templates)). Use `bullets[].text` rather than copying the profile bullet.
 
 Sections are `EXPERIENCE`, `EDUCATION`, `PROJECT`, `SKILLS`, and `SUMMARY`. Experience and project results
 also carry `technologies`: at most 6 of the entry's own skills (draft-language names, most relevant first) that
@@ -102,22 +114,31 @@ coding assistants, or a skill picked only because the listing names it; `null` m
 
 Configure personal keys through the [provider-key API](llm-provider-keys.md). Credential rejection, rate limiting, timeout, and provider errors return readable failed section results; no automatic key/provider fallback occurs. The UI can prompt users to switch models or update/remove the key. Shared Gemini is used only when a Gemini selection has no personal Gemini key.
 
+## Templates
+
+The analysis mutations, `tailoredCvExternalPrompt` and `previewTailoredCvDraft` take an optional `template` (`DETAILED` when omitted). The draft stores `content.template` only so the UI can restore its toggle; the server never reads the saved value for AI calls, so pass the current toggle. Switching templates does not re-run anything: analyze again to get suggestions for the other template.
+
+- `DETAILED`: today's behavior. 1-2 pages, the profile's exact bullet text, paragraph suggestions, summary ≤280 characters, about 12-20 skills.
+- `CONCISE`: a one-page CV a recruiter can scan in seconds. Bullets only (the PDF ignores `contentStyle` and paragraphs), no paragraph suggestions. Bullet caps by recency: newest experience ≤5, the next two ≤3, older experiences and each education ≤2, projects ≤2 and only when clearly relevant (the external prompt also caps projects at 2). Within the caps, a bullet showing a listing requirement not yet covered wins over a second bullet on the same theme. Summary 2 sentences ≤220 characters, about 8-12 skills. The caps are prompt guidance, not validation.
+
+Concise bullets are shortened to about one line (up to ~160 characters when cutting further would lose what was built, a technology, domain, scale or result) by cutting the candidate's own words, using the listing's exact phrase where the bullet describes the same thing (ATS keyword matching). The server checks every shortened bullet: at most 2 words may come from neither the source bullet nor the listing (title, description, skill names), and any number must appear in the source bullet. A bullet failing the check, or blank or over 500 characters, falls back to the source text instead of failing the section or the paste. Both templates' prompts avoid stock CV/AI phrasing (no em dashes, no buzzwords such as "spearheaded" or "resultatorientert").
+
 ## Use an external AI
 
-`tailoredCvExternalPrompt(listingId:)` returns versioned, copyable instructions and allowlisted listing/profile data. Paste those instructions into an external AI and copy its JSON response back to the app. The prompt asks for exact source bullet text and IDs, and excludes contact details and other sensitive profile fields.
+`tailoredCvExternalPrompt(listingId:, template:)` returns versioned, copyable instructions and allowlisted listing/profile data. Paste those instructions into an external AI and copy its JSON response back to the app. The prompt asks for exact source bullet text (`DETAILED`) or shortened bullet text (`CONCISE`) with IDs, and excludes contact details and other sensitive profile fields.
 
 Preview pasted JSON before applying it to the editable UI candidate:
 
 ```graphql
 mutation ($input: PreviewTailoredCvDraftInput!) {
   previewTailoredCvDraft(input: $input) {
-    candidate { schemaVersion content { summary experiences { sourceEntryId employer title bullets { sourceBulletId text } } skills { sourceSkillId name level } } }
+    candidate { schemaVersion content { headline summary experiences { sourceEntryId employer title bullets { sourceBulletId text } } skills { sourceSkillId name level } } }
     errors { __typename ... on Error { message } }
   }
 }
 ```
 
-The preview validates JSON shape and that source IDs belong to the signed-in user's profile. A project's
+The preview validates JSON shape and that source IDs belong to the signed-in user's profile. Pass the same `template` used for the prompt: `DETAILED` rejects bullet text that differs from the source (or its draft-language translation); `CONCISE` applies the word check above, falls back per bullet, and sets `content.template`. A project's
 missing `kind` and an entry's missing `technologies` are filled from its source entry (`[]` is kept). It returns normalized candidate content without writing anything. The UI displays the candidate for review/editing; only the explicit `saveTailoredCvDraft` mutation above persists it. Pasted JSON is never stored.
 
 ## Save or replace the draft
@@ -139,4 +160,4 @@ Send the complete edited candidate in `content`, including contact fields the us
 
 ## Selection guidance
 
-Skills analysis returns listing-relevant skills plus the candidate's core professional stack (usually about 12-20), not only listing keywords; it sees whether each skill was used in work (`usedInWork`) or projects (`usedInProjects`), keeps foundational skills such as Git, SQL, testing and CI/CD when the listing wants them, and includes an unused skill only when the listing asks for it. All sections are told to surface supported evidence of themes the listing emphasises (for example AI-powered features), keeping AI tool use apart from building AI features. Bullet selection prefers the kind of work the listing emphasises (API, platform, senior). The summary sees experience (with employer and dates), education and project bullets. The external prompt (version 11) puts the listing, including its `url`, first and asks a browsing-capable AI to read the full posting when the stored listing is incomplete.
+Skills analysis returns listing-relevant skills plus the candidate's core professional stack (usually about 12-20; 8-12 for `CONCISE`), not only listing keywords; it sees whether each skill was used in work (`usedInWork`) or projects (`usedInProjects`), keeps foundational skills such as Git, SQL, testing and CI/CD when the listing wants them, and includes an unused skill only when the listing asks for it. All sections are told to surface supported evidence of themes the listing emphasises (for example AI-powered features), keeping AI tool use apart from building AI features. Bullet selection prefers the kind of work the listing emphasises (frontend, API, platform, senior), and client or stakeholder work, domain learning and requirement clarification when the company kind is `CONSULTANCY` or `BROKER` (analysis and external prompt send `companyResearch.kind`). The summary sees experience (with employer and dates), education and project bullets; in `analyzeAllTailoredCv` it also gets `cvBullets`, the bullets the earlier sections selected, and must agree with them (name only strengths the selected bullets or skills show, and reflect the strongest evidence). The external prompt asks the same of its summary. The external prompt (version 16) also asks for `content.headline` (null = keep the current one) and puts the listing, including its `url`, first and asks a browsing-capable AI to read the full posting from exactly that `url` when the stored listing is incomplete. It must never search the web for the posting; if the page can't be opened or shows a different posting, it uses the stored fields only.

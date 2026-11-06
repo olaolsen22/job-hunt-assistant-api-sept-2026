@@ -133,13 +133,14 @@ public static class CoverLetterContext
         return fallback is null ? null : string.Join("\n", CoverLetterValidation.AddressLines(fallback));
     }
 
-    // The CV actually being sent, so the letter backs it up. Contact details stay out.
+    // The CV actually being sent, so the letter backs it up. Contact details stay out. Technologies show where a
+    // skill was used, for "experience with X" form questions.
     private static object FromCv(TailoredCvContent cv) => new
     {
         cv.Headline, cv.Summary,
         Experiences = cv.Experiences?.Select(e => new
         {
-            e.Employer, e.Title, e.StartMonth, e.EndMonth, e.Paragraph, Bullets = e.Bullets.Select(b => b.Text),
+            e.Employer, e.Title, e.StartMonth, e.EndMonth, e.Paragraph, e.Technologies, Bullets = e.Bullets.Select(b => b.Text),
         }),
         Educations = cv.Educations?.Select(e => new
         {
@@ -147,7 +148,7 @@ public static class CoverLetterContext
         }),
         Projects = cv.Projects?.Select(p => new
         {
-            p.Name, p.StartMonth, p.EndMonth, p.Paragraph, Bullets = p.Bullets.Select(b => b.Text),
+            p.Name, p.Kind, p.StartMonth, p.EndMonth, p.Paragraph, p.Technologies, Bullets = p.Bullets.Select(b => b.Text),
         }),
         Skills = cv.Skills?.Select(s => s.Name),
         Languages = cv.Languages?.Select(l => new { l.Name, l.Written, l.Spoken }),
@@ -163,17 +164,19 @@ public static class CoverLetterContext
             Summary = translation?.Summary ?? profile.Summary,
             Experiences = profile.Experiences.Select(e => new
             {
-                e.Employer, e.Title, e.StartMonth, e.EndMonth,
+                e.Employer, Title = e.TitleIn(language), e.StartMonth, e.EndMonth,
+                Technologies = e.Skills.Select(s => s.NameIn(language)),
                 Bullets = e.Bullets.Select(b => TailoredCvLanguageText.Bullet(b, language)),
             }),
             Educations = profile.Educations.Select(e => new
             {
-                e.School, e.Degree, e.Field, e.StartMonth, e.EndMonth,
+                e.School, Degree = e.DegreeIn(language), Field = e.FieldIn(language), e.StartMonth, e.EndMonth,
                 Bullets = e.Bullets.Select(b => TailoredCvLanguageText.Bullet(b, language)),
             }),
             Projects = profile.Projects.Select(p => new
             {
-                p.Name, p.StartMonth, p.EndMonth, Bullets = p.Bullets.Select(b => TailoredCvLanguageText.Bullet(b, language)),
+                p.Name, p.Kind, p.StartMonth, p.EndMonth, Technologies = p.Skills.Select(s => s.NameIn(language)),
+                Bullets = p.Bullets.Select(b => TailoredCvLanguageText.Bullet(b, language)),
             }),
             Skills = profile.Skills.Select(s => s.Skill.NameIn(language)),
             Languages = profile.Languages.Select(l => new { l.Name, l.Written, l.Spoken }),

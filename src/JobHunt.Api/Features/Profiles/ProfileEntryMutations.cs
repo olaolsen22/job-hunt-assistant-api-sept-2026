@@ -31,7 +31,8 @@ public static class ProfileEntryMutations
         int id, string employer, string title, LocationInput? location, DateOnly startMonth, DateOnly? endMonth,
         List<string> skillNames, AppDbContext db, CancellationToken ct)
     {
-        var experience = await db.ProfileExperiences.Include(e => e.Skills).Include(e => e.Bullets).FirstOrDefaultAsync(e => e.Id == id, ct)
+        var experience = await db.ProfileExperiences.Include(e => e.Skills).Include(e => e.Bullets).Include(e => e.Translations)
+            .FirstOrDefaultAsync(e => e.Id == id, ct)
             ?? throw new ProfileEntryNotFoundException("Experience", id);
         await ApplyAsync(experience, employer, title, location, startMonth, endMonth, skillNames, db, ct);
         await db.SaveChangesAsync(ct);
@@ -69,7 +70,7 @@ public static class ProfileEntryMutations
         int id, string school, string? degree, string? field, LocationInput? location, DateOnly startMonth, DateOnly? endMonth,
         AppDbContext db, CancellationToken ct)
     {
-        var education = await db.ProfileEducations.Include(e => e.Bullets).FirstOrDefaultAsync(e => e.Id == id, ct)
+        var education = await db.ProfileEducations.Include(e => e.Bullets).Include(e => e.Translations).FirstOrDefaultAsync(e => e.Id == id, ct)
             ?? throw new ProfileEntryNotFoundException("Education", id);
         await ApplyAsync(education, school, degree, field, location, startMonth, endMonth, db, ct);
         await db.SaveChangesAsync(ct);

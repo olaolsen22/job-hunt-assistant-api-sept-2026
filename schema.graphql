@@ -9,6 +9,17 @@ type Query {
   llmCallLimits: [LlmCallLimit!]! @cost(weight: "10")
   applicationAnswerExternalPrompt(questionId: Int!): ApplicationAnswerExternalPrompt!
     @cost(weight: "10")
+  baseCvExternalPrompt(
+    language: Language!
+    targetRole: String!
+    notes: String
+    template: TailoredCvTemplate
+  ): BaseCvExternalPrompt! @cost(weight: "10")
+  baseCvs(archived: Boolean! = false): [BaseCv!]! @cost(weight: "10")
+  baseCvVersion(id: Int!): BaseCvVersion @cost(weight: "10")
+  baseCvFromProfile(language: Language!): TailoredCvContent! @cost(weight: "10")
+  baseCvTranslation(baseCvId: Int!, language: Language!, fromLanguage: Language): BaseCvTranslation
+    @cost(weight: "10")
   companyParsePrompt: CompanyParsePrompt! @cost(weight: "10")
   companies(
     search: String
@@ -31,6 +42,28 @@ type Query {
       requireOneSlicingArgument: false
     )
     @cost(weight: "10")
+  contacts(
+    search: String
+    "Returns the first _n_ elements from the list."
+    first: Int
+    "Returns the elements in the list that come after the specified cursor."
+    after: String
+    "Returns the last _n_ elements from the list."
+    last: Int
+    "Returns the elements in the list that come before the specified cursor."
+    before: String
+    where: ContactFilterInput @cost(weight: "10")
+    order: [ContactSortInput!] @cost(weight: "10")
+  ): ContactsConnection
+    @listSize(
+      assumedSize: 50
+      slicingArguments: ["first", "last"]
+      slicingArgumentDefaultValue: 10
+      sizedFields: ["edges", "nodes"]
+      requireOneSlicingArgument: false
+    )
+    @cost(weight: "10")
+  contactById(id: Int!): Contact @cost(weight: "10")
   coverLetterDraft(listingId: Int!): CoverLetterDraft @cost(weight: "10")
   coverLetterDraftFromProfile(listingId: Int!): CoverLetterContent
     @cost(weight: "10")
@@ -100,6 +133,28 @@ type Query {
       requireOneSlicingArgument: false
     )
     @cost(weight: "10")
+  listingImports(
+    isReviewed: Boolean
+    "Returns the first _n_ elements from the list."
+    first: Int
+    "Returns the elements in the list that come after the specified cursor."
+    after: String
+    "Returns the last _n_ elements from the list."
+    last: Int
+    "Returns the elements in the list that come before the specified cursor."
+    before: String
+    where: ListingImportFilterInput @cost(weight: "10")
+    order: [ListingImportSortInput!] @cost(weight: "10")
+  ): ListingImportsConnection
+    @listSize(
+      assumedSize: 50
+      slicingArguments: ["first", "last"]
+      slicingArgumentDefaultValue: 10
+      sizedFields: ["edges", "nodes"]
+      requireOneSlicingArgument: false
+    )
+    @cost(weight: "10")
+  pendingListingImportCount: Int! @cost(weight: "10")
   checkListingUrls(urls: [String!]!): [ListingUrlCheckResult!]!
     @cost(weight: "10")
   listings(
@@ -194,10 +249,15 @@ type Query {
       requireOneSlicingArgument: false
     )
     @cost(weight: "10")
-  tailoredCvDraftFromProfile(listingId: Int!): TailoredCvContent
+  tailoredCvDraftFromProfile(listingId: Int!, language: Language): TailoredCvContent
     @cost(weight: "10")
   tailoredCvDraft(listingId: Int!): TailoredCvDraft @cost(weight: "10")
-  tailoredCvExternalPrompt(listingId: Int!): TailoredCvExternalPrompt!
+  tailoredCvExternalPrompt(
+    listingId: Int!
+    template: TailoredCvTemplate
+    language: Language
+  ): TailoredCvExternalPrompt! @cost(weight: "10")
+  tailoredCvSkillGroupPrompt(skillNames: [String!]!, language: Language!): TailoredCvSkillGroupPrompt!
     @cost(weight: "10")
   llmUsageToday: UsageToday! @cost(weight: "10")
   usageDaily(days: Int! = 30, credentialId: String): [DailyUsage!]!
@@ -255,6 +315,20 @@ type Mutation {
     @cost(weight: "10")
   deleteInterview(input: DeleteInterviewInput!): DeleteInterviewPayload!
     @cost(weight: "10")
+  previewBaseCv(input: PreviewBaseCvInput!): PreviewBaseCvPayload!
+    @cost(weight: "10")
+  createBaseCv(input: CreateBaseCvInput!): CreateBaseCvPayload!
+    @cost(weight: "10")
+  saveBaseCvVersion(input: SaveBaseCvVersionInput!): SaveBaseCvVersionPayload!
+    @cost(weight: "10")
+  updateBaseCv(input: UpdateBaseCvInput!): UpdateBaseCvPayload!
+    @cost(weight: "10")
+  setBaseCvArchived(input: SetBaseCvArchivedInput!): SetBaseCvArchivedPayload!
+    @cost(weight: "10")
+  deleteBaseCv(input: DeleteBaseCvInput!): DeleteBaseCvPayload!
+    @cost(weight: "10")
+  generateBaseCvDocument(input: GenerateBaseCvDocumentInput!): GenerateBaseCvDocumentPayload!
+    @cost(weight: "10")
   createCompanies(input: CreateCompaniesInput!): CreateCompaniesPayload!
     @cost(weight: "10")
   updateCompanyDetails(input: UpdateCompanyDetailsInput!): UpdateCompanyDetailsPayload!
@@ -266,6 +340,12 @@ type Mutation {
   setCompanyNotes(input: SetCompanyNotesInput!): SetCompanyNotesPayload!
     @cost(weight: "10")
   updateCompany(input: UpdateCompanyInput!): UpdateCompanyPayload!
+    @cost(weight: "10")
+  addContactInteraction(input: AddContactInteractionInput!): AddContactInteractionPayload!
+    @cost(weight: "10")
+  updateContactInteraction(input: UpdateContactInteractionInput!): UpdateContactInteractionPayload!
+    @cost(weight: "10")
+  deleteContactInteraction(input: DeleteContactInteractionInput!): DeleteContactInteractionPayload!
     @cost(weight: "10")
   addContact(input: AddContactInput!): AddContactPayload! @cost(weight: "10")
   updateContact(input: UpdateContactInput!): UpdateContactPayload!
@@ -289,6 +369,8 @@ type Mutation {
   updateJobRoleCategory(input: UpdateJobRoleCategoryInput!): UpdateJobRoleCategoryPayload!
     @cost(weight: "10")
   setJobRoleCategory(input: SetJobRoleCategoryInput!): SetJobRoleCategoryPayload!
+    @cost(weight: "10")
+  setListingImportReviewed(input: SetListingImportReviewedInput!): SetListingImportReviewedPayload!
     @cost(weight: "10")
   createListing(input: CreateListingInput!): CreateListingPayload!
     @cost(weight: "10")
@@ -395,6 +477,16 @@ type Mutation {
     @cost(weight: "10")
   deleteProfileTranslation(input: DeleteProfileTranslationInput!): DeleteProfileTranslationPayload!
     @cost(weight: "10")
+  setProfileExperienceTranslation(input: SetProfileExperienceTranslationInput!): SetProfileExperienceTranslationPayload!
+    @cost(weight: "10")
+  deleteProfileExperienceTranslation(
+    input: DeleteProfileExperienceTranslationInput!
+  ): DeleteProfileExperienceTranslationPayload! @cost(weight: "10")
+  setProfileEducationTranslation(input: SetProfileEducationTranslationInput!): SetProfileEducationTranslationPayload!
+    @cost(weight: "10")
+  deleteProfileEducationTranslation(
+    input: DeleteProfileEducationTranslationInput!
+  ): DeleteProfileEducationTranslationPayload! @cost(weight: "10")
   suggestProfileTranslation(input: SuggestProfileTranslationInput!): SuggestProfileTranslationPayload!
     @cost(weight: "10")
   applyProfileTranslation(input: ApplyProfileTranslationInput!): ApplyProfileTranslationPayload!
@@ -432,6 +524,8 @@ type Mutation {
     @cost(weight: "10")
   previewTailoredCvDraft(input: PreviewTailoredCvDraftInput!): PreviewTailoredCvDraftPayload!
     @cost(weight: "10")
+  suggestTailoredCvSkillGroups(input: SuggestTailoredCvSkillGroupsInput!): SuggestTailoredCvSkillGroupsPayload!
+    @cost(weight: "10")
   addWritingSample(input: AddWritingSampleInput!): AddWritingSamplePayload!
     @cost(weight: "10")
   updateWritingSample(input: UpdateWritingSampleInput!): UpdateWritingSamplePayload!
@@ -443,6 +537,11 @@ type Mutation {
 type AddApplicationQuestionPayload {
   applicationQuestion: ApplicationQuestion
   errors: [AddApplicationQuestionError!]
+}
+
+type AddContactInteractionPayload {
+  contactInteraction: ContactInteraction
+  errors: [AddContactInteractionError!]
 }
 
 type AddContactPayload {
@@ -559,6 +658,51 @@ type ApplyToListingPayload {
   errors: [ApplyToListingError!]
 }
 
+type BaseCv {
+  latestVersion(language: Language): BaseCvVersion
+  versions(language: Language): [BaseCvVersion!]!
+  languages: [Language!]!
+  id: Int!
+  name: String!
+  description: String
+  archivedAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type BaseCvExternalPrompt {
+  version: Int!
+  instructions: String!
+}
+
+type BaseCvInUseError implements Error {
+  message: String!
+}
+
+type BaseCvNotFoundError implements Error {
+  message: String!
+}
+
+type BaseCvTranslation {
+  content: TailoredCvContent!
+  fromLanguage: Language!
+  untranslatedFields: [String!]!
+}
+
+type BaseCvVersion {
+  id: Int!
+  baseCv: BaseCv!
+  language: Language!
+  number: Int!
+  note: String
+  createdAt: DateTime!
+  content: TailoredCvContent!
+}
+
+type BaseCvVersionNotFoundError implements Error {
+  message: String!
+}
+
 type CleanUpSkillsPayload {
   skills: [Skill!]
   errors: [CleanUpSkillsError!]
@@ -653,6 +797,7 @@ type CompanySkill {
 }
 
 type Contact {
+  interactions(order: [ContactInteractionSortInput!] @cost(weight: "10")): [ContactInteraction!]!
   id: Int!
   companyId: Int!
   company: Company!
@@ -662,10 +807,48 @@ type Contact {
   phone: String
   url: String
   notes: String
+  lastInteractionAt: DateTime
+  followUpOn: LocalDate
+}
+
+type ContactInteraction {
+  id: Int!
+  contactId: Int!
+  contact: Contact!
+  occurredAt: DateTime!
+  direction: ContactDirection!
+  channel: ContactChannel!
+  note: String
+  followUpOn: LocalDate
+  createdAt: DateTime!
+}
+
+type ContactInteractionNotFoundError implements Error {
+  message: String!
 }
 
 type ContactNotFoundError implements Error {
   message: String!
+}
+
+"A connection to a list of items."
+type ContactsConnection {
+  "Information to aid in pagination."
+  pageInfo: PageInfo!
+  "A list of edges."
+  edges: [ContactsEdge!]
+  "A flattened list of the nodes."
+  nodes: [Contact!]
+  "Identifies the total count of items in the connection."
+  totalCount: Int! @cost(weight: "10")
+}
+
+"An edge in a connection."
+type ContactsEdge {
+  "A cursor for use in pagination."
+  cursor: String!
+  "The item at the end of the edge."
+  node: Contact!
 }
 
 type CoverLetterContent {
@@ -706,6 +889,11 @@ type CoverLetterGenerationResult {
   content: CoverLetterContent
   error: String
   errorCode: String
+}
+
+type CreateBaseCvPayload {
+  baseCv: BaseCv
+  errors: [CreateBaseCvError!]
 }
 
 type CreateCompaniesPayload {
@@ -752,6 +940,16 @@ type DeleteApplicationQuestionPayload {
   errors: [DeleteApplicationQuestionError!]
 }
 
+type DeleteBaseCvPayload {
+  id: Int
+  errors: [DeleteBaseCvError!]
+}
+
+type DeleteContactInteractionPayload {
+  id: Int
+  errors: [DeleteContactInteractionError!]
+}
+
 type DeleteContactPayload {
   id: Int
   errors: [DeleteContactError!]
@@ -792,9 +990,19 @@ type DeleteProfileEducationPayload {
   errors: [DeleteProfileEducationError!]
 }
 
+type DeleteProfileEducationTranslationPayload {
+  id: Int
+  errors: [DeleteProfileEducationTranslationError!]
+}
+
 type DeleteProfileExperiencePayload {
   id: Int
   errors: [DeleteProfileExperienceError!]
+}
+
+type DeleteProfileExperienceTranslationPayload {
+  id: Int
+  errors: [DeleteProfileExperienceTranslationError!]
 }
 
 type DeleteProfileProjectPayload {
@@ -838,6 +1046,8 @@ type DeleteWritingSamplePayload {
 }
 
 type Document {
+  baseCvVersion: BaseCvVersion @cost(weight: "10")
+  baseCvVersionId: Int
   id: Int!
   listingId: Int!
   listing: Listing!
@@ -848,6 +1058,7 @@ type Document {
   contentHash: String!
   createdAt: DateTime!
   sentAt: DateTime
+  origin: DocumentOrigin
 }
 
 type DocumentNotFoundError implements Error {
@@ -856,6 +1067,11 @@ type DocumentNotFoundError implements Error {
 
 type DocumentSentError implements Error {
   message: String!
+}
+
+type DuplicateBaseCvError implements Error {
+  message: String!
+  existingBaseCvId: Int!
 }
 
 type DuplicateContactError implements Error {
@@ -881,6 +1097,11 @@ type DuplicateSkillCategoryError implements Error {
 type GenerateApplicationAnswerPayload {
   result: ApplicationAnswerGenerationResult
   errors: [GenerateApplicationAnswerError!]
+}
+
+type GenerateBaseCvDocumentPayload {
+  document: Document
+  errors: [GenerateBaseCvDocumentError!]
 }
 
 type GenerateCoverLetterDocumentPayload {
@@ -951,11 +1172,19 @@ type InvalidApplicationQuestionError implements Error {
   message: String!
 }
 
+type InvalidBaseCvError implements Error {
+  message: String!
+}
+
 type InvalidCompanyError implements Error {
   message: String!
 }
 
 type InvalidContactError implements Error {
+  message: String!
+}
+
+type InvalidContactInteractionError implements Error {
   message: String!
 }
 
@@ -1016,6 +1245,10 @@ type InvalidTailoredCvAnalysisError implements Error {
 }
 
 type InvalidTailoredCvDraftError implements Error {
+  message: String!
+}
+
+type InvalidTailoredCvSkillGroupsError implements Error {
   message: String!
 }
 
@@ -1104,6 +1337,7 @@ type Listing {
   seniority: Seniority
   employmentType: EmploymentType
   schedule: Schedule
+  positionPercent: Int
   workMode: WorkMode
   description: String
   url: String
@@ -1129,6 +1363,42 @@ type ListingContact {
   listing: Listing!
   contactId: Int!
   contact: Contact!
+}
+
+type ListingImport {
+  id: Int!
+  fileName: String!
+  kind: String!
+  generatedAt: DateTime!
+  importedAt: DateTime!
+  itemCount: Int!
+  content: String
+  error: String
+  reviewedAt: DateTime
+}
+
+type ListingImportNotFoundError implements Error {
+  message: String!
+}
+
+"A connection to a list of items."
+type ListingImportsConnection {
+  "Information to aid in pagination."
+  pageInfo: PageInfo!
+  "A list of edges."
+  edges: [ListingImportsEdge!]
+  "A flattened list of the nodes."
+  nodes: [ListingImport!]
+  "Identifies the total count of items in the connection."
+  totalCount: Int! @cost(weight: "10")
+}
+
+"An edge in a connection."
+type ListingImportsEdge {
+  "A cursor for use in pagination."
+  cursor: String!
+  "The item at the end of the edge."
+  node: ListingImport!
 }
 
 type ListingInUseError implements Error {
@@ -1300,6 +1570,11 @@ type ParseUrlPayload {
 type PreviewApplicationAnswerPayload {
   candidate: ApplicationAnswerCandidate
   errors: [PreviewApplicationAnswerError!]
+}
+
+type PreviewBaseCvPayload {
+  candidate: TailoredCvExternalCandidate
+  errors: [PreviewBaseCvError!]
 }
 
 type PreviewCoverLetterDraftPayload {
@@ -1490,6 +1765,9 @@ type ProfileCvWarning {
 }
 
 type ProfileEducation {
+  translations: [ProfileEducationTranslation!]!
+  degreeIn(language: Language!): String
+  fieldIn(language: Language!): String
   id: Int!
   school: String!
   degree: String
@@ -1500,11 +1778,31 @@ type ProfileEducation {
   bullets: [ProfileBullet!]!
 }
 
+type ProfileEducationText {
+  id: Int!
+  degree: String
+  field: String
+}
+
+type ProfileEducationTranslation {
+  id: Int!
+  language: Language!
+  degree: String
+  field: String
+  sourceDegree: String
+  sourceField: String
+  isMachine: Boolean!
+  isDegreeStale: Boolean!
+  isFieldStale: Boolean!
+}
+
 type ProfileEntryNotFoundError implements Error {
   message: String!
 }
 
 type ProfileExperience {
+  translations: [ProfileExperienceTranslation!]!
+  titleIn(language: Language!): String!
   id: Int!
   employer: String!
   title: String!
@@ -1513,6 +1811,20 @@ type ProfileExperience {
   endMonth: LocalDate
   bullets: [ProfileBullet!]!
   skills: [Skill!]!
+}
+
+type ProfileExperienceTitleText {
+  id: Int!
+  title: String!
+}
+
+type ProfileExperienceTranslation {
+  id: Int!
+  language: Language!
+  title: String!
+  sourceTitle: String!
+  isMachine: Boolean!
+  isStale: Boolean!
 }
 
 type ProfileLanguage {
@@ -1607,6 +1919,8 @@ type ProfileTranslation {
 
 type ProfileTranslationDraft {
   bullets: [ProfileBulletText!]!
+  experiences: [ProfileExperienceTitleText!]!
+  educations: [ProfileEducationText!]!
   headline: String
   summary: String
 }
@@ -1656,6 +1970,11 @@ type RemoveProviderKeyPayload {
   errors: [RemoveProviderKeyError!]
 }
 
+type SaveBaseCvVersionPayload {
+  baseCvVersion: BaseCvVersion
+  errors: [SaveBaseCvVersionError!]
+}
+
 type SaveCoverLetterDraftPayload {
   coverLetterDraft: CoverLetterDraft
   errors: [SaveCoverLetterDraftError!]
@@ -1674,6 +1993,11 @@ type SaveLocationPayload {
 type SaveTailoredCvDraftPayload {
   tailoredCvDraft: TailoredCvDraft
   errors: [SaveTailoredCvDraftError!]
+}
+
+type SetBaseCvArchivedPayload {
+  baseCv: BaseCv
+  errors: [SetBaseCvArchivedError!]
 }
 
 type SetCompanyAvoidedPayload {
@@ -1711,6 +2035,11 @@ type SetListingFavoritePayload {
   errors: [SetListingFavoriteError!]
 }
 
+type SetListingImportReviewedPayload {
+  listingImport: ListingImport
+  errors: [SetListingImportReviewedError!]
+}
+
 type SetLlmCallLimitPayload {
   limit: LlmCallLimit
   errors: [SetLlmCallLimitError!]
@@ -1724,6 +2053,16 @@ type SetProfileBulletTranslationPayload {
 type SetProfileContentLanguagePayload {
   profile: Profile
   errors: [SetProfileContentLanguageError!]
+}
+
+type SetProfileEducationTranslationPayload {
+  profileEducationTranslation: ProfileEducationTranslation
+  errors: [SetProfileEducationTranslationError!]
+}
+
+type SetProfileExperienceTranslationPayload {
+  profileExperienceTranslation: ProfileExperienceTranslation
+  errors: [SetProfileExperienceTranslationError!]
 }
 
 type SetProfileLanguagePayload {
@@ -1917,6 +2256,11 @@ type SuggestSkillCleanupPayload {
   errors: [SuggestSkillCleanupError!]
 }
 
+type SuggestTailoredCvSkillGroupsPayload {
+  result: TailoredCvSkillGroupSuggestion
+  errors: [SuggestTailoredCvSkillGroupsError!]
+}
+
 type TailoredCvAnalysisReport {
   results: [TailoredCvAnalysisResult!]!
 }
@@ -1932,6 +2276,8 @@ type TailoredCvAnalysisResult {
   errorCode: String
   paragraph: String
   technologies: [String!]
+  bullets: [TailoredCvBullet!]
+  headline: String
 }
 
 type TailoredCvBullet {
@@ -1969,6 +2315,7 @@ type TailoredCvContent {
   referencesOnRequest: Boolean!
   sectionOrder: TailoredCvSectionOrder!
   contentStyle: TailoredCvContentStyle!
+  template: TailoredCvTemplate!
 }
 
 type TailoredCvDraft {
@@ -2045,6 +2392,23 @@ type TailoredCvSkill {
   level: Int
   sourceSkillId: Int
   categoryId: Int
+  group: String
+}
+
+type TailoredCvSkillGroup {
+  name: String!
+  group: String!
+}
+
+type TailoredCvSkillGroupPrompt {
+  version: Int!
+  instructions: String!
+}
+
+type TailoredCvSkillGroupSuggestion {
+  status: TailoredCvSkillGroupStatus!
+  groups: [TailoredCvSkillGroup!]
+  error: String
 }
 
 type TrainingProgram {
@@ -2072,6 +2436,11 @@ type UpdateApplicationQuestionPayload {
   errors: [UpdateApplicationQuestionError!]
 }
 
+type UpdateBaseCvPayload {
+  baseCv: BaseCv
+  errors: [UpdateBaseCvError!]
+}
+
 type UpdateCompanyDetailsPayload {
   company: Company
   errors: [UpdateCompanyDetailsError!]
@@ -2080,6 +2449,11 @@ type UpdateCompanyDetailsPayload {
 type UpdateCompanyPayload {
   company: Company
   errors: [UpdateCompanyError!]
+}
+
+type UpdateContactInteractionPayload {
+  contactInteraction: ContactInteraction
+  errors: [UpdateContactInteractionError!]
 }
 
 type UpdateContactPayload {
@@ -2232,6 +2606,10 @@ union AddContactError =
   | InvalidContactError
   | DuplicateContactError
 
+union AddContactInteractionError =
+  | ContactNotFoundError
+  | InvalidContactInteractionError
+
 union AddInterviewError =
   | ListingNotFoundError
   | InvalidStatusTransitionError
@@ -2288,6 +2666,11 @@ union CleanUpSkillsError = SkillNotFoundError | InvalidSkillCleanupError
 
 union ClearProfileSectionsError = InvalidProfileError
 
+union CreateBaseCvError =
+  | InvalidBaseCvError
+  | DuplicateBaseCvError
+  | InvalidTailoredCvDraftError
+
 union CreateCompaniesError = InvalidCompanyError | InvalidLocationError
 
 union CreateJobRoleCategoryError = InvalidJobRoleCategoryError
@@ -2301,7 +2684,11 @@ union CreateSkillCategoryError = InvalidSkillCategoryError
 
 union DeleteApplicationQuestionError = ApplicationQuestionNotFoundError
 
+union DeleteBaseCvError = BaseCvNotFoundError | BaseCvInUseError
+
 union DeleteContactError = ContactNotFoundError
+
+union DeleteContactInteractionError = ContactInteractionNotFoundError
 
 union DeleteDocumentError = DocumentNotFoundError | DocumentSentError
 
@@ -2317,7 +2704,11 @@ union DeleteProfileCertificationError = ProfileEntryNotFoundError
 
 union DeleteProfileEducationError = ProfileEntryNotFoundError
 
+union DeleteProfileEducationTranslationError = ProfileEntryNotFoundError
+
 union DeleteProfileExperienceError = ProfileEntryNotFoundError
+
+union DeleteProfileExperienceTranslationError = ProfileEntryNotFoundError
 
 union DeleteProfileProjectError = ProfileEntryNotFoundError
 
@@ -2340,6 +2731,10 @@ union GenerateApplicationAnswerError =
   | InvalidCoverLetterError
   | UnknownLlmModelError
   | AiSafetyError
+
+union GenerateBaseCvDocumentError =
+  | ListingNotFoundError
+  | BaseCvVersionNotFoundError
 
 union GenerateCoverLetterDocumentError =
   | ListingNotFoundError
@@ -2395,6 +2790,8 @@ union PreviewApplicationAnswerError =
   | ApplicationQuestionNotFoundError
   | InvalidApplicationQuestionError
 
+union PreviewBaseCvError = InvalidTailoredCvDraftError
+
 union PreviewCoverLetterDraftError =
   | ListingNotFoundError
   | InvalidCoverLetterError
@@ -2420,6 +2817,11 @@ union RemoveProfileSkillError = ProfileEntryNotFoundError
 
 union RemoveProviderKeyError = ProviderKeyError
 
+union SaveBaseCvVersionError =
+  | BaseCvNotFoundError
+  | InvalidBaseCvError
+  | InvalidTailoredCvDraftError
+
 union SaveCoverLetterDraftError = ListingNotFoundError | InvalidCoverLetterError
 
 union SaveDashboardLayoutError = InvalidDashboardLayoutError
@@ -2429,6 +2831,8 @@ union SaveLocationError = InvalidLocationError
 union SaveTailoredCvDraftError =
   | ListingNotFoundError
   | InvalidTailoredCvDraftError
+
+union SetBaseCvArchivedError = BaseCvNotFoundError
 
 union SetCompanyAvoidedError = CompanyNotFoundError
 
@@ -2446,6 +2850,8 @@ union SetListingArchivedError = ListingNotFoundError
 
 union SetListingFavoriteError = ListingNotFoundError
 
+union SetListingImportReviewedError = ListingImportNotFoundError
+
 union SetLlmCallLimitError = AiSafetyError
 
 union SetProfileBulletTranslationError =
@@ -2453,6 +2859,14 @@ union SetProfileBulletTranslationError =
   | InvalidProfileError
 
 union SetProfileContentLanguageError = InvalidProfileError
+
+union SetProfileEducationTranslationError =
+  | ProfileEntryNotFoundError
+  | InvalidProfileError
+
+union SetProfileExperienceTranslationError =
+  | ProfileEntryNotFoundError
+  | InvalidProfileError
 
 union SetProfileLanguageError = InvalidProfileError
 
@@ -2481,6 +2895,11 @@ union SuggestProfileTranslationError =
 
 union SuggestSkillCleanupError = UnknownLlmModelError | AiSafetyError
 
+union SuggestTailoredCvSkillGroupsError =
+  | InvalidTailoredCvSkillGroupsError
+  | UnknownLlmModelError
+  | AiSafetyError
+
 union UndoStatusChangeError =
   | ListingNotFoundError
   | InvalidStatusTransitionError
@@ -2489,6 +2908,11 @@ union UndoStatusChangeError =
 union UpdateApplicationQuestionError =
   | ApplicationQuestionNotFoundError
   | InvalidApplicationQuestionError
+
+union UpdateBaseCvError =
+  | BaseCvNotFoundError
+  | InvalidBaseCvError
+  | DuplicateBaseCvError
 
 union UpdateCompanyDetailsError = CompanyNotFoundError | InvalidCompanyError
 
@@ -2501,6 +2925,10 @@ union UpdateContactError =
   | ContactNotFoundError
   | InvalidContactError
   | DuplicateContactError
+
+union UpdateContactInteractionError =
+  | ContactInteractionNotFoundError
+  | InvalidContactInteractionError
 
 union UpdateInterviewError = InterviewNotFoundError | InvalidInterviewError
 
@@ -2574,6 +3002,11 @@ input AddApplicationQuestionInput {
 input AddContactInput {
   companyId: Int!
   contact: ContactInput!
+}
+
+input AddContactInteractionInput {
+  contactId: Int!
+  interaction: ContactInteractionInput!
 }
 
 input AddInterviewInput {
@@ -2652,6 +3085,8 @@ input AnalyzeAllTailoredCvInput {
   listingId: Int!
   model: String
   requestId: UUID
+  template: TailoredCvTemplate
+  language: Language
 }
 
 input AnalyzeTailoredCvSectionInput {
@@ -2660,6 +3095,8 @@ input AnalyzeTailoredCvSectionInput {
   sourceEntryId: Int
   model: String
   requestId: UUID
+  template: TailoredCvTemplate
+  language: Language
 }
 
 input ApplicationQuestionFilterInput {
@@ -2706,6 +3143,8 @@ input ApplyProfileTranslationInput {
   bullets: [ProfileBulletTextInput!]!
   headline: String
   summary: String
+  experiences: [ProfileExperienceTitleTextInput!]
+  educations: [ProfileEducationTextInput!]
 }
 
 input ApplyToListingInput {
@@ -2744,6 +3183,7 @@ input CompanyDetailsInput {
   workMode: WorkMode
   workingLanguage: Language
   skills: [String!]!
+  contacts: [ContactInput!]
 }
 
 input CompanyFilterInput {
@@ -2787,6 +3227,7 @@ input CompanyInput {
   workMode: WorkMode
   workingLanguage: Language
   skills: [String!]
+  contacts: [ContactInput!]
 }
 
 input CompanyLocationFilterInput {
@@ -2828,6 +3269,20 @@ input CompanySortInput {
   researchedAt: SortEnumType @cost(weight: "10")
 }
 
+input ContactChannelOperationFilterInput {
+  eq: ContactChannel @cost(weight: "10")
+  neq: ContactChannel @cost(weight: "10")
+  in: [ContactChannel!] @cost(weight: "10")
+  nin: [ContactChannel!] @cost(weight: "10")
+}
+
+input ContactDirectionOperationFilterInput {
+  eq: ContactDirection @cost(weight: "10")
+  neq: ContactDirection @cost(weight: "10")
+  in: [ContactDirection!] @cost(weight: "10")
+  nin: [ContactDirection!] @cost(weight: "10")
+}
+
 input ContactFilterInput {
   and: [ContactFilterInput!]
   or: [ContactFilterInput!]
@@ -2840,6 +3295,9 @@ input ContactFilterInput {
   phone: StringOperationFilterInput
   url: StringOperationFilterInput
   notes: StringOperationFilterInput
+  lastInteractionAt: DateTimeOperationFilterInput
+  followUpOn: LocalDateOperationFilterInput
+  interactions: ListFilterInputTypeOfContactInteractionFilterInput
 }
 
 input ContactInput {
@@ -2849,6 +3307,54 @@ input ContactInput {
   phone: String
   url: String
   notes: String
+}
+
+input ContactInteractionFilterInput {
+  and: [ContactInteractionFilterInput!]
+  or: [ContactInteractionFilterInput!]
+  id: IntOperationFilterInput
+  contactId: IntOperationFilterInput
+  contact: ContactFilterInput
+  occurredAt: DateTimeOperationFilterInput
+  direction: ContactDirectionOperationFilterInput
+  channel: ContactChannelOperationFilterInput
+  note: StringOperationFilterInput
+  followUpOn: LocalDateOperationFilterInput
+  createdAt: DateTimeOperationFilterInput
+}
+
+input ContactInteractionInput {
+  occurredAt: DateTime!
+  direction: ContactDirection!
+  channel: ContactChannel!
+  note: String
+  followUpOn: LocalDate
+}
+
+input ContactInteractionSortInput {
+  id: SortEnumType @cost(weight: "10")
+  contactId: SortEnumType @cost(weight: "10")
+  contact: ContactSortInput @cost(weight: "10")
+  occurredAt: SortEnumType @cost(weight: "10")
+  direction: SortEnumType @cost(weight: "10")
+  channel: SortEnumType @cost(weight: "10")
+  note: SortEnumType @cost(weight: "10")
+  followUpOn: SortEnumType @cost(weight: "10")
+  createdAt: SortEnumType @cost(weight: "10")
+}
+
+input ContactSortInput {
+  id: SortEnumType @cost(weight: "10")
+  companyId: SortEnumType @cost(weight: "10")
+  company: CompanySortInput @cost(weight: "10")
+  name: SortEnumType @cost(weight: "10")
+  title: SortEnumType @cost(weight: "10")
+  email: SortEnumType @cost(weight: "10")
+  phone: SortEnumType @cost(weight: "10")
+  url: SortEnumType @cost(weight: "10")
+  notes: SortEnumType @cost(weight: "10")
+  lastInteractionAt: SortEnumType @cost(weight: "10")
+  followUpOn: SortEnumType @cost(weight: "10")
 }
 
 input CoverLetterContentInput {
@@ -2865,6 +3371,14 @@ input CoverLetterContentInput {
   greeting: String
   paragraphs: [String!]
   closing: String
+}
+
+input CreateBaseCvInput {
+  name: String!
+  description: String
+  language: Language!
+  content: TailoredCvContentInput!
+  note: String
 }
 
 input CreateCompaniesInput {
@@ -2915,7 +3429,15 @@ input DeleteApplicationQuestionInput {
   id: Int!
 }
 
+input DeleteBaseCvInput {
+  id: Int!
+}
+
 input DeleteContactInput {
+  id: Int!
+}
+
+input DeleteContactInteractionInput {
   id: Int!
 }
 
@@ -2947,7 +3469,15 @@ input DeleteProfileEducationInput {
   id: Int!
 }
 
+input DeleteProfileEducationTranslationInput {
+  id: Int!
+}
+
 input DeleteProfileExperienceInput {
+  id: Int!
+}
+
+input DeleteProfileExperienceTranslationInput {
   id: Int!
 }
 
@@ -2998,6 +3528,8 @@ input DocumentFilterInput {
   contentHash: StringOperationFilterInput
   createdAt: DateTimeOperationFilterInput
   sentAt: DateTimeOperationFilterInput
+  origin: NullableOfDocumentOriginOperationFilterInput
+  baseCvVersionId: IntOperationFilterInput
 }
 
 input DocumentKindOperationFilterInput {
@@ -3011,6 +3543,11 @@ input GenerateApplicationAnswerInput {
   questionId: Int!
   model: String
   requestId: UUID
+}
+
+input GenerateBaseCvDocumentInput {
+  listingId: Int!
+  baseCvVersionId: Int!
 }
 
 input GenerateCoverLetterDocumentInput {
@@ -3152,6 +3689,13 @@ input ListFilterInputTypeOfContactFilterInput {
   any: Boolean @cost(weight: "10")
 }
 
+input ListFilterInputTypeOfContactInteractionFilterInput {
+  all: ContactInteractionFilterInput @cost(weight: "10")
+  none: ContactInteractionFilterInput @cost(weight: "10")
+  some: ContactInteractionFilterInput @cost(weight: "10")
+  any: Boolean @cost(weight: "10")
+}
+
 input ListFilterInputTypeOfDocumentFilterInput {
   all: DocumentFilterInput @cost(weight: "10")
   none: DocumentFilterInput @cost(weight: "10")
@@ -3237,6 +3781,7 @@ input ListingFilterInput {
   seniority: NullableOfSeniorityOperationFilterInput
   employmentType: NullableOfEmploymentTypeOperationFilterInput
   schedule: NullableOfScheduleOperationFilterInput
+  positionPercent: IntOperationFilterInput
   workMode: NullableOfWorkModeOperationFilterInput
   description: StringOperationFilterInput
   url: StringOperationFilterInput
@@ -3263,6 +3808,32 @@ input ListingFilterInput {
   trainingProgram: TrainingProgramFilterInput
 }
 
+input ListingImportFilterInput {
+  and: [ListingImportFilterInput!]
+  or: [ListingImportFilterInput!]
+  id: IntOperationFilterInput
+  fileName: StringOperationFilterInput
+  kind: StringOperationFilterInput
+  generatedAt: DateTimeOperationFilterInput
+  importedAt: DateTimeOperationFilterInput
+  itemCount: IntOperationFilterInput
+  content: StringOperationFilterInput
+  error: StringOperationFilterInput
+  reviewedAt: DateTimeOperationFilterInput
+}
+
+input ListingImportSortInput {
+  id: SortEnumType @cost(weight: "10")
+  fileName: SortEnumType @cost(weight: "10")
+  kind: SortEnumType @cost(weight: "10")
+  generatedAt: SortEnumType @cost(weight: "10")
+  importedAt: SortEnumType @cost(weight: "10")
+  itemCount: SortEnumType @cost(weight: "10")
+  content: SortEnumType @cost(weight: "10")
+  error: SortEnumType @cost(weight: "10")
+  reviewedAt: SortEnumType @cost(weight: "10")
+}
+
 input ListingInput {
   title: String!
   companyName: String!
@@ -3270,6 +3841,7 @@ input ListingInput {
   seniority: Seniority
   employmentType: EmploymentType
   schedule: Schedule
+  positionPercent: Int
   workMode: WorkMode
   description: String
   url: String
@@ -3351,6 +3923,7 @@ input ListingSortInput {
   seniority: SortEnumType @cost(weight: "10")
   employmentType: SortEnumType @cost(weight: "10")
   schedule: SortEnumType @cost(weight: "10")
+  positionPercent: SortEnumType @cost(weight: "10")
   workMode: SortEnumType @cost(weight: "10")
   description: SortEnumType @cost(weight: "10")
   url: SortEnumType @cost(weight: "10")
@@ -3456,6 +4029,13 @@ input NullableOfCompanySizeOperationFilterInput {
   nin: [CompanySize] @cost(weight: "10")
 }
 
+input NullableOfDocumentOriginOperationFilterInput {
+  eq: DocumentOrigin @cost(weight: "10")
+  neq: DocumentOrigin @cost(weight: "10")
+  in: [DocumentOrigin] @cost(weight: "10")
+  nin: [DocumentOrigin] @cost(weight: "10")
+}
+
 input NullableOfEmploymentTypeOperationFilterInput {
   eq: EmploymentType @cost(weight: "10")
   neq: EmploymentType @cost(weight: "10")
@@ -3514,11 +4094,18 @@ input ParseUrlInput {
   url: String!
   model: String
   requestId: UUID
+  mode: ParseMode
 }
 
 input PreviewApplicationAnswerInput {
   questionId: Int!
   json: String!
+}
+
+input PreviewBaseCvInput {
+  language: Language!
+  json: String!
+  template: TailoredCvTemplate
 }
 
 input PreviewCoverLetterDraftInput {
@@ -3538,6 +4125,8 @@ input PreviewProfileCvImportInput {
 input PreviewTailoredCvDraftInput {
   listingId: Int!
   json: String!
+  template: TailoredCvTemplate
+  language: Language
 }
 
 input ProfileBulletTextInput {
@@ -3627,6 +4216,17 @@ input ProfileCvSkillInput {
   categoryName: String
 }
 
+input ProfileEducationTextInput {
+  id: Int!
+  degree: String
+  field: String
+}
+
+input ProfileExperienceTitleTextInput {
+  id: Int!
+  title: String!
+}
+
 input ProfileLinkInput {
   kind: LinkKind!
   label: String
@@ -3652,6 +4252,13 @@ input RemoveProviderKeyInput {
   provider: String!
 }
 
+input SaveBaseCvVersionInput {
+  baseCvId: Int!
+  language: Language!
+  content: TailoredCvContentInput!
+  note: String
+}
+
 input SaveCoverLetterDraftInput {
   listingId: Int!
   content: CoverLetterContentInput!
@@ -3671,6 +4278,11 @@ input SaveLocationInput {
 input SaveTailoredCvDraftInput {
   listingId: Int!
   content: TailoredCvContentInput!
+}
+
+input SetBaseCvArchivedInput {
+  id: Int!
+  isArchived: Boolean!
 }
 
 input SetCompanyAvoidedInput {
@@ -3707,6 +4319,11 @@ input SetListingFavoriteInput {
   isFavorite: Boolean!
 }
 
+input SetListingImportReviewedInput {
+  id: Int!
+  isReviewed: Boolean!
+}
+
 input SetLlmCallLimitInput {
   provider: String!
   dailyRequestLimit: Int
@@ -3721,6 +4338,21 @@ input SetProfileBulletTranslationInput {
 
 input SetProfileContentLanguageInput {
   language: Language!
+}
+
+input SetProfileEducationTranslationInput {
+  educationId: Int!
+  language: Language!
+  degree: String
+  field: String
+  isMachine: Boolean! = false
+}
+
+input SetProfileExperienceTranslationInput {
+  experienceId: Int!
+  language: Language!
+  title: String!
+  isMachine: Boolean! = false
 }
 
 input SetProfileLanguageInput {
@@ -3889,6 +4521,13 @@ input SuggestSkillCleanupInput {
   requestId: UUID
 }
 
+input SuggestTailoredCvSkillGroupsInput {
+  skillNames: [String!]!
+  language: Language!
+  model: String
+  requestId: UUID
+}
+
 input TailoredCvBulletInput {
   text: String!
   sourceBulletId: Int
@@ -3924,6 +4563,7 @@ input TailoredCvContentInput {
   referencesOnRequest: Boolean! = false
   sectionOrder: TailoredCvSectionOrder
   contentStyle: TailoredCvContentStyle
+  template: TailoredCvTemplate
 }
 
 input TailoredCvEducationInput {
@@ -3979,6 +4619,7 @@ input TailoredCvSkillInput {
   level: Int
   sourceSkillId: Int
   categoryId: Int
+  group: String
 }
 
 input TrainingProgramFilterInput {
@@ -4025,6 +4666,12 @@ input UpdateApplicationQuestionInput {
   notes: String
 }
 
+input UpdateBaseCvInput {
+  id: Int!
+  name: String!
+  description: String
+}
+
 input UpdateCompanyDetailsInput {
   id: Int!
   details: CompanyDetailsInput!
@@ -4040,6 +4687,11 @@ input UpdateCompanyInput {
 input UpdateContactInput {
   id: Int!
   contact: ContactInput!
+}
+
+input UpdateContactInteractionInput {
+  id: Int!
+  interaction: ContactInteractionInput!
 }
 
 input UpdateInterviewInput {
@@ -4243,6 +4895,8 @@ enum CompanyKind {
   PUBLIC_SECTOR
   AGENCY
   STARTUP
+  RECRUITMENT
+  BROKER
 }
 
 enum CompanySize {
@@ -4251,6 +4905,19 @@ enum CompanySize {
   MEDIUM
   LARGE
   ENTERPRISE
+}
+
+enum ContactChannel {
+  EMAIL
+  LINKED_IN
+  PHONE
+  MEETING
+  OTHER
+}
+
+enum ContactDirection {
+  SENT
+  RECEIVED
 }
 
 enum CoverLetterGenerationStatus {
@@ -4263,6 +4930,7 @@ enum DashboardWidgetKind {
   UPCOMING_INTERVIEWS
   OFFERS_TO_ANSWER
   STALE_LISTINGS
+  CONTACT_FOLLOW_UPS
   PIPELINE
   APPLIED_THIS_WEEK
   TO_ANALYZE
@@ -4280,6 +4948,12 @@ enum DeadlineType {
 enum DocumentKind {
   CV
   COVER_LETTER
+}
+
+enum DocumentOrigin {
+  UPLOADED
+  TAILORED
+  BASE_CV
 }
 
 enum EmploymentType {
@@ -4434,6 +5108,16 @@ enum TailoredCvSection {
 enum TailoredCvSectionOrder {
   STANDARD
   DEVELOPER
+}
+
+enum TailoredCvSkillGroupStatus {
+  SUCCEEDED
+  FAILED
+}
+
+enum TailoredCvTemplate {
+  DETAILED
+  CONCISE
 }
 
 enum WorkMode {

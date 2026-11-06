@@ -47,7 +47,9 @@ public class Company
     public List<CompanySkill> Skills { get; set; } = [];
 }
 
-public enum CompanyKind { Product, Consultancy, InHouse, PublicSector, Agency, Startup }
+// Recruitment places candidates with other employers or hires out staff; Broker matches independent consultants to
+// client assignments. Both are kept apart from Consultancy, which employs its own consultants.
+public enum CompanyKind { Product, Consultancy, InHouse, PublicSector, Agency, Startup, Recruitment, Broker }
 
 // Bands instead of a headcount, which goes stale: 1–10, 11–50, 51–200, 201–1000, 1000+.
 public enum CompanySize { Micro, Small, Medium, Large, Enterprise }

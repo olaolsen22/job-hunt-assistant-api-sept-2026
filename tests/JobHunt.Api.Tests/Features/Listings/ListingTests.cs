@@ -8,7 +8,7 @@ namespace JobHunt.Api.Tests.Features.Listings;
 public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     private const string ListingFields = """
-        id title seniority employmentType schedule workMode description url
+        id title seniority employmentType schedule positionPercent workMode description url
         postedOn deadlineType deadlineOn postingLanguage createdAt updatedAt analyzedAt reanalyzedAt
         company { id name industry { name } locations { location { city countryCode } } }
         jobRole { id name }
@@ -72,6 +72,7 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
                 seniority = "SENIOR",
                 employmentType = "PERMANENT",
                 schedule = "FULL_TIME",
+                positionPercent = 100,
                 workMode = "HYBRID",
                 description = "Du blir del av et team som…",
                 url = UniqueUrl(),
@@ -102,6 +103,7 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal("Backend Developer", listing.GetProperty("jobRole").GetProperty("name").GetString());
         Assert.Equal("SENIOR", listing.GetProperty("seniority").GetString());
         Assert.Equal("FULL_TIME", listing.GetProperty("schedule").GetString());
+        Assert.Equal(100, listing.GetProperty("positionPercent").GetInt32());
         Assert.Equal("2026-10-15", listing.GetProperty("deadlineOn").GetString());
         Assert.Equal("NORWEGIAN", listing.GetProperty("postingLanguage").GetString());
 
@@ -166,6 +168,38 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var error = Assert.Single(data.GetProperty("createListing").GetProperty("errors").EnumerateArray());
         Assert.Equal("InvalidListingError", error.GetProperty("__typename").GetString());
         Assert.Contains("1–5", error.GetProperty("message").GetString());
+    }
+
+    [Theory]
+    [InlineData(0, null)]
+    [InlineData(101, null)]
+    [InlineData(100, "PART_TIME")]
+    [InlineData(60, "FULL_TIME")]
+    public async Task CreateListing_WithInvalidPositionPercent_ReturnsInvalidListingError(int positionPercent, string? schedule)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var data = await client.GraphQLAsync(CreateListing,
+            new { listing = NewListing(Unique("Acme"), schedule: schedule, positionPercent: positionPercent) });
+
+        var error = Assert.Single(data.GetProperty("createListing").GetProperty("errors").EnumerateArray());
+        Assert.Equal("InvalidListingError", error.GetProperty("__typename").GetString());
+        Assert.Contains("Position percent", error.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateListing_ChangesAndClearsPositionPercent()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var company = Unique("Acme");
+        var url = UniqueUrl();
+        var id = (await CreateAsync(client, NewListing(company, url: url, schedule: "PART_TIME", positionPercent: 60)))
+            .GetProperty("id").GetInt32();
+
+        var updated = await UpdateAsync(client, id, NewListing(company, url: url, schedule: "PART_TIME", positionPercent: 80));
+        Assert.Equal(80, updated.GetProperty("positionPercent").GetInt32());
+
+        var cleared = await UpdateAsync(client, id, NewListing(company, url: url));
+        Assert.Equal(JsonValueKind.Null, cleared.GetProperty("positionPercent").ValueKind);
     }
 
     [Theory]
@@ -362,11 +396,11 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
-    public async Task CreateListing_ReturnsSameCompanyListingsWithSameRoleOrTitleAsPossibleDuplicates()
+    public async Task CreateListing_ReturnsSameCompanyListingsWithSameTitleAsPossibleDuplicates()
     {
         var client = await factory.GetOwnerClientAsync();
         var company = Unique("Acme");
-        var sameRole = await CreateAsync(client, NewListing(company, title: "Utvikler", jobRoleName: "Frontend Developer"));
+        await CreateAsync(client, NewListing(company, title: "Utvikler", jobRoleName: "Frontend Developer"));
         var sameTitle = await CreateAsync(client, NewListing(company, title: "frontendutvikler", jobRoleName: "Designer"));
         await CreateAsync(client, NewListing(company, title: "Lagermedarbeider", jobRoleName: "Warehouse Worker"));
         await CreateAsync(client, NewListing(Unique("Other"), title: "Frontendutvikler", jobRoleName: "Frontend Developer"));
@@ -376,7 +410,7 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
         var ids = data.GetProperty("createListing").GetProperty("possibleDuplicates").EnumerateArray()
             .Select(l => l.GetProperty("id").GetInt32()).Order();
-        Assert.Equal([sameRole.GetProperty("id").GetInt32(), sameTitle.GetProperty("id").GetInt32()], ids);
+        Assert.Equal([sameTitle.GetProperty("id").GetInt32()], ids);
     }
 
     // Quick add sends every row as an aliased createListing in one request, sharing one DbContext.
@@ -580,10 +614,13 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         object[]? languages = null,
         object[]? locations = null,
         bool isAnalyzed = false,
-        bool reanalyzed = false) =>
+        bool reanalyzed = false,
+        string? schedule = null,
+        int? positionPercent = null) =>
         new
         {
             title, companyName, jobRoleName, deadlineType, deadlineOn, url = url ?? UniqueUrl(), postedOn, isAnalyzed, reanalyzed,
+            schedule, positionPercent,
             skills = skills ?? [], languages = languages ?? [], locations = locations ?? [],
         };
 

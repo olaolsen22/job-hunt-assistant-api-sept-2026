@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Documents;
 using JobHunt.Api.Features.Listings;
@@ -77,20 +76,8 @@ public static class CoverLetterDraftMutations
             ?? throw new CoverLetterDraftNotFoundException(listingId);
 
         var bytes = CoverLetterPdfRenderer.Render(draft.Content);
-        var now = time.GetUtcNow().UtcDateTime;
-        var fileName = DocumentMutations.FileName(listing.Company, listing.JobRole, DocumentKind.CoverLetter, now);
-        var document = new Document
-        {
-            UserId = db.CurrentUserId!,
-            ListingId = listingId,
-            Kind = DocumentKind.CoverLetter,
-            FileName = fileName,
-            OriginalFileName = fileName,
-            SizeBytes = bytes.Length,
-            ContentHash = Convert.ToHexStringLower(SHA256.HashData(bytes)),
-            CreatedAt = now,
-        };
-        db.Add(new DocumentContent { Document = document, Bytes = bytes });
+        var document = DocumentMutations.AddGenerated(db, listingId, listing.Company, listing.JobRole,
+            DocumentKind.CoverLetter, DocumentOrigin.Tailored, bytes, time.GetUtcNow().UtcDateTime);
         await db.SaveChangesAsync(ct);
         return document;
     }

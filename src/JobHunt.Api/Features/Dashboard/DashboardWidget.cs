@@ -11,6 +11,7 @@ public enum DashboardWidgetKind
     UpcomingInterviews,
     OffersToAnswer,
     StaleListings,
+    ContactFollowUps,
     Pipeline,
     AppliedThisWeek,
     ToAnalyze,

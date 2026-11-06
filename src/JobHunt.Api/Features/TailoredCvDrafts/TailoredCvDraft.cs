@@ -1,4 +1,5 @@
 using System.Text.Json;
+using JobHunt.Api.Data;
 using JobHunt.Api.Features.Auth;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Profiles;
@@ -7,8 +8,15 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace JobHunt.Api.Features.TailoredCvDrafts;
 
+// CV content saved as a snapshot: a listing's tailored draft or a base CV version. Skill and category changes move
+// their links (TailoredCvDraftSkills), never their text.
+public interface ITailoredCvSnapshot
+{
+    TailoredCvContent Content { get; set; }
+}
+
 // The saved copy is application-specific. Profile edits never rewrite this snapshot.
-public class TailoredCvDraft
+public class TailoredCvDraft : ITailoredCvSnapshot
 {
     public int Id { get; set; }
     public string UserId { get; set; } = null!;
@@ -45,7 +53,8 @@ public record TailoredCvContent(
     DateOnly? DateOfBirth = null,
     bool ReferencesOnRequest = false,
     TailoredCvSectionOrder SectionOrder = TailoredCvSectionOrder.Standard,
-    TailoredCvContentStyle ContentStyle = TailoredCvContentStyle.Bullets);
+    TailoredCvContentStyle ContentStyle = TailoredCvContentStyle.Bullets,
+    TailoredCvTemplate Template = TailoredCvTemplate.Detailed);
 
 // Standard follows NAV's order. Developer puts links with the contact lines and skills/projects earlier,
 // as Norwegian developer recruiters ask for visible technical evidence (docs/norwegian-cv-formatting.md §10).
@@ -54,6 +63,9 @@ public enum TailoredCvSectionOrder { Standard, Developer }
 public record TailoredCvBullet(string Text, int? SourceBulletId = null);
 // One style for the whole CV, so entries print consistently: as bullets or as one paragraph each.
 public enum TailoredCvContentStyle { Bullets, Paragraph }
+// Detailed keeps the profile's bullet wording; Concise shortens bullets for a one-page CV a recruiter can scan
+// in seconds, and always prints bullets.
+public enum TailoredCvTemplate { Detailed, Concise }
 // Location is display text such as "Lagos, Nigeria"; the guidance favours City, Country for foreign roles.
 // Technologies are the names printed under the entry in the developer order: where the skills were used.
 public record TailoredCvExperience(string Employer, string Title, DateOnly? StartMonth, DateOnly? EndMonth,
@@ -69,8 +81,10 @@ public record TailoredCvProject(string Name, string? Url, DateOnly? StartMonth, 
     List<TailoredCvBullet> Bullets, int? SourceEntryId = null, string? Location = null,
     string? Paragraph = null, ProjectKind? Kind = null, List<string>? Technologies = null);
 // CategoryId is copied from the skill lookup so one CV can override it; the PDF reads the category's current name,
-// so renaming a category updates every draft. List order is relevance order and prints as is.
-public record TailoredCvSkill(string Name, int? Level, int? SourceSkillId = null, int? CategoryId = null);
+// so renaming a category updates every draft. Group is a free-text label for this CV only and beats the category,
+// so a CV can merge thin categories into fewer lines. List order is relevance order and prints as is.
+public record TailoredCvSkill(string Name, int? Level, int? SourceSkillId = null, int? CategoryId = null,
+    string? Group = null);
 public record TailoredCvLanguage(string Name, LanguageProficiency? Written, LanguageProficiency? Spoken);
 public record TailoredCvLink(string Label, string Url);
 
@@ -97,18 +111,21 @@ public class TailoredCvDraftConfiguration : IEntityTypeConfiguration<TailoredCvD
     }
 }
 
-// Drafts are snapshots, so a skill or category change only moves their links; a dangling id would block saving the
-// draft. A draft is only rewritten when one of its skills changes.
+// Drafts and base CV versions are snapshots, so a skill or category change only moves their links; a dangling id
+// would block saving the draft or the next version. A snapshot is only rewritten when one of its skills changes.
 public static class TailoredCvDraftSkills
 {
-    public static void Rewrite(IEnumerable<TailoredCvDraft> drafts, Func<TailoredCvSkill, TailoredCvSkill> map)
+    public static void Rewrite(IEnumerable<ITailoredCvSnapshot> snapshots, Func<TailoredCvSkill, TailoredCvSkill> map)
     {
-        foreach (var draft in drafts)
+        foreach (var snapshot in snapshots)
         {
-            var content = draft.Content;
+            var content = snapshot.Content;
             if (content.Skills is not { } skills) continue;
             var mapped = skills.Select(map).ToList();
-            if (!mapped.SequenceEqual(skills)) draft.Content = content with { Skills = mapped };
+            if (!mapped.SequenceEqual(skills)) snapshot.Content = content with { Skills = mapped };
         }
     }
+
+    public static async Task<List<ITailoredCvSnapshot>> LoadAllAsync(AppDbContext db, CancellationToken ct) =>
+        [.. await db.TailoredCvDrafts.ToListAsync(ct), .. await db.BaseCvVersions.ToListAsync(ct)];
 }

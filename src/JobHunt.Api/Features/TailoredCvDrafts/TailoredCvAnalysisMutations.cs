@@ -17,8 +17,10 @@ public static class TailoredCvAnalysisMutations
     [UseMutationConvention(PayloadFieldName = "result")]
     public static Task<TailoredCvAnalysisResult> AnalyzeTailoredCvSectionAsync(
         int listingId, TailoredCvSection section, int? sourceEntryId, string? model, AppDbContext db,
-        TailoredCvAnalyzer analyzer, CancellationToken ct, Guid? requestId = null) =>
-        analyzer.AnalyzeAsync(listingId, section, sourceEntryId, model, db, ct, requestId);
+        TailoredCvAnalyzer analyzer, CancellationToken ct, Guid? requestId = null,
+        TailoredCvTemplate? template = null, Language? language = null) =>
+        analyzer.AnalyzeAsync(listingId, section, sourceEntryId, model, db, ct, requestId, template ?? TailoredCvTemplate.Detailed,
+            language);
 
     [Error<ListingNotFoundException>]
     [Error<InvalidTailoredCvAnalysisException>]
@@ -26,6 +28,7 @@ public static class TailoredCvAnalysisMutations
     [Error<AiSafetyException>]
     [UseMutationConvention(PayloadFieldName = "analysis")]
     public static Task<TailoredCvAnalysisReport> AnalyzeAllTailoredCvAsync(
-        int listingId, string? model, AppDbContext db, TailoredCvAnalyzer analyzer, CancellationToken ct, Guid? requestId = null) =>
-        analyzer.AnalyzeAllAsync(listingId, model, db, ct, requestId);
+        int listingId, string? model, AppDbContext db, TailoredCvAnalyzer analyzer, CancellationToken ct, Guid? requestId = null,
+        TailoredCvTemplate? template = null, Language? language = null) =>
+        analyzer.AnalyzeAllAsync(listingId, model, db, ct, requestId, template ?? TailoredCvTemplate.Detailed, language);
 }

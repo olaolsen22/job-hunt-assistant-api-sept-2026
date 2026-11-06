@@ -42,6 +42,39 @@ public class ProfileTranslation
     public bool IsSummaryStale => Summary is not null && Profile.Summary != SourceSummary;
 }
 
+// The job title in the other language. Same shape as ProfileTranslation, per experience.
+public class ProfileExperienceTranslation
+{
+    public int Id { get; set; }
+    public string UserId { get; set; } = null!;
+    public int ExperienceId { get; set; }
+    public ProfileExperience Experience { get; set; } = null!;
+    public Language Language { get; set; }
+    public string Title { get; set; } = null!;
+    public string SourceTitle { get; set; } = null!;
+    public bool IsMachine { get; set; }
+
+    public bool IsStale => Experience.Title != SourceTitle;
+}
+
+// Degree and field in the other language; the school name is a proper name and stays as it is.
+public class ProfileEducationTranslation
+{
+    public int Id { get; set; }
+    public string UserId { get; set; } = null!;
+    public int EducationId { get; set; }
+    public ProfileEducation Education { get; set; } = null!;
+    public Language Language { get; set; }
+    public string? Degree { get; set; }
+    public string? Field { get; set; }
+    public string? SourceDegree { get; set; }
+    public string? SourceField { get; set; }
+    public bool IsMachine { get; set; }
+
+    public bool IsDegreeStale => Degree is not null && Education.Degree != SourceDegree;
+    public bool IsFieldStale => Field is not null && Education.Field != SourceField;
+}
+
 public class ProfileBulletTranslationConfiguration : IEntityTypeConfiguration<ProfileBulletTranslation>
 {
     public void Configure(EntityTypeBuilder<ProfileBulletTranslation> builder)
@@ -59,5 +92,25 @@ public class ProfileTranslationConfiguration : IEntityTypeConfiguration<ProfileT
         builder.HasOne<AppUser>().WithMany().HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(t => t.Profile).WithMany(p => p.Translations).OnDelete(DeleteBehavior.Cascade);
         builder.HasIndex(t => new { t.ProfileId, t.Language }).IsUnique();
+    }
+}
+
+public class ProfileExperienceTranslationConfiguration : IEntityTypeConfiguration<ProfileExperienceTranslation>
+{
+    public void Configure(EntityTypeBuilder<ProfileExperienceTranslation> builder)
+    {
+        builder.HasOne<AppUser>().WithMany().HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(t => t.Experience).WithMany(e => e.Translations).OnDelete(DeleteBehavior.Cascade);
+        builder.HasIndex(t => new { t.ExperienceId, t.Language }).IsUnique();
+    }
+}
+
+public class ProfileEducationTranslationConfiguration : IEntityTypeConfiguration<ProfileEducationTranslation>
+{
+    public void Configure(EntityTypeBuilder<ProfileEducationTranslation> builder)
+    {
+        builder.HasOne<AppUser>().WithMany().HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(t => t.Education).WithMany(e => e.Translations).OnDelete(DeleteBehavior.Cascade);
+        builder.HasIndex(t => new { t.EducationId, t.Language }).IsUnique();
     }
 }

@@ -17,8 +17,14 @@ public class ListingParsePromptTests(ApiFactory factory) : IClassFixture<ApiFact
         var guestPrompt = (await guest.GraphQLAsync(query)).GetProperty("listingParsePrompt");
 
         var instructions = ownerPrompt.GetProperty("instructions").GetString()!;
-        Assert.Equal(14, ownerPrompt.GetProperty("version").GetInt32());
+        Assert.Equal(18, ownerPrompt.GetProperty("version").GetInt32());
+        Assert.Contains("Application: what the ad or application page asks applicants", instructions);
+        Assert.Contains("\"Referansenummer\"", instructions);
+        Assert.Contains("what to submit and any reference number", instructions);
+        Assert.Contains("office attendance", instructions);
         Assert.Contains("\"kind\": \"VACANCY\" | \"OPEN_INVITATION\"", instructions);
+        Assert.Contains("\"Søk her\"", instructions);
+        Assert.Contains("\"Norwegian C1\" over \"Norwegian\"", instructions);
         Assert.Contains("åpen søknad", instructions);
         Assert.Contains("\"trainingProgram\"", instructions);
         Assert.Contains("\"ON_PASS\"", instructions);
@@ -77,7 +83,7 @@ public class ListingParsePromptTests(ApiFactory factory) : IClassFixture<ApiFact
         }
         var companies = (await owner.GraphQLAsync("{companyParsePrompt{version instructions}}"))
             .GetProperty("companyParsePrompt");
-        Assert.Equal(2, companies.GetProperty("version").GetInt32());
+        Assert.Equal(4, companies.GetProperty("version").GetInt32());
         Assert.DoesNotContain("jobRoleCategoryName", companies.GetProperty("instructions").GetString());
     }
 
@@ -98,6 +104,7 @@ public class ListingParsePromptTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Contains("skandinavisk språk", instructions);
         Assert.DoesNotContain("contacts", instructions);
         Assert.DoesNotContain("trainingProgram", instructions);
+        Assert.DoesNotContain("Referansenummer", instructions);
         Assert.Contains("ONE JSON array", instructions);
         Assert.Contains("Stillingstittel", instructions);
         Assert.Contains("short, direct job title in natural English", instructions);

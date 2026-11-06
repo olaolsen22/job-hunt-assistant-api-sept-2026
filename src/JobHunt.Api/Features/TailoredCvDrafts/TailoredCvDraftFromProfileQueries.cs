@@ -1,4 +1,5 @@
 using JobHunt.Api.Data;
+using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Profiles;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,34 +9,40 @@ namespace JobHunt.Api.Features.TailoredCvDrafts;
 public static class TailoredCvDraftFromProfileQueries
 {
     // Starting point for a reset: the whole profile as draft content. Nothing is saved; the UI loads it into the
-    // editor and the user saves explicitly. Keeps the saved draft's language, otherwise the listing's; null for an unknown listing.
+    // editor and the user saves explicitly. Language: the requested one, else the saved draft's, else the listing's;
+    // null for an unknown listing.
     public static async Task<TailoredCvContent?> GetTailoredCvDraftFromProfileAsync(
-        int listingId, AppDbContext db, CancellationToken ct)
+        int listingId, AppDbContext db, CancellationToken ct, Language? language = null)
     {
         var listing = await db.Listings.AsNoTracking().FirstOrDefaultAsync(l => l.Id == listingId, ct);
         if (listing is null) return null;
         var profile = await ProfileQueries.LoadAsync(db, ct);
-        var language = await TailoredCvLanguageText.TargetLanguageAsync(listing, db, ct);
-        var translation = profile.Translations.FirstOrDefault(t => t.Language == language);
+        return FromProfile(profile, await TailoredCvLanguageText.TargetLanguageAsync(listing, language, db, ct));
+    }
+
+    // The whole profile as CV content in the target language, with source ids; shared with base CVs.
+    internal static TailoredCvContent FromProfile(Profile profile, Language target)
+    {
+        var translation = profile.Translations.FirstOrDefault(t => t.Language == target);
 
         List<TailoredCvBullet> Bullets(IEnumerable<ProfileBullet> bullets) =>
-            [.. bullets.Select(b => new TailoredCvBullet(TailoredCvLanguageText.Bullet(b, language), b.Id))];
+            [.. bullets.Select(b => new TailoredCvBullet(TailoredCvLanguageText.Bullet(b, target), b.Id))];
         string? Place(Locations.Location? location) =>
-            location is null ? null : TailoredCvDraftValidation.FormatPlace(location, language);
+            location is null ? null : TailoredCvDraftValidation.FormatPlace(location, target);
 
         return new TailoredCvContent(
             Summary: translation?.Summary ?? profile.Summary,
             Experiences: [.. profile.Experiences.Select(e => new TailoredCvExperience(
-                e.Employer, e.Title, e.StartMonth, e.EndMonth, Bullets(e.Bullets), e.Id, Place(e.Location),
-                Technologies: TailoredCvLanguageText.Technologies(e.Skills, profile, language)))],
+                e.Employer, e.TitleIn(target), e.StartMonth, e.EndMonth, Bullets(e.Bullets), e.Id, Place(e.Location),
+                Technologies: TailoredCvLanguageText.Technologies(e.Skills, profile, target)))],
             Educations: [.. profile.Educations.Select(e => new TailoredCvEducation(
-                e.School, e.Degree, e.Field, e.StartMonth, e.EndMonth, Bullets(e.Bullets), e.Id, Place(e.Location)))],
+                e.School, e.DegreeIn(target), e.FieldIn(target), e.StartMonth, e.EndMonth, Bullets(e.Bullets), e.Id, Place(e.Location)))],
             Certifications: [.. profile.Certifications.Select(c => new TailoredCvCertification(
                 c.Name, c.Issuer, c.IssuedMonth, c.ExpiresMonth, c.Url, Bullets(c.Bullets), c.Id))],
             Projects: [.. profile.Projects.Select(p => new TailoredCvProject(
                 p.Name, p.Url, p.StartMonth, p.EndMonth, Bullets(p.Bullets), p.Id, Place(p.Location), Kind: p.Kind,
-                Technologies: TailoredCvLanguageText.Technologies(p.Skills, profile, language)))],
-            Skills: [.. profile.Skills.Select(s => new TailoredCvSkill(s.Skill.NameIn(language), s.Level, s.SkillId, s.Skill.CategoryId))],
+                Technologies: TailoredCvLanguageText.Technologies(p.Skills, profile, target)))],
+            Skills: [.. profile.Skills.Select(s => new TailoredCvSkill(s.Skill.NameIn(target), s.Level, s.SkillId, s.Skill.CategoryId))],
             Languages: [.. profile.Languages.Select(l => new TailoredCvLanguage(l.Name, l.Written, l.Spoken))],
             FullName: profile.FullName,
             Headline: translation?.Headline ?? profile.Headline,
@@ -43,7 +50,7 @@ public static class TailoredCvDraftFromProfileQueries
             Phone: profile.Phone,
             Address: Place(profile.Location),
             Links: [.. profile.Links.Select(l => new TailoredCvLink(LinkLabel(l), l.Url))],
-            Language: language,
+            Language: target,
             DateOfBirth: profile.DateOfBirth);
     }
 

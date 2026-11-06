@@ -202,7 +202,7 @@ public class OpenApplicationTests(ApiFactory factory) : IClassFixture<ApiFactory
         Assert.Equal("Åpen søknad – Backend Developer", subject);
         Assert.Contains("there is no advertised vacancy", instructions);
         Assert.Contains("Never claim or imply that the employer", instructions);
-        Assert.DoesNotContain("open its url and read the full posting", instructions);
+        Assert.DoesNotContain("open exactly its url", instructions);
         Assert.Contains("\"kind\":\"UNSOLICITED\"", instructions);
         Assert.Contains("\"companyResearch\":", instructions);
     }

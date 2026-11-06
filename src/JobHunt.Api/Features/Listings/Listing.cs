@@ -29,6 +29,8 @@ public class Listing
     public Seniority? Seniority { get; set; }
     public EmploymentType? EmploymentType { get; set; }
     public Schedule? Schedule { get; set; }
+    // Stillingsprosent, 1–100. Kept next to Schedule, which only says full or part time; a range ("50–100 %") stores the top.
+    public int? PositionPercent { get; set; }
     public WorkMode? WorkMode { get; set; }
     public string? Description { get; set; }
     // Null only for an unsolicited application, which has no page and was never posted.

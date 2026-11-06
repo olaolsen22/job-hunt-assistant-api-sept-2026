@@ -15,7 +15,7 @@ public class ProfileTranslationSuggestionTests(ApiFactory factory) : IClassFixtu
     private const string Suggest = """
         mutation ($language: Language!) {
           suggestProfileTranslation(input: { language: $language }) {
-            result { status error translation { bullets { id text } headline summary } } errors { __typename }
+            result { status error translation { bullets { id text } experiences { id title } educations { id degree field } headline summary } } errors { __typename }
           }
         }
         """;
@@ -226,5 +226,50 @@ public class ProfileTranslationSuggestionTests(ApiFactory factory) : IClassFixtu
         var profile = (await client.GraphQLAsync("{ profile { experiences { bullets { id translations { text } } } } }"))
             .GetProperty("profile");
         Assert.Null(BulletTranslation(profile, own));
+    }
+
+    [Fact]
+    public async Task SuggestAndApply_TranslateTitlesDegreesAndFields_OnlyMissingOrStale()
+    {
+        var client = await factory.GetGuestClientAsync();
+        await SetSourceAsync(client, null, null);
+        var g = Guid.NewGuid().ToString("N");
+        var missing = (await ProfileEntryTests.AddExperienceAsync(client, $"Missing {g}")).GetProperty("id").GetInt32();
+        var current = (await ProfileEntryTests.AddExperienceAsync(client, $"Current {g}")).GetProperty("id").GetInt32();
+        await client.GraphQLAsync("""
+            mutation ($id: Int!) {
+              setProfileExperienceTranslation(input: { experienceId: $id, language: NORWEGIAN, title: "Utvikler" }) { errors { __typename } }
+            }
+            """, new { id = current });
+        var education = await ProfileEntryTranslationTests.AddEducationAsync(client, $"NTNU {g}", "Bachelor", null);
+        Respond(factory, $$"""
+            {"experiences":[{"id":{{missing}},"title":"Frontendutvikler"},{"id":{{current}},"title":"Overskrevet"}],
+             "educations":[{"id":{{education}},"degree":"Bachelorgrad","field":"Uten kilde"}],"bullets":[]}
+            """);
+
+        var translation = (await SuggestAsync(client)).GetProperty("result").GetProperty("translation");
+        var applied = (await client.GraphQLAsync("""
+            mutation ($missing: Int!, $education: Int!) {
+              applyProfileTranslation(input: { language: NORWEGIAN, bullets: [],
+                experiences: [{ id: $missing, title: "Frontendutvikler" }], educations: [{ id: $education, degree: "Bachelorgrad" }] }) {
+                profile { experiences { id translations { title isMachine } } educations { id translations { degree field isMachine } } }
+                errors { __typename }
+              }
+            }
+            """, new { missing, education })).GetProperty("applyProfileTranslation").GetProperty("profile");
+
+        Assert.Equal([(missing, "Frontendutvikler")], translation.GetProperty("experiences").EnumerateArray()
+            .Select(e => (e.GetProperty("id").GetInt32(), e.GetProperty("title").GetString()!)).ToArray());
+        var suggested = translation.GetProperty("educations").EnumerateArray().Single();
+        Assert.Equal("Bachelorgrad", suggested.GetProperty("degree").GetString());
+        Assert.Equal(JsonValueKind.Null, suggested.GetProperty("field").ValueKind);
+        Assert.Contains("\"missing\"", factory.Llm.LastMessages[1].Text);
+        var title = applied.GetProperty("experiences").EnumerateArray().Single(e => e.GetProperty("id").GetInt32() == missing)
+            .GetProperty("translations").EnumerateArray().Single();
+        Assert.Equal("Frontendutvikler", title.GetProperty("title").GetString());
+        Assert.True(title.GetProperty("isMachine").GetBoolean());
+        var degree = applied.GetProperty("educations").EnumerateArray().Single(e => e.GetProperty("id").GetInt32() == education)
+            .GetProperty("translations").EnumerateArray().Single();
+        Assert.Equal("Bachelorgrad", degree.GetProperty("degree").GetString());
     }
 }

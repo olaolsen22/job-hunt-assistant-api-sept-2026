@@ -1,4 +1,5 @@
 using JobHunt.Api.Features.Auth;
+using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Skills;
 // Hot Chocolate also has a global Location type (a position in a query document).
 using Location = JobHunt.Api.Features.Locations.Location;
@@ -25,6 +26,9 @@ public class ProfileExperience
     public List<ProfileBullet> Bullets { get; set; } = [];
     // Tagged skills; months of experience per skill are computed from these.
     public List<Skill> Skills { get; set; } = [];
+    public List<ProfileExperienceTranslation> Translations { get; set; } = [];
+
+    public string TitleIn(Language language) => Translations.FirstOrDefault(t => t.Language == language)?.Title ?? Title;
 }
 
 public class ProfileEducation
@@ -41,6 +45,11 @@ public class ProfileEducation
     public DateOnly StartMonth { get; set; }
     public DateOnly? EndMonth { get; set; }
     public List<ProfileBullet> Bullets { get; set; } = [];
+    public List<ProfileEducationTranslation> Translations { get; set; } = [];
+
+    // Per field: a degree translated without the field keeps the original field.
+    public string? DegreeIn(Language language) => Translations.FirstOrDefault(t => t.Language == language)?.Degree ?? Degree;
+    public string? FieldIn(Language language) => Translations.FirstOrDefault(t => t.Language == language)?.Field ?? Field;
 }
 
 public class ProfileCertification

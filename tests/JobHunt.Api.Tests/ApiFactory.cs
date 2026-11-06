@@ -31,6 +31,8 @@ public class ApiFactory : WebApplicationFactory<Program>
     public FakeChatClient Llm { get; } = new();
     public FakePageHandler Pages { get; } = new();
     public FakeProviderHandler Providers { get; } = new();
+    // Per factory, so import tests never see another host's files.
+    public string ListingImportFolder { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "jobhunt-imports-" + Guid.NewGuid());
 
     public ApiFactory()
     {
@@ -51,6 +53,7 @@ public class ApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("DataProtection:KeyRingPath", System.IO.Path.Combine(System.IO.Path.GetTempPath(), "jobhunt-test-ring-" + Guid.NewGuid()));
         // CI has no user-secrets; the key is never used because the fake replaces the real client.
         builder.UseSetting("Llm:Gemini:ApiKey", "test-key");
+        builder.UseSetting("ListingImports:Folder", ListingImportFolder);
         // A second allowed model next to the appsettings.json default, so the Owner has something to pick.
         builder.UseSetting("Llm:Gemini:Models:1:Id", StrongModel);
         builder.UseSetting("Llm:Gemini:Models:1:Label", "Strong");

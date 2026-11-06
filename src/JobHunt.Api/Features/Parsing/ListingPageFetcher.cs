@@ -5,11 +5,11 @@ using System.Text.RegularExpressions;
 
 namespace JobHunt.Api.Features.Parsing;
 
-// Downloads a listing page and reduces it to the text of the one posting on it. The owner pastes arbitrary URLs and
+// Downloads a listing page and reduces it to the text of the one posting on it, or a company page to its text. The owner pastes arbitrary URLs and
 // the server fetches them, so the handler built in CreateHandler is what keeps this off our own network.
 public partial class ListingPageFetcher(HttpClient http, ILogger<ListingPageFetcher> logger)
 {
-    public const string Unreadable = "Couldn't read that page. Paste the ad text instead.";
+    public const string Unreadable = "Couldn't read that page. Paste its text instead.";
 
     private const int MaxBytes = 2_000_000;
     private const int MaxRedirects = 5;
@@ -20,6 +20,9 @@ public partial class ListingPageFetcher(HttpClient http, ILogger<ListingPageFetc
     // Boards append related listings and menus, so the model is told which posting is the target.
     private const string FallbackHint =
         "Text extracted from a web page. It may include navigation and other listings; the first job posting is the target.";
+
+    private const string CompanyHint =
+        "Text extracted from a company's web page, including its header and footer. Email and phone links are written out.";
 
     public static SocketsHttpHandler CreateHandler() => new()
     {
@@ -70,7 +73,26 @@ public partial class ListingPageFetcher(HttpClient http, ILogger<ListingPageFetc
     // Throws InvalidParseRequestException (a typed mutation error) for anything that stops us reading the page. The
     // owner only sees one message for all of them, so the real reason goes to the log. Host only: query strings
     // can carry tokens.
-    public async Task<string> GetListingTextAsync(Uri url, CancellationToken ct)
+    public async Task<string> GetListingTextAsync(Uri url, CancellationToken ct) =>
+        Readable(Extract(await GetHtmlAsync(url, ct)), url);
+
+    // A company's about, team or contact page. Contact details often sit in the footer or only in mailto:/tel: links,
+    // so those stay; only scripts, styles and menus go.
+    public async Task<string> GetCompanyTextAsync(Uri url, CancellationToken ct)
+    {
+        var html = await GetHtmlAsync(url, ct);
+        var text = HtmlToText(PageCode().Replace(ContactLink().Replace(html, " $1 "), " "));
+        return Readable(text.Length < MinFallbackChars ? null : $"{CompanyHint}\n\n{text}", url);
+    }
+
+    private string Readable(string? text, Uri url)
+    {
+        if (text is not null) return text;
+        logger.LogWarning("Page on {Host} had no readable text (JS-rendered or login wall?)", url.Host);
+        throw new InvalidParseRequestException(Unreadable);
+    }
+
+    private async Task<string> GetHtmlAsync(Uri url, CancellationToken ct)
     {
         string html;
         try
@@ -78,30 +100,23 @@ public partial class ListingPageFetcher(HttpClient http, ILogger<ListingPageFetc
             using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
             if (!response.IsSuccessStatusCode)
             {
-                logger.LogWarning("Listing page on {Host} answered {StatusCode}", url.Host, (int)response.StatusCode);
+                logger.LogWarning("Page on {Host} answered {StatusCode}", url.Host, (int)response.StatusCode);
                 throw new InvalidParseRequestException(Unreadable);
             }
             html = await ReadCappedAsync(response, url, ct);
         }
         catch (HttpRequestException ex)
         {
-            logger.LogWarning(ex, "Listing page on {Host} couldn't be fetched", url.Host);
+            logger.LogWarning(ex, "Page on {Host} couldn't be fetched", url.Host);
             throw new InvalidParseRequestException(Unreadable);
         }
         // HttpClient reports its own timeout as TaskCanceledException; with our token still live it's the site being slow.
         catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
         {
-            logger.LogWarning(ex, "Listing page on {Host} timed out", url.Host);
+            logger.LogWarning(ex, "Page on {Host} timed out", url.Host);
             throw new InvalidParseRequestException(Unreadable);
         }
-
-        var text = Extract(html);
-        if (text is null)
-        {
-            logger.LogWarning("Listing page on {Host} had no readable text (JS-rendered or login wall?)", url.Host);
-            throw new InvalidParseRequestException(Unreadable);
-        }
-        return text;
+        return html;
     }
 
     // Counts bytes as they arrive instead of trusting Content-Length, which a server can omit or lie about.
@@ -115,7 +130,7 @@ public partial class ListingPageFetcher(HttpClient http, ILogger<ListingPageFetc
         {
             if (buffer.Length + read > MaxBytes)
             {
-                logger.LogWarning("Listing page on {Host} is larger than {MaxBytes} bytes", url.Host, MaxBytes);
+                logger.LogWarning("Page on {Host} is larger than {MaxBytes} bytes", url.Host, MaxBytes);
                 throw new InvalidParseRequestException(Unreadable);
             }
             buffer.Write(chunk, 0, read);
@@ -229,6 +244,13 @@ public partial class ListingPageFetcher(HttpClient http, ILogger<ListingPageFetc
     // Navigation, footers and the like: never part of the posting itself.
     [GeneratedRegex(@"<!--.*?-->|<(script|style|noscript|svg|nav|header|footer|aside)\b[^>]*>.*?</\1>", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
     private static partial Regex BlockElement();
+
+    [GeneratedRegex(@"<!--.*?-->|<(script|style|noscript|svg|nav)\b[^>]*>.*?</\1>", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
+    private static partial Regex PageCode();
+
+    // The opening <a> of a mailto:/tel: link, replaced by the address so it survives as text.
+    [GeneratedRegex("""<a\b[^>]*\bhref\s*=\s*["'](?:mailto|tel):([^"'?]+)[^"']*["'][^>]*>""", RegexOptions.IgnoreCase)]
+    private static partial Regex ContactLink();
 
     [GeneratedRegex(@"Søknadsfrist</span>\s*<strong[^>]*>(.*?)</strong>", RegexOptions.Singleline)]
     private static partial Regex ShownDeadline();

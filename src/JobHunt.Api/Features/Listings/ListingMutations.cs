@@ -18,6 +18,7 @@ public record ListingInput(
     Seniority? Seniority,
     EmploymentType? EmploymentType,
     Schedule? Schedule,
+    int? PositionPercent,
     WorkMode? WorkMode,
     string? Description,
     // Both required, except that an unsolicited application has neither (the UI links the company's CareersUrl).
@@ -71,8 +72,9 @@ public class DuplicateListingException(int existingListingId)
 }
 
 // PreviousAttempts: closed listings with the same URL, i.e. the ad was reposted and this is a new attempt.
-// PossibleDuplicates: same company and role or title but a different URL: often the same job on another board,
-// but can be a second opening, so it's saved and the matches are returned for the user to judge.
+// PossibleDuplicates: same company and normalized title but a different URL: often the same job on another board,
+// but can be a second opening, so it's saved and the matches are returned for the user to judge. Job role alone
+// isn't enough: agencies and consultancies post many ads under one broad role.
 // An open application also matches any other open application to the company that's still active: one at a time
 // is best, but sending another is allowed.
 public record CreateListingPayload(Listing Listing, List<Listing> PreviousAttempts, List<Listing> PossibleDuplicates);
@@ -104,7 +106,7 @@ public static class ListingMutations
         var openApplication = entity.Kind != ListingKind.Vacancy;
         var possibleDuplicates = await WithDetails(db)
             .Where(l => l.CompanyId == entity.CompanyId && l.Id != entity.Id && (entity.Url == null || l.Url != entity.Url)
-                && (l.JobRoleId == entity.JobRoleId || l.NormalizedTitle == entity.NormalizedTitle
+                && (l.NormalizedTitle == entity.NormalizedTitle
                     || (openApplication && l.Kind != ListingKind.Vacancy && !ApplicationStatuses.Final.Contains(l.Status))))
             .OrderByDescending(l => l.CreatedAt)
             .ToListAsync(ct);
@@ -215,6 +217,7 @@ public static class ListingMutations
         entity.Seniority = input.Seniority;
         entity.EmploymentType = input.EmploymentType;
         entity.Schedule = input.Schedule;
+        entity.PositionPercent = input.PositionPercent;
         entity.WorkMode = input.WorkMode;
         entity.Description = input.Description;
         entity.Url = string.IsNullOrWhiteSpace(input.Url) ? null : ListingUrls.Normalize(new Uri(input.Url.Trim()));
@@ -243,7 +246,11 @@ public static class ListingMutations
         if (entity.CompanyId != entity.Company.Id)
             entity.Contacts.Clear();
         if (input.Contacts is not null)
-            await ApplyContactsAsync(entity, input.Contacts, db, ct);
+        {
+            var (contacts, _) = await ContactLookup.UpsertAsync(entity.Company, input.Contacts, db, ct);
+            entity.Contacts.Clear();
+            entity.Contacts.AddRange(contacts.Select(c => new ListingContact { Contact = c }));
+        }
 
         if (input.TrainingProgram.HasValue)
             await ApplyTrainingProgramAsync(entity, input.TrainingProgram.Value, db, ct);
@@ -315,48 +322,6 @@ public static class ListingMutations
             : await FindOrCreateCompanyAsync(input.EndCompanyName, entity.UserId, db, ct);
     }
 
-    // Found by name within the listing's company or created. A match only gets its empty fields filled,
-    // so a parsed ad can't overwrite what the user edited.
-    private static async Task ApplyContactsAsync(
-        Listing entity, List<ContactInput> inputs, AppDbContext db, CancellationToken ct)
-    {
-        var names = inputs.Select(c => Names.Normalize(c.Name)).ToList();
-        var company = entity.Company;
-        var known = company.Id == 0
-            ? []
-            : await db.Contacts
-                .Where(c => c.CompanyId == company.Id && names.Contains(c.NormalizedName))
-                .ToDictionaryAsync(c => c.NormalizedName, ct);
-
-        entity.Contacts.Clear();
-        foreach (var input in inputs)
-        {
-            var name = Names.Normalize(input.Name);
-            if (known.TryGetValue(name, out var contact))
-            {
-                contact.Title ??= Inputs.Clean(input.Title);
-                contact.Email ??= Inputs.Clean(input.Email);
-                contact.Phone ??= Inputs.Clean(input.Phone);
-                contact.Url ??= Inputs.Clean(input.Url);
-                contact.Notes ??= Inputs.Clean(input.Notes);
-            }
-            else
-                contact = new Contact
-                {
-                    UserId = entity.UserId,
-                    Company = company,
-                    Name = input.Name.Trim(),
-                    NormalizedName = name,
-                    Title = Inputs.Clean(input.Title),
-                    Email = Inputs.Clean(input.Email),
-                    Phone = Inputs.Clean(input.Phone),
-                    Url = Inputs.Clean(input.Url),
-                    Notes = Inputs.Clean(input.Notes),
-                };
-            entity.Contacts.Add(new ListingContact { Contact = contact });
-        }
-    }
-
     private static void Validate(ListingInput input, DateOnly today)
     {
         if (string.IsNullOrWhiteSpace(input.Title))
@@ -388,6 +353,10 @@ public static class ListingMutations
             throw new InvalidListingException("Posted date can't be in the future.");
         if ((input.DeadlineType == DeadlineType.Date) != (input.DeadlineOn is not null))
             throw new InvalidListingException("Set deadlineOn if and only if deadlineType is DATE.");
+        if (input.PositionPercent is < 1 or > 100)
+            throw new InvalidListingException("Position percent must be 1–100.");
+        if ((input.PositionPercent, input.Schedule) is (100, Schedule.PartTime) or (< 100, Schedule.FullTime))
+            throw new InvalidListingException("Position percent doesn't match the schedule: 100 % is full time, less is part time.");
         if (input.TrainingProgram.Value is { StartsOn: { } startsOn, EndsOn: { } endsOn } && startsOn > endsOn)
             throw new InvalidListingException("Training program can't end before it starts.");
 

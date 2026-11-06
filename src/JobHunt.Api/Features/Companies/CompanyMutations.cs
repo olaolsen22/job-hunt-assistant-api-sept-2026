@@ -1,4 +1,5 @@
 using JobHunt.Api.Data;
+using JobHunt.Api.Features.Contacts;
 using JobHunt.Api.Features.Industries;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Skills;
@@ -15,16 +16,19 @@ public record CompanyInput(
     string Name, string? IndustryName, List<LocationInput> Locations,
     string? OrgNumber = null, string? WebsiteUrl = null, string? CareersUrl = null, string? LinkedInUrl = null,
     CompanyKind? Kind = null, CompanySize? SizeBand = null, int? FoundedYear = null, string? Description = null,
-    WorkMode? WorkMode = null, Language? WorkingLanguage = null, List<string>? Skills = null)
+    WorkMode? WorkMode = null, Language? WorkingLanguage = null, List<string>? Skills = null,
+    List<ContactInput>? Contacts = null)
 {
     internal CompanyDetailsInput Details() => new(OrgNumber, WebsiteUrl, CareersUrl, LinkedInUrl,
-        Kind, SizeBand, FoundedYear, Description, WorkMode, WorkingLanguage, Skills ?? []);
+        Kind, SizeBand, FoundedYear, Description, WorkMode, WorkingLanguage, Skills ?? [], Contacts);
 }
 
+// Contacts are never replaced: each one is found by name and only filled, or added (see ContactLookup).
+// Null or [] leaves the company's contacts as they are; editing a person goes through updateContact.
 public record CompanyDetailsInput(
     string? OrgNumber, string? WebsiteUrl, string? CareersUrl, string? LinkedInUrl,
     CompanyKind? Kind, CompanySize? SizeBand, int? FoundedYear, string? Description,
-    WorkMode? WorkMode, Language? WorkingLanguage, List<string> Skills);
+    WorkMode? WorkMode, Language? WorkingLanguage, List<string> Skills, List<ContactInput>? Contacts = null);
 
 // Created is false when the company already existed (same org.nr or name). Filled says whether any of its
 // empty fields were filled from the row; fields that already had a value are never overwritten.
@@ -42,6 +46,7 @@ public static class CompanyMutations
     private const int MaxDescriptionLength = 500;
     private const int MaxSkills = 50;
     private const int MaxSkillNameLength = 100;
+    private const int MaxContacts = 20;
 
     // All or nothing: every row is validated and resolved before anything is added, then one SaveChanges.
     // A row matching an existing company (org.nr first, then name) or an earlier row only fills that
@@ -76,6 +81,8 @@ public static class CompanyMutations
         var existing = await db.Companies
             .Include(c => c.Industry).Include(c => c.Locations).ThenInclude(l => l.Location)
             .Include(c => c.Skills).ThenInclude(s => s.Skill)
+            // All of them, so the returned company lists everyone, not just the people this batch named.
+            .Include(c => c.Contacts)
             .Where(c => names.Contains(c.NormalizedName) || orgNumbers.Contains(c.OrgNumber!))
             .ToListAsync(ct);
         var byName = existing.ToDictionary(c => c.NormalizedName);
@@ -89,7 +96,8 @@ public static class CompanyMutations
                 || byName.TryGetValue(row.NormalizedName, out company))
             {
                 // An org.nr reaching here is unused (or it would have matched above), so filling it can't clash.
-                var filled = Fill(company, row.Details, row.Industry, row.Locations, row.Skills);
+                var filled = Fill(company, row.Details, row.Industry, row.Locations, row.Skills)
+                    | await FillContactsAsync(company, row.Details, db, ct);
                 if (filled)
                 {
                     company.ResearchedAt = now;
@@ -105,8 +113,9 @@ public static class CompanyMutations
                 NormalizedName = row.NormalizedName,
             };
             var researched = Fill(company, row.Details, row.Industry, row.Locations, row.Skills);
-            if (researched) company.ResearchedAt = now;
             db.Companies.Add(company);
+            researched |= await FillContactsAsync(company, row.Details, db, ct);
+            if (researched) company.ResearchedAt = now;
             byName[row.NormalizedName] = company;
             if (org is not null) byOrgNumber[org] = company;
             results.Add(new CompanyResult(company, true, false));
@@ -123,7 +132,7 @@ public static class CompanyMutations
         int id, CompanyDetailsInput details, AppDbContext db, TimeProvider time, CancellationToken ct)
     {
         details = Clean(details, time.GetUtcNow().Year);
-        var company = await db.Companies.Include(c => c.Skills).ThenInclude(s => s.Skill)
+        var company = await db.Companies.Include(c => c.Skills).ThenInclude(s => s.Skill).Include(c => c.Contacts)
                 .FirstOrDefaultAsync(c => c.Id == id, ct)
             ?? throw new CompanyNotFoundException(id);
         if (details.OrgNumber is { } org
@@ -146,10 +155,15 @@ public static class CompanyMutations
         company.Skills.RemoveAll(cs => !wanted.Contains(cs.Skill));
         foreach (var skill in wanted.Where(w => company.Skills.All(cs => cs.Skill != w)))
             company.Skills.Add(new CompanySkill { Skill = skill });
+        await FillContactsAsync(company, details, db, ct);
 
         await db.SaveChangesAsync(ct);
         return company;
     }
+
+    private static async Task<bool> FillContactsAsync(
+        Company company, CompanyDetailsInput details, AppDbContext db, CancellationToken ct) =>
+        details.Contacts is { Count: > 0 } contacts && (await ContactLookup.UpsertAsync(company, contacts, db, ct)).Changed;
 
     // Sets only what is empty on the company; returns whether anything changed.
     private static bool Fill(Company company, CompanyDetailsInput details, Industry? industry,
@@ -205,6 +219,18 @@ public static class CompanyMutations
             throw new InvalidCompanyException($"A company can list at most {MaxSkills} skills.");
         if (skills.FirstOrDefault(s => s.Length > MaxSkillNameLength) is { } longSkill)
             throw new InvalidCompanyException($"Skill \"{longSkill[..20]}…\" is longer than {MaxSkillNameLength} characters.");
+
+        var contacts = details.Contacts ?? [];
+        if (contacts.Count > MaxContacts)
+            throw new InvalidCompanyException($"A company can bring at most {MaxContacts} contacts at a time.");
+        foreach (var contact in contacts)
+        {
+            try { ContactMutations.Validate(contact); }
+            catch (InvalidContactException e) { throw new InvalidCompanyException(e.Message); }
+        }
+        var repeated = contacts.GroupBy(c => Names.Normalize(c.Name)).FirstOrDefault(g => g.Count() > 1);
+        if (repeated is not null)
+            throw new InvalidCompanyException($"Contact \"{repeated.First().Name.Trim()}\" is listed twice.");
 
         return details with
         {

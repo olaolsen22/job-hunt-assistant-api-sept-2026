@@ -11,7 +11,8 @@ public class DashboardTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     private static readonly string[] Default =
     [
-        "CLOSING_SOON", "UPCOMING_INTERVIEWS", "OFFERS_TO_ANSWER", "STALE_LISTINGS", "PIPELINE",
+        "CLOSING_SOON", "UPCOMING_INTERVIEWS", "OFFERS_TO_ANSWER", "STALE_LISTINGS", "CONTACT_FOLLOW_UPS",
+        "PIPELINE",
         "APPLIED_THIS_WEEK", "TO_ANALYZE", "FAVORITED_LISTINGS", "FAVORITED_COMPANIES",
         "LLM_USAGE",
     ];
@@ -101,11 +102,12 @@ public class DashboardTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
-    public async Task LayoutSavedBeforeLlmUsageExisted_GetsItAppendedAndShown()
+    public async Task LayoutSavedBeforeNewWidgetsExisted_GetsThemAppendedInOrderAndShown()
     {
         var client = await factory.GetOwnerClientAsync();
         var userId = (await client.GetFromJsonAsync<JsonElement>("/api/auth/me")).GetProperty("id").GetString()!;
-        var oldNine = Default[..^1].Reverse().ToArray();
+        string[] added = ["CONTACT_FOLLOW_UPS", "LLM_USAGE"];
+        var oldNine = Default.Except(added).Reverse().ToArray();
 
         // The API can't save nine widgets any more, so write the rows an older release would have left behind.
         using (var scope = factory.Services.CreateScope())
@@ -121,9 +123,10 @@ public class DashboardTests(ApiFactory factory) : IClassFixture<ApiFactory>
         }
         var layout = (await client.GraphQLAsync(Query)).GetProperty("dashboardLayout");
 
-        string[] expected = [.. oldNine, "LLM_USAGE"];
+        string[] expected = [.. oldNine, .. added];
         Assert.Equal(expected, Widgets(layout));
         Assert.True(layout[9].GetProperty("isShown").GetBoolean());
+        Assert.True(layout[10].GetProperty("isShown").GetBoolean());
     }
 
     [Fact]

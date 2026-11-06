@@ -110,11 +110,11 @@ public static class SkillMutations
         removeSkillIds = removeSkillIds?.Distinct().ToList() ?? [];
         Validate(operations, translations, categories, removeSkillIds);
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
-        var drafts = await db.TailoredCvDrafts.ToListAsync(ct);
+        var snapshots = await TailoredCvDraftSkills.LoadAllAsync(db, ct);
         // First, so an operation naming a removed skill creates a fresh one instead of reusing the doomed row.
-        await RemoveAsync(removeSkillIds, drafts, db, ct);
+        await RemoveAsync(removeSkillIds, snapshots, db, ct);
         var result = new List<Skill>();
-        foreach (var operation in operations) result.AddRange(await ApplyAsync(operation, drafts, db, ct));
+        foreach (var operation in operations) result.AddRange(await ApplyAsync(operation, snapshots, db, ct));
 
         // By name after the operations, so a translation or category can target a skill an operation created.
         var translated = await SkillsByNameAsync(translations.Select(t => t.SkillName), db.Skills.Include(s => s.Translations), ct);
@@ -176,7 +176,7 @@ public static class SkillMutations
         if (repeated is not null) throw new InvalidSkillCleanupException($"Skill {repeated.Key} is in more than one operation.");
     }
 
-    private static async Task<List<Skill>> ApplyAsync(SkillCleanupOperation operation, List<TailoredCvDraft> drafts,
+    private static async Task<List<Skill>> ApplyAsync(SkillCleanupOperation operation, List<ITailoredCvSnapshot> snapshots,
         AppDbContext db, CancellationToken ct)
     {
         var sourceIds = operation.SkillIds.Distinct().ToList();
@@ -239,7 +239,7 @@ public static class SkillMutations
             .Where(p => p.Skills.Any(s => removedIds.Contains(s.Id))).ToListAsync(ct);
         foreach (var project in projects) ReplaceTags(project.Skills, removedIds, targets);
 
-        TailoredCvDraftSkills.Rewrite(drafts, s => s.SourceSkillId is { } id && removedIds.Contains(id)
+        TailoredCvDraftSkills.Rewrite(snapshots, s => s.SourceSkillId is { } id && removedIds.Contains(id)
             ? s with { SourceSkillId = targetIds[0] } : s);
 
         // A merge keeps the sources' translations where the target has none; a split can't divide one translation.
@@ -257,14 +257,15 @@ public static class SkillMutations
     }
 
     // Unlike deleteSkill, removes skills in use: the user reviewed each removal. The database cascades the
-    // profile, listing and experience/project links; drafts only lose the source link and keep their text.
-    private static async Task RemoveAsync(List<int> ids, List<TailoredCvDraft> drafts, AppDbContext db, CancellationToken ct)
+    // profile, listing and experience/project links; drafts and base CV versions only lose the source link and keep
+    // their text.
+    private static async Task RemoveAsync(List<int> ids, List<ITailoredCvSnapshot> snapshots, AppDbContext db, CancellationToken ct)
     {
         if (ids.Count == 0) return;
         var skills = await db.Skills.Where(s => ids.Contains(s.Id)).ToListAsync(ct);
         if (skills.Count != ids.Count) throw new SkillNotFoundException(ids.Except(skills.Select(s => s.Id)).First());
 
-        TailoredCvDraftSkills.Rewrite(drafts, s => s.SourceSkillId is { } id && ids.Contains(id) ? s with { SourceSkillId = null } : s);
+        TailoredCvDraftSkills.Rewrite(snapshots, s => s.SourceSkillId is { } id && ids.Contains(id) ? s with { SourceSkillId = null } : s);
         db.Skills.RemoveRange(skills);
         await db.SaveChangesAsync(ct);
     }

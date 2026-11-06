@@ -1,5 +1,7 @@
 using System.Text.Json;
 using JobHunt.Api.Data;
+using JobHunt.Api.Tests.Features.Listings;
+using JobHunt.Api.Tests.Features.Profiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -137,6 +139,40 @@ public class ApplicationQuestionTests(ApiFactory factory) : IClassFixture<ApiFac
     }
 
     [Fact]
+    public async Task Generate_SendsWorkMonthsAndLocations_ButNoPrivateDetails()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        await client.GraphQLAsync("""
+            mutation {
+              updateProfile(input: { fullName: "Kari Nordmann", location: { city: "Bergen", countryCode: "NO" },
+                workAuthorization: "PRIVATE_AUTH", nationality: "PRIVATE_NATIONALITY", hobbies: [], links: [] }) { errors { __typename } }
+              updateProfileAddress(input: { streetAddress: "PRIVATE_STREET", postalCode: "PRIVATE_POSTAL" }) { errors { __typename } }
+              updateProfilePreferences(input: { jobRoleNames: [], workModes: [HYBRID], employmentTypes: [],
+                minSalary: 987654, salaryCurrency: "NOK", noticePeriodMonths: 3 }) { errors { __typename } }
+              saveLocation(input: { city: "Trondheim", countryCode: "NO", isTarget: true }) { errors { __typename } }
+            }
+            """);
+        // Overlapping jobs count once: Jan 2020 to Jun 2022 is 30 months, not 24 + 18.
+        var skill = ListingTests.Unique("Svelte");
+        await ProfileEntryTests.AddExperienceAsync(client, employer: "First", start: "2020-01-01", end: "2021-12-01", skills: [skill]);
+        await ProfileEntryTests.AddExperienceAsync(client, employer: "Second", start: "2021-01-01", end: "2022-06-01", skills: [skill]);
+        var listingId = await CreateListingAsync(client);
+        var id = await AddAsync(client, listingId, "How many years have you worked with Svelte?");
+        factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant, """{"answer":"Two and a half years."}"""));
+
+        await client.GraphQLAsync(Generate, new { questionId = id });
+
+        var prompt = string.Join("\n", factory.Llm.LastMessages.Select(m => m.Text));
+        Assert.Contains($"{{\"name\":\"{skill}\",\"workMonths\":30}}", prompt);
+        Assert.Contains("\"homeLocation\":\"Bergen, Norway\"", prompt);
+        Assert.Contains("Trondheim, Norway", prompt);
+        Assert.Contains("\"workModes\":[\"HYBRID\"]", prompt);
+        Assert.Contains("[fill in: salary expectation]", prompt);
+        Assert.DoesNotContain("PRIVATE_", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("987654", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Generate_OverLimit_RetriesOnceWithTheMeasuredLength()
     {
         var client = await factory.GetOwnerClientAsync();
@@ -181,16 +217,16 @@ public class ApplicationQuestionTests(ApiFactory factory) : IClassFixture<ApiFac
         var prompt = (await client.GraphQLAsync("""
             query ($questionId: Int!) { applicationAnswerExternalPrompt(questionId: $questionId) { version instructions } }
             """, new { questionId = id })).GetProperty("applicationAnswerExternalPrompt");
-        Assert.Equal(2, prompt.GetProperty("version").GetInt32());
-        foreach (var expected in new[] { "QUESTION_NOTES", "\"draft\":\"MY_DRAFT\"", "Build services", "\"schemaVersion\": 2", "at most 10 characters" })
+        Assert.Equal(3, prompt.GetProperty("version").GetInt32());
+        foreach (var expected in new[] { "QUESTION_NOTES", "\"draft\":\"MY_DRAFT\"", "Build services", "\"schemaVersion\": 3", "at most 10 characters" })
             Assert.Contains(expected, prompt.GetProperty("instructions").GetString());
 
-        var flagged = (await client.GraphQLAsync(Preview, new { questionId = id, json = """{"schemaVersion":2,"answer":" Longer than ten "}""" }))
+        var flagged = (await client.GraphQLAsync(Preview, new { questionId = id, json = """{"schemaVersion":3,"answer":" Longer than ten "}""" }))
             .GetProperty("previewApplicationAnswer").GetProperty("candidate");
         Assert.Equal("Longer than ten", flagged.GetProperty("answer").GetString());
         Assert.True(flagged.GetProperty("overLimit").GetBoolean());
 
-        foreach (var json in new[] { """{"answer":"No version"}""", """{"schemaVersion":1,"answer":"Stale prompt"}""", """{"schemaVersion":2,"answer":"  "}""", "not json" })
+        foreach (var json in new[] { """{"answer":"No version"}""", """{"schemaVersion":2,"answer":"Stale prompt"}""", """{"schemaVersion":3,"answer":"  "}""", "not json" })
         {
             var invalid = (await client.GraphQLAsync(Preview, new { questionId = id, json })).GetProperty("previewApplicationAnswer");
             Assert.Equal("InvalidApplicationQuestionError", invalid.GetProperty("errors")[0].GetProperty("__typename").GetString());

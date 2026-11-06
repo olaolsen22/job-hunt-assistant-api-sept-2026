@@ -177,6 +177,38 @@ public class TailoredCvPdfRendererTests
     }
 
     [Fact]
+    public void Render_DeveloperOrder_CustomGroupsLeadAndMergeWithSameNamedCategory()
+    {
+        var text = ExtractText(FullDraft(Language.English) with
+        {
+            SectionOrder = TailoredCvSectionOrder.Developer,
+            Skills =
+            [
+                new("C#", 5, CategoryId: 1),
+                new("Vue", 4, CategoryId: 2, Group: "Frontend"),
+                new("Git", 4, CategoryId: 7),
+                new("Docker", 3, CategoryId: 4, Group: "tools"),
+                new("TypeScript", 4, CategoryId: 1, Group: "Frontend"),
+                new("Kundeservice", 5),
+            ],
+        }, Categories);
+
+        // First appearance decides custom order; "tools" merges with the Tools category under the first label seen.
+        AssertInOrder(text, "Frontend: Vue, TypeScript", "Git, Docker", "Languages: C#", "Other: Kundeservice");
+        Assert.DoesNotContain("Frameworks", text);
+        Assert.DoesNotContain("Cloud & DevOps", text);
+    }
+
+    [Fact]
+    public void Render_StandardOrder_IgnoresSkillGroups()
+    {
+        var text = ExtractText(FullDraft(Language.English) with { Skills = [new("Vue", 4, Group: "Frontend")] });
+
+        Assert.Contains("Vue", text);
+        Assert.DoesNotContain("Frontend:", text);
+    }
+
+    [Fact]
     public void Render_StandardOrder_IgnoresCategories()
     {
         var text = ExtractText(FullDraft(Language.Norwegian) with { Skills = CategorizedSkills });
@@ -247,6 +279,21 @@ public class TailoredCvPdfRendererTests
 
         Assert.Contains("Built the service and cut latency by 30%.", text);
         Assert.DoesNotContain("•", text);
+    }
+
+    [Fact]
+    public void Render_ConciseTemplate_PrintsBulletsEvenWithParagraphStyle()
+    {
+        var content = new TailoredCvContent(Experiences:
+        [
+            new TailoredCvExperience("Acme", "Developer", null, null,
+                [new TailoredCvBullet("Built the service.")], Paragraph: "A paragraph that must not print."),
+        ], ContentStyle: TailoredCvContentStyle.Paragraph, Template: TailoredCvTemplate.Concise);
+
+        var text = ExtractText(content);
+
+        Assert.Contains("Built the service.", text);
+        Assert.DoesNotContain("A paragraph that must not print.", text);
     }
 
     [Fact]

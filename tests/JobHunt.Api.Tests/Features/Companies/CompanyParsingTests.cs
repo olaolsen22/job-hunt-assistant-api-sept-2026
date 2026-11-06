@@ -42,7 +42,10 @@ public class CompanyParsingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var guestPrompt = (await guest.GraphQLAsync(Prompt)).GetProperty("companyParsePrompt");
 
         var instructions = ownerPrompt.GetProperty("instructions").GetString()!;
-        Assert.Equal(2, ownerPrompt.GetProperty("version").GetInt32());
+        Assert.Equal(4, ownerPrompt.GetProperty("version").GetInt32());
+        Assert.Contains("\"RECRUITMENT\" | \"BROKER\"", instructions);
+        Assert.Contains("RECRUITMENT is a recruitment or", instructions);
+        Assert.Contains("BROKER matches", instructions);
         Assert.Contains("ONE JSON array", instructions);
         Assert.Contains("<posting>", instructions);
         Assert.Contains("ISO 3166-1", instructions);
@@ -50,6 +53,9 @@ public class CompanyParsingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Contains("\"orgNumber\"", instructions);
         Assert.Contains("\"PRODUCT\" | \"CONSULTANCY\" | \"IN_HOUSE\"", instructions);
         Assert.Contains("\"skills\": string[]", instructions);
+        Assert.Contains("\"contacts\": [{ \"name\": string", instructions);
+        Assert.Contains("never build an email from a pattern", instructions);
+        Assert.Contains("company's own site and LinkedIn pages you open", instructions);
         Assert.DoesNotContain(industry, guestPrompt.GetProperty("instructions").GetString());
     }
 
@@ -69,8 +75,9 @@ public class CompanyParsingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal("<posting>\nEquinor, Aker BP\n</posting>", factory.Llm.LastMessages[1].Text);
 
         var prompt = (await client.GraphQLAsync(Prompt)).GetProperty("companyParsePrompt");
-        Assert.Equal(prompt.GetProperty("instructions").GetString()!.Replace(JsonReply.Rule("array", external: true),
-            JsonReply.Rule("array", external: false)), factory.Llm.LastMessages[0].Text);
+        Assert.Equal(prompt.GetProperty("instructions").GetString()!
+            .Replace(JsonReply.Rule("array", external: true), JsonReply.Rule("array", external: false))
+            .Replace(" or on the company's own site and LinkedIn pages you open", ""), factory.Llm.LastMessages[0].Text);
 
         var companies = await client.GraphQLAsync(
             "query ($s: String) { companies(search: $s) { totalCount } }", new { s = name });

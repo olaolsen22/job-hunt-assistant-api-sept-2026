@@ -325,6 +325,67 @@ public class TailoredCvDraftTests(ApiFactory factory) : IClassFixture<ApiFactory
     }
 
     [Fact]
+    public async Task FromProfile_UsesTranslatedTitleDegreeAndField_FallingBackPerField()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var employer = $"Translated {Guid.NewGuid():N}";
+        var experienceId = (await ProfileEntryTests.AddExperienceAsync(client, employer: employer)).GetProperty("id").GetInt32();
+        var school = $"School {Guid.NewGuid():N}";
+        var educationId = await ProfileEntryTranslationTests.AddEducationAsync(client, school, "Bachelor", "Computer Science");
+        await client.GraphQLAsync("""
+            mutation ($experienceId: Int!, $educationId: Int!) {
+              setProfileExperienceTranslation(input: { experienceId: $experienceId, language: NORWEGIAN, title: "Frontendutvikler" }) { errors { __typename } }
+              setProfileEducationTranslation(input: { educationId: $educationId, language: NORWEGIAN, field: "Informatikk" }) { errors { __typename } }
+            }
+            """, new { experienceId, educationId });
+
+        var norwegian = (await client.GraphQLAsync("""
+            query ($listingId: Int!) { tailoredCvDraftFromProfile(listingId: $listingId) { experiences { employer title } educations { school degree field } } }
+            """, new { listingId = await CreateListingAsync(client, "NORWEGIAN") })).GetProperty("tailoredCvDraftFromProfile");
+        var english = (await client.GraphQLAsync("""
+            query ($listingId: Int!) { tailoredCvDraftFromProfile(listingId: $listingId) { experiences { employer title } } }
+            """, new { listingId = await CreateListingAsync(client, "ENGLISH") })).GetProperty("tailoredCvDraftFromProfile");
+
+        Assert.Equal("Frontendutvikler", norwegian.GetProperty("experiences").EnumerateArray()
+            .Single(e => e.GetProperty("employer").GetString() == employer).GetProperty("title").GetString());
+        var education = norwegian.GetProperty("educations").EnumerateArray().Single(e => e.GetProperty("school").GetString() == school);
+        Assert.Equal("Bachelor", education.GetProperty("degree").GetString());
+        Assert.Equal("Informatikk", education.GetProperty("field").GetString());
+        Assert.Equal("Frontend Developer", english.GetProperty("experiences").EnumerateArray()
+            .Single(e => e.GetProperty("employer").GetString() == employer).GetProperty("title").GetString());
+    }
+
+    [Fact]
+    public async Task FromProfile_RequestedLanguage_OverridesSavedDraftLanguage()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var employer = $"Switch {Guid.NewGuid():N}";
+        var experienceId = (await ProfileEntryTests.AddExperienceAsync(client, employer: employer)).GetProperty("id").GetInt32();
+        await client.GraphQLAsync("""
+            mutation ($experienceId: Int!) {
+              setProfileExperienceTranslation(input: { experienceId: $experienceId, language: NORWEGIAN, title: "Frontendutvikler" }) { errors { __typename } }
+            }
+            """, new { experienceId });
+        var listingId = await CreateListingAsync(client, "NORWEGIAN");
+        await SaveAsync(client, listingId, "Lagret utkast");
+        const string query = """
+            query ($listingId: Int!, $language: Language) {
+              tailoredCvDraftFromProfile(listingId: $listingId, language: $language) { language experiences { employer title } }
+            }
+            """;
+        string? Title(JsonElement content) => content.GetProperty("experiences").EnumerateArray()
+            .Single(e => e.GetProperty("employer").GetString() == employer).GetProperty("title").GetString();
+
+        var kept = (await client.GraphQLAsync(query, new { listingId, language = (string?)null })).GetProperty("tailoredCvDraftFromProfile");
+        var switched = (await client.GraphQLAsync(query, new { listingId, language = "ENGLISH" })).GetProperty("tailoredCvDraftFromProfile");
+
+        Assert.Equal("NORWEGIAN", kept.GetProperty("language").GetString());
+        Assert.Equal("Frontendutvikler", Title(kept));
+        Assert.Equal("ENGLISH", switched.GetProperty("language").GetString());
+        Assert.Equal("Frontend Developer", Title(switched));
+    }
+
+    [Fact]
     public async Task FromProfile_PrefillsProjectKindAndTranslatedTechnologies_StrongestFirst()
     {
         var client = await factory.GetGuestClientAsync();
@@ -390,6 +451,49 @@ public class TailoredCvDraftTests(ApiFactory factory) : IClassFixture<ApiFactory
             .GetProperty("content").GetProperty("experiences");
         Assert.Equal(["C#", ".NET"], experiences[0].GetProperty("technologies").EnumerateArray().Select(t => t.GetString()));
         Assert.Equal(JsonValueKind.Null, experiences[1].GetProperty("technologies").ValueKind);
+    }
+
+    [Fact]
+    public async Task Save_TrimsSkillGroup_BlankBecomesNull()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var listingId = await CreateListingAsync(client);
+
+        var data = await client.GraphQLAsync("""
+            mutation ($listingId: Int!, $content: TailoredCvContentInput!) {
+              saveTailoredCvDraft(input: { listingId: $listingId, content: $content }) {
+                tailoredCvDraft { content { skills { name group } } }
+              }
+            }
+            """, new
+        {
+            listingId,
+            content = new { skills = new object[]
+            {
+                new { name = "Vue", level = 4, group = "  Frontend  " },
+                new { name = "Git", level = 4, group = "   " },
+            } },
+        });
+
+        var skills = data.GetProperty("saveTailoredCvDraft").GetProperty("tailoredCvDraft")
+            .GetProperty("content").GetProperty("skills");
+        Assert.Equal("Frontend", skills[0].GetProperty("group").GetString());
+        Assert.Equal(JsonValueKind.Null, skills[1].GetProperty("group").ValueKind);
+    }
+
+    [Fact]
+    public async Task Save_RejectsTooLongSkillGroup()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var listingId = await CreateListingAsync(client);
+
+        var payload = (await client.GraphQLAsync(Save, new
+        {
+            listingId,
+            content = new { skills = new[] { new { name = "Vue", level = 4, group = new string('x', 51) } } },
+        })).GetProperty("saveTailoredCvDraft");
+
+        Assert.Equal("InvalidTailoredCvDraftError", payload.GetProperty("errors")[0].GetProperty("__typename").GetString());
     }
 
     [Fact]

@@ -107,5 +107,6 @@ public static partial class ContactNode
     {
         descriptor.Ignore(c => c.UserId);
         descriptor.Ignore(c => c.NormalizedName);
+        descriptor.Field(c => c.Interactions).UseSorting();
     }
 }

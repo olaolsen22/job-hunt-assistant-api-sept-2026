@@ -3,8 +3,10 @@ using JobHunt.Api.Features.AiSafeguards;
 using JobHunt.Api.Features.ApplicationQuestions;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Auth;
+using JobHunt.Api.Features.BaseCvs;
 using JobHunt.Api.Features.CoverLetters;
 using JobHunt.Api.Features.Documents;
+using JobHunt.Api.Features.ListingImports;
 using JobHunt.Api.Features.LlmModels;
 using JobHunt.Api.Features.LlmProviderKeys;
 using JobHunt.Api.Features.Parsing;
@@ -113,6 +115,10 @@ builder.Services.AddOptions<ProviderCatalogOptions>().BindConfiguration(Provider
         { Models = builder.Configuration.GetSection("Llm:Gemini:Models").Get<List<LlmModelOption>>() ?? [] }),
         "Provider model selection IDs must be unique.")
     .ValidateOnStart();
+builder.Services.AddOptions<ListingImportOptions>().BindConfiguration(ListingImportOptions.Section);
+// One instance as both the hosted loop and a callable service, so tests can trigger a scan directly.
+builder.Services.AddSingleton<ListingImportScanner>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<ListingImportScanner>());
 builder.Services.AddScoped<LlmModelResolver>();
 builder.Services.AddScoped<LlmExecution>();
 builder.Services.AddScoped<ListingParser>();
@@ -122,6 +128,7 @@ builder.Services.AddScoped<ProfileSkillWordingSuggester>();
 builder.Services.AddScoped<ProfileSummarySuggester>();
 builder.Services.AddScoped<ProfileTranslationSuggester>();
 builder.Services.AddScoped<TailoredCvAnalyzer>();
+builder.Services.AddScoped<TailoredCvSkillGroupSuggester>();
 builder.Services.AddScoped<CoverLetterGenerator>();
 builder.Services.AddScoped<ApplicationAnswerGenerator>();
 TailoredCvPdfFonts.EnsureRegistered();
@@ -179,6 +186,7 @@ app.UseAuthorization();
 app.MapHealthChecks("/api/health").AllowAnonymous();
 app.MapAuthEndpoints();
 app.MapDocumentEndpoints();
+app.MapBaseCvEndpoints();
 app.MapGraphQL();
 
 app.Run();

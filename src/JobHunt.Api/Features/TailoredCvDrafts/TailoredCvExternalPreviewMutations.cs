@@ -23,11 +23,30 @@ public static class TailoredCvExternalPreviewMutations
     [Error<InvalidTailoredCvDraftException>]
     [UseMutationConvention(PayloadFieldName = "candidate")]
     public static async Task<TailoredCvExternalCandidate> PreviewTailoredCvDraftAsync(
-        int listingId, string json, AppDbContext db, CancellationToken ct)
+        int listingId, string json, AppDbContext db, CancellationToken ct,
+        TailoredCvTemplate? template = null, Language? language = null)
     {
         var listing = await db.Listings.Where(l => l.Id == listingId)
-            .Select(l => new { l.PostingLanguage }).FirstOrDefaultAsync(ct)
+            .Select(l => new { l.PostingLanguage, l.Title, l.Description, Skills = l.Skills.Select(s => s.Skill.Name).ToList() })
+            .FirstOrDefaultAsync(ct)
             ?? throw new ListingNotFoundException(listingId);
+        var parsed = ParseCandidate(json);
+        // The language the prompt was built for wins over whatever the pasted reply claims.
+        var input = parsed.Content! with { Language = language ?? parsed.Content!.Language };
+        var content = TailoredCvDraftValidation.Normalize(input, listing.PostingLanguage) with { Template = template ?? TailoredCvTemplate.Detailed };
+        var concise = template == TailoredCvTemplate.Concise;
+        await TailoredCvDraftValidation.ValidateSourceIdsAsync(content, db, ct, requireSourceBulletText: !concise);
+        if (concise)
+            content = await KeepSourceWordsAsync(content,
+                TailoredCvWording.ListingText(listing.Title, listing.Description, listing.Skills), db, ct);
+        content = await TailoredCvDraftValidation.FillMissingLocationsAsync(content, db, ct);
+        content = await TailoredCvDraftValidation.FillMissingSourceDetailsAsync(content, db, ct);
+        return new(parsed.SchemaVersion, content);
+    }
+
+    // The pasted reply's shape and limits, shared with the base CV preview.
+    internal static TailoredCvExternalCandidateInput ParseCandidate(string json)
+    {
         if (string.IsNullOrWhiteSpace(json) || json.Length > TailoredCvDraftValidation.MaxJsonLength)
             throw new InvalidTailoredCvDraftException(
                 $"json: paste a candidate object no longer than {TailoredCvDraftValidation.MaxJsonLength} characters.");
@@ -46,10 +65,34 @@ public static class TailoredCvExternalPreviewMutations
             throw new InvalidTailoredCvDraftException("schemaVersion/content: expected version 1 and a content object.");
 
         TailoredCvDraftValidation.ValidateExternalCandidateItems(parsed.Content);
-        var content = TailoredCvDraftValidation.Normalize(parsed.Content, listing.PostingLanguage);
-        await TailoredCvDraftValidation.ValidateSourceIdsAsync(content, db, ct, requireSourceBulletText: true);
-        content = await TailoredCvDraftValidation.FillMissingLocationsAsync(content, db, ct);
-        content = await TailoredCvDraftValidation.FillMissingSourceDetailsAsync(content, db, ct);
-        return new(parsed.SchemaVersion, content);
+        return parsed;
+    }
+
+    // Shortened bullets may only cut the source wording or borrow the listing's terms; any other bullet falls back
+    // to the source text in the draft language, so one bad bullet doesn't reject the whole paste.
+    private static async Task<TailoredCvContent> KeepSourceWordsAsync(TailoredCvContent content, string listingText,
+        AppDbContext db, CancellationToken ct)
+    {
+        IEnumerable<TailoredCvBullet> All(IEnumerable<IEnumerable<TailoredCvBullet>>? bullets) => bullets?.SelectMany(b => b) ?? [];
+        var ids = All(content.Experiences?.Select(e => e.Bullets)).Concat(All(content.Educations?.Select(e => e.Bullets)))
+            .Concat(All(content.Certifications?.Select(e => e.Bullets))).Concat(All(content.Projects?.Select(e => e.Bullets)))
+            .Where(b => b.SourceBulletId is not null).Select(b => b.SourceBulletId!.Value).Distinct().ToArray();
+        if (ids.Length == 0) return content;
+        // Ids were already checked as the user's own by ValidateSourceIdsAsync.
+        var sources = await db.ProfileBullets.AsNoTracking().Where(b => ids.Contains(b.Id))
+            .Select(b => new { b.Id, b.Text, Translated = b.Translations.Where(t => t.Language == content.Language).Select(t => t.Text).FirstOrDefault() })
+            .ToDictionaryAsync(b => b.Id, ct);
+
+        List<TailoredCvBullet> Keep(List<TailoredCvBullet> bullets) => [.. bullets.Select(b =>
+            b.SourceBulletId is not { } id || TailoredCvWording.KeepsSourceWords(b.Text,
+                [sources[id].Text, sources[id].Translated ?? ""], listingText)
+                ? b : b with { Text = sources[id].Translated ?? sources[id].Text })];
+        return content with
+        {
+            Experiences = content.Experiences?.Select(e => e with { Bullets = Keep(e.Bullets) }).ToList(),
+            Educations = content.Educations?.Select(e => e with { Bullets = Keep(e.Bullets) }).ToList(),
+            Certifications = content.Certifications?.Select(e => e with { Bullets = Keep(e.Bullets) }).ToList(),
+            Projects = content.Projects?.Select(e => e with { Bullets = Keep(e.Bullets) }).ToList(),
+        };
     }
 }
