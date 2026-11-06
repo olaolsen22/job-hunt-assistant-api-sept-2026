@@ -8,8 +8,6 @@
 .local/
 # Generated listing files dropped in for import (one subfolder per account email).
 src/JobHunt.Api/listing-imports/
-# Private job-hunt research; stays local.
-MASTER_Norwegian_Software_Developer_Applications.md
 
 # User-specific files
 *.rsuser
