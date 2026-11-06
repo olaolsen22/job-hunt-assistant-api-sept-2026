@@ -17,8 +17,9 @@ public static class BaseCvQueries
             .OrderBy(b => b.NormalizedName)
             .ToListAsync(ct);
 
+    // Tracked: a no-tracking query can't include the cycle back to the versions, which BaseCvNode reads.
     public static Task<BaseCvVersion?> GetBaseCvVersionAsync(int id, AppDbContext db, CancellationToken ct) =>
-        db.BaseCvVersions.AsNoTracking().Include(v => v.BaseCv).FirstOrDefaultAsync(v => v.Id == id, ct);
+        db.BaseCvVersions.Include(v => v.BaseCv).ThenInclude(b => b.Versions).FirstOrDefaultAsync(v => v.Id == id, ct);
 
     // Starting point for a new base CV or version: the whole profile in the requested language. Nothing is saved.
     public static async Task<TailoredCvContent> GetBaseCvFromProfileAsync(
@@ -43,11 +44,11 @@ public static class BaseCvQueries
 
 internal static class BaseCvDataLoaders
 {
-    // With its base CV, so a document can show "Frontend (EN) v3".
+    // With its base CV, so a document can show "Frontend (EN) v3". Tracked for the same reason as above.
     [DataLoader]
     public static async Task<Dictionary<int, BaseCvVersion>> GetBaseCvVersionByIdAsync(
         IReadOnlyList<int> ids, AppDbContext db, CancellationToken ct) =>
-        await db.BaseCvVersions.AsNoTracking().Include(v => v.BaseCv)
+        await db.BaseCvVersions.Include(v => v.BaseCv).ThenInclude(b => b.Versions)
             .Where(v => ids.Contains(v.Id))
             .ToDictionaryAsync(v => v.Id, ct);
 }

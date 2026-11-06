@@ -378,6 +378,42 @@ public class BaseCvTests(ApiFactory factory) : IClassFixture<ApiFactory>
             e => e.GetProperty("sourceEntryId").GetInt32() == entryId && e.GetProperty("employer").GetString() == employer);
     }
 
+    // Reached through a version, the base CV must still list every version, not just the one loaded.
+    [Fact]
+    public async Task BaseCv_ReachedThroughAVersion_ShowsAllVersionsAndLanguages()
+    {
+        const string Fields = "baseCv { languages versions { id } latestVersion { id } }";
+        var client = await factory.GetOwnerClientAsync();
+        var created = (await CreateAsync(client, ListingTests.Unique("Nested"))).GetProperty("baseCv");
+        var id = created.GetProperty("id").GetInt32();
+        var first = created.GetProperty("latestVersion").GetProperty("id").GetInt32();
+        await SaveAsync(client, id, new { summary = "Norsk." }, language: "NORWEGIAN");
+
+        var saved = (await client.GraphQLAsync($$"""
+            mutation ($id: Int!, $content: TailoredCvContentInput!) {
+              saveBaseCvVersion(input: { baseCvId: $id, language: ENGLISH, content: $content }) { baseCvVersion { id {{Fields}} } }
+            }
+            """, new { id, content = new { summary = "Second." } })).GetProperty("saveBaseCvVersion").GetProperty("baseCvVersion");
+        var latest = saved.GetProperty("id").GetInt32();
+        var read = (await client.GraphQLAsync($$"""
+            query ($id: Int!) { baseCvVersion(id: $id) { {{Fields}} } }
+            """, new { id = first })).GetProperty("baseCvVersion");
+        var listingId = (await ListingTests.CreateAsync(client, ListingTests.NewListing(ListingTests.Unique("Nested Co")))).GetProperty("id").GetInt32();
+        var document = (await client.GraphQLAsync($$"""
+            mutation ($listingId: Int!, $first: Int!) {
+              generateBaseCvDocument(input: { listingId: $listingId, baseCvVersionId: $first }) { document { baseCvVersion { {{Fields}} } } }
+            }
+            """, new { listingId, first })).GetProperty("generateBaseCvDocument").GetProperty("document").GetProperty("baseCvVersion");
+
+        foreach (var version in new[] { saved, read, document })
+        {
+            var baseCv = version.GetProperty("baseCv");
+            Assert.Equal(["ENGLISH", "NORWEGIAN"], baseCv.GetProperty("languages").EnumerateArray().Select(l => l.GetString()));
+            Assert.Equal(3, baseCv.GetProperty("versions").GetArrayLength());
+            Assert.Equal(latest, baseCv.GetProperty("latestVersion").GetProperty("id").GetInt32());
+        }
+    }
+
     private static async Task<JsonElement> CreateAsync(HttpClient client, string name, string language = "ENGLISH",
         object? content = null, string? note = null) =>
         (await client.GraphQLAsync(Create, new { name, language, content = content ?? new { summary = "Summary." }, note }))

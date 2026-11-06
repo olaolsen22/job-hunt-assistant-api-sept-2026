@@ -57,12 +57,10 @@ public static class BaseCvMutations
     public static async Task<BaseCvVersion> SaveBaseCvVersionAsync(int baseCvId, Language language,
         TailoredCvContentInput content, string? note, AppDbContext db, TimeProvider time, CancellationToken ct)
     {
-        var baseCv = await db.BaseCvs.FirstOrDefaultAsync(b => b.Id == baseCvId, ct)
-            ?? throw new BaseCvNotFoundException(baseCvId);
+        var baseCv = await LoadAsync(baseCvId, db, ct);
         var cleanNote = Text(note, "note", MaxNoteLength);
         var normalized = await ContentAsync(content, language, db, ct);
-        var latest = await db.BaseCvVersions.Where(v => v.BaseCvId == baseCvId && v.Language == language)
-            .OrderByDescending(v => v.Number).FirstOrDefaultAsync(ct);
+        var latest = baseCv.Versions.Where(v => v.Language == language).MaxBy(v => v.Number);
         if (latest is not null && JsonSerializer.Serialize(normalized, TailoredCvJson.Options) == latest.ContentJson)
             return latest;
 
