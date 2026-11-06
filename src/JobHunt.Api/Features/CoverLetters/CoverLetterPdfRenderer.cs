@@ -6,10 +6,8 @@ using QuestPDF.Infrastructure;
 
 namespace JobHunt.Api.Features.CoverLetters;
 
-// Pure function, like the CV renderer. Layout follows Telemark's published letters and Tekna's settings
-// (docs/norwegian-cover-letter.md §3): sender block with the date on the next line (owner preference), recipient block,
-// bold 12 pt subject, 11 pt body, 2.54 cm margins, one A4 page for an ordinary letter. Source Sans 3 instead of
-// Arial: it is embedded with a correct Unicode map, and Tekna names no mandatory family.
+// Pure function, like the CV renderer. Layout: docs/norwegian-cover-letter.md §3.
+// Source Sans 3 because it embeds with a correct Unicode map.
 public static class CoverLetterPdfRenderer
 {
     private const float BlockGap = 18;

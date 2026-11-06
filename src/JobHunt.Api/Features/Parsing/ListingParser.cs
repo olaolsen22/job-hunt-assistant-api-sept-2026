@@ -7,7 +7,7 @@ using Microsoft.Extensions.AI;
 
 namespace JobHunt.Api.Features.Parsing;
 
-// Runs one parse job. parseListing calls it inline for now; the background queue will call it later.
+// Runs one parse job, inline inside the mutation.
 public class ListingParser(
     LlmExecution execution,
     TimeProvider time)
@@ -21,8 +21,7 @@ public class ListingParser(
     // A full listing needs far less output than this.
     private const int MaxOutputTokens = 8_192;
 
-    // Quick add is one call for a whole pasted search page (~150 rows at ~130 output tokens each).
-    // Flash-Lite takes 1M input and 65k output tokens, so these only guard against runaway pastes.
+    // Quick add is one call for a whole pasted search page; these only guard against runaway pastes.
     internal const int QuickMaxInputChars = 200_000;
     private const int QuickMaxOutputTokens = 32_768;
 

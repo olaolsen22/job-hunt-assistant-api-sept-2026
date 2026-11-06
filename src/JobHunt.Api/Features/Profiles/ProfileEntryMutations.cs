@@ -167,8 +167,7 @@ public static class ProfileEntryMutations
     {
         experience.Employer = Required(employer, "Employer");
         experience.Title = Required(title, "Title");
-        // Full replace, like the profile's own location: leaving it out clears it. The FK is set because
-        // the Location navigation isn't loaded, so setting that to null wouldn't register as a change.
+        // Leaving it out clears it. Sets the FK because the unloaded navigation wouldn't register a change to null.
         if (location is null)
             experience.LocationId = null;
         else
@@ -188,7 +187,6 @@ public static class ProfileEntryMutations
         education.School = Required(school, "School");
         education.Degree = Text(degree, "Degree");
         education.Field = Text(field, "Field");
-        // Full replace, like the profile's own location: leaving it out clears it.
         if (location is null)
             education.LocationId = null;
         else
@@ -214,9 +212,7 @@ public static class ProfileEntryMutations
     {
         project.Name = Required(name, "Name");
         project.Url = Url(url);
-        // Full replace like location: leaving it out clears it.
         project.Kind = kind;
-        // Full replace, like the profile's own location: leaving it out clears it.
         if (location is null)
             project.LocationId = null;
         else
@@ -235,8 +231,7 @@ public static class ProfileEntryMutations
         return await db.ProfileSkills.Where(s => ids.Contains(s.SkillId)).Select(s => s.SkillId).ToListAsync(ct);
     }
 
-    // A tag carries no level and the level is required, so a new profile skill starts at the lowest;
-    // setProfileSkill raises it. Existing levels are never touched, and untagging never removes a profile skill.
+    // A new profile skill starts at the lowest level. Existing levels stay, and untagging never removes one.
     private static void AddToProfileSkills(int profileId, List<Skill> skills, List<int> existingIds, AppDbContext db)
     {
         foreach (var skill in skills.Where(s => (s.Id == 0 || !existingIds.Contains(s.Id))

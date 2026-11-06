@@ -13,20 +13,19 @@ public enum ParseJobStatus { /* Queued, */ Running, /* Retrying, */ Succeeded, F
 
 public class ParseJob
 {
-    // A Guid, not an int: the id exists before the row is saved, so the queue can hand it around right away.
+    // A Guid, not an int, so the id exists before the row is saved.
     public Guid Id { get; set; }
     public string UserId { get; set; } = null!;
     public ParseMode Mode { get; set; }
     public ParseJobStatus Status { get; set; }
-    // Kept so the queue can re-run the job after a restart.
+    // The text the model was given.
     public string RawText { get; set; } = null!;
     // JSON text in the shape the copy-paste path produces, so the UI handles both paths the same way.
     public string? Result { get; set; }
     // Shown to the user as is.
     public string? Error { get; set; }
     public string Provider { get; set; } = null!;
-    // Resolved when the job is created, so a queued job keeps the model the user chose. Null on jobs from before
-    // model selection existed.
+    // The model used; null on jobs from before model selection.
     public string? Model { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? StartedAt { get; set; }

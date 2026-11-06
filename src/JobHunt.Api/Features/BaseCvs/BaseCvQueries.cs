@@ -26,9 +26,7 @@ public static class BaseCvQueries
         Language language, AppDbContext db, CancellationToken ct) =>
         TailoredCvDraftFromProfileQueries.FromProfile(await ProfileQueries.LoadAsync(db, ct), language);
 
-    // Starting point for the base CV in another language: its latest version in fromLanguage (default: the newest
-    // version in any other language) with profile text swapped for the profile's translations. Nothing is saved.
-    // Null when the base CV isn't the user's or has no version to translate from.
+    // Starting point for another language: the latest version with profile text swapped for its translations. Unsaved.
     public static async Task<BaseCvTranslation?> GetBaseCvTranslationAsync(int baseCvId, Language language,
         AppDbContext db, CancellationToken ct, Language? fromLanguage = null)
     {

@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace JobHunt.Api.Features.Profiles;
 
-// A person who can vouch for the user. A row (not JSON) so a CV can pick some of them by id later.
+// A person who can vouch for the user.
 public class ProfileReference
 {
     public int Id { get; set; }

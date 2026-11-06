@@ -24,7 +24,7 @@ public static class ProfileTranslationMutations
         return await ProfileQueries.LoadAsync(db, ct);
     }
 
-    // Upsert per (bullet, language). isMachine is for a later auto-translate; setting by hand clears it.
+    // Upsert per (bullet, language).
     [Error<ProfileEntryNotFoundException>]
     [Error<InvalidProfileException>]
     public static async Task<ProfileBulletTranslation> SetProfileBulletTranslationAsync(

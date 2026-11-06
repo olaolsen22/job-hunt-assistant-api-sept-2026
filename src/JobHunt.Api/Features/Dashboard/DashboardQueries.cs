@@ -8,8 +8,7 @@ public record DashboardWidgetState(DashboardWidgetKind Widget, bool IsShown);
 [QueryType]
 public static class DashboardQueries
 {
-    // Always one entry per widget. Widgets without a saved row (never saved, or added in a later release)
-    // come last in default order and shown, so no data migration is needed when the set grows.
+    // One entry per widget. Widgets without a saved row come last and shown, so new ones need no data migration.
     public static async Task<List<DashboardWidgetState>> GetDashboardLayoutAsync(AppDbContext db, CancellationToken ct)
     {
         var saved = await db.DashboardWidgets.OrderBy(w => w.Position).ToListAsync(ct);

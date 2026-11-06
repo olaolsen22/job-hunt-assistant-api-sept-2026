@@ -4,8 +4,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace JobHunt.Api.Features.JobRoles;
 
-// The core role behind a listing's title, always in English: "Backend-utvikler (.NET)" and
-// "Junior Backend Developer" are both "Backend Developer". Seniority and tech live elsewhere.
+// The core role behind a title, in English: "Backend-utvikler (.NET)" is "Backend Developer".
 public class JobRole
 {
     public int Id { get; set; }

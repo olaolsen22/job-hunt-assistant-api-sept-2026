@@ -35,8 +35,7 @@ public class ApplicationAnswerGenerator(LlmExecution execution, LlmModelResolver
         if (first.Candidate is not { OverLimit: true } over)
             return first;
 
-        // Models can't count characters; told the measured length once, they usually land under the limit.
-        // If the retry fails or still runs over, the user gets the best answer flagged and trims it.
+        // Models can't count characters, so tell them the measured length once; the shorter answer wins.
         messages.Add(new(ChatRole.Assistant, JsonSerializer.Serialize(new { answer = over.Answer })));
         messages.Add(new(ChatRole.User, ApplicationAnswerPrompt.Shorten(over.Length, context.CharLimit!.Value)));
         var second = await AskAsync(model, messages, context.CharLimit, db, ct);

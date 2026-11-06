@@ -2,8 +2,7 @@ using QuestPDF.Drawing;
 
 namespace JobHunt.Api.Features.TailoredCvDrafts;
 
-// Bundled font so generated CVs look the same on any machine (containers often lack a font with æøå),
-// and so every glyph keeps a correct Unicode map for ATS text extraction.
+// Bundled font: same look everywhere, with æøå and a correct Unicode map for ATS text extraction.
 public static class TailoredCvPdfFonts
 {
     public const string FamilyName = "Source Sans 3";

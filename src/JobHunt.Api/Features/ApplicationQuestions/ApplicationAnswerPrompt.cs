@@ -61,8 +61,7 @@ public static class ApplicationAnswerPrompt
         return new(Instructions(listing.Language, question.CharLimit), data, question.CharLimit);
     }
 
-    // Forms ask "how many years with X?": work months per skill, counted like the profile's experienceMonths
-    // (projects excluded, overlaps once), so the answer never adds up overlapping jobs.
+    // Work months per skill, counted like the profile's experienceMonths, for "years with X" questions.
     private static async Task<object> SkillExperienceAsync(Language language, AppDbContext db, TimeProvider time,
         CancellationToken ct)
     {
@@ -83,8 +82,7 @@ public static class ApplicationAnswerPrompt
             .OrderByDescending(s => s.WorkMonths).ThenBy(s => s.Name).ToList();
     }
 
-    // Allowlist for location and work-mode questions. Street address, postal code, salary, date of birth,
-    // nationality and work authorization never go out; the model writes a placeholder instead.
+    // Allowlist: address, salary, date of birth, nationality and work authorization never go out.
     private static async Task<object> PracticalAsync(Language language, AppDbContext db, CancellationToken ct)
     {
         var profile = await db.Profiles.AsNoTracking()
@@ -161,8 +159,7 @@ public static class ApplicationAnswerPrompt
         Return one JSON object only: {"answer":"..."}.
         """;
 
-    // Models overshoot character counts, so the target leaves a margin below the form's limit. Without a limit,
-    // motivation and example answers stay short (NTNU, Tekna), so the evidence isn't buried.
+    // Models overshoot character counts, so aim below the limit. Without one, keep answers short (NTNU, Tekna).
     private static string LengthRule(int? charLimit) => charLimit is { } limit
         ? $"the form allows at most {limit} characters, counting every letter, space, punctuation mark and line " +
           $"break. Aim for {limit * 85 / 100}-{limit * 90 / 100} characters and never exceed {limit}."

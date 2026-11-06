@@ -7,9 +7,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace JobHunt.Api.Features.BaseCvs;
 
-// A reusable CV for a kind of role ("Frontend"), sent as-is. Editing a CV for one listing is that listing's
-// tailored draft instead, so outcomes can be compared between the two streams. Each language has its own numbered
-// versions, so versions within one language stay comparable.
+// A reusable CV for a kind of role, sent as-is. Per-language numbered versions keep outcomes comparable.
 public class BaseCv
 {
     public int Id { get; set; }
@@ -25,8 +23,7 @@ public class BaseCv
     public List<BaseCvVersion> Versions { get; set; } = [];
 }
 
-// Immutable once saved: a change is a new version, so a sent document always points at the content it had.
-// Only skill and category links move (TailoredCvDraftSkills), never the text.
+// Immutable, so a sent document keeps its content. Only skill and category links move (TailoredCvDraftSkills).
 public class BaseCvVersion : ITailoredCvSnapshot
 {
     public int Id { get; set; }

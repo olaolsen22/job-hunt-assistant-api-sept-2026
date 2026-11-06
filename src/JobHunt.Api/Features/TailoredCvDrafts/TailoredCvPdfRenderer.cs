@@ -8,11 +8,7 @@ using QuestPDF.Infrastructure;
 
 namespace JobHunt.Api.Features.TailoredCvDrafts;
 
-// Pure function, no DB/DI, so the layout can be tested by rendering a TailoredCvContent directly. The caller passes
-// the user's skill categories (in SortOrder, with translations) for the developer order's grouped skill lines.
-// Follows docs/norwegian-cv-formatting.md and NAV's CV headings: one column, left aligned, black on white,
-// 11 pt body, labelled contact lines, and title / organization / date lines per entry so extracted text stays clear.
-// The draft's SectionOrder picks NAV's standard order or the developer order.
+// Pure function, so the layout can be tested directly. Follows docs/norwegian-cv-formatting.md and NAV's headings.
 public static class TailoredCvPdfRenderer
 {
     private const string Bullet = "•";
@@ -151,8 +147,7 @@ public static class TailoredCvPdfRenderer
         });
     }
 
-    // Each entry is kept whole, and the heading shares the first entry's block, so a section heading
-    // never ends a page on its own and an entry never splits across pages.
+    // Entries stay whole and the heading shares the first entry's block, so a heading never ends a page alone.
     private static void AddEntrySection<T>(ColumnDescriptor column, string heading, List<T>? items,
         Action<ColumnDescriptor, T> addEntry, float entrySpacing = 6)
     {
@@ -241,10 +236,8 @@ public static class TailoredCvPdfRenderer
             AddTextSection(column, t.Skills, string.Join(", ", skills.Select(s => s.Name)));
     }
 
-    // Developer CVs: one labelled line per group. A skill's draft-only Group wins over its category; lines with the
-    // same label merge (case-insensitive). Custom groups lead in first-appearance order, then categories in the
-    // user's category order, then uncategorized (or a category deleted since). Each line keeps the draft's order,
-    // which is relevance order, so the strongest match leads.
+    // One labelled line per group: custom groups first, then categories in the user's order, then the rest.
+    // Same labels merge; each line keeps the draft's relevance order.
     private static void AddGroupedSkillsSection(ColumnDescriptor column, List<TailoredCvSkill>? skills,
         IReadOnlyList<SkillCategory> categories, Language language, CvText t)
     {
@@ -314,8 +307,7 @@ public static class TailoredCvPdfRenderer
             .PaddingBottom(2).Text(text).FontSize(13).Bold();
 }
 
-// Fixed CV wording per language. Norwegian follows NAV: capitalised months ("Juni 2015") and "Nåværende". The
-// developer order uses the IT headings Norwegian developer guidance uses (Teknisk kompetanse, Utvalgte prosjekter).
+// Fixed CV wording per language. Norwegian follows NAV; the developer order uses IT headings.
 internal sealed record CvText(
     string Summary, string Experience, string Education, string Certifications, string Projects,
     string Languages, string Skills, string Links, string References, string ReferencesOnRequest,

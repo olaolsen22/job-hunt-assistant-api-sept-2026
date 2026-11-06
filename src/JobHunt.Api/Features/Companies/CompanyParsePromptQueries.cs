@@ -5,8 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.Companies;
 
-// Same contract as the listing prompts: instructions only, the UI appends the text as <posting>…</posting>,
-// and the server-side parser sends this exact text. The output rows are createCompanies input.
+// Same contract as the listing prompts: the UI appends <posting>…</posting>. Output rows are createCompanies input.
 public record CompanyParsePrompt(int Version, string Instructions);
 
 [QueryType]

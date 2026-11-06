@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace JobHunt.Api.Features.LlmModels;
 
-// At most one row per user. Provider is stored now so a second provider doesn't need a table rebuild later.
+// At most one row per user.
 public class UserLlmSetting
 {
     public int Id { get; set; }

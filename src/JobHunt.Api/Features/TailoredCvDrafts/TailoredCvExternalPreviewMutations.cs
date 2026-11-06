@@ -68,8 +68,7 @@ public static class TailoredCvExternalPreviewMutations
         return parsed;
     }
 
-    // Shortened bullets may only cut the source wording or borrow the listing's terms; any other bullet falls back
-    // to the source text in the draft language, so one bad bullet doesn't reject the whole paste.
+    // Shortened bullets may only cut source wording or borrow listing terms; others fall back to the source text.
     private static async Task<TailoredCvContent> KeepSourceWordsAsync(TailoredCvContent content, string listingText,
         AppDbContext db, CancellationToken ct)
     {

@@ -4,8 +4,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace JobHunt.Api.Features.Listings;
 
-// An academy/bootcamp that leads to a job. The listing's Company is the provider, so it's always known;
-// the employer afterwards is often unnamed ("one of our partner companies").
+// An academy or bootcamp that leads to a job. The listing's Company is the provider; the employer is often unnamed.
 public class TrainingProgram
 {
     public int ListingId { get; set; }

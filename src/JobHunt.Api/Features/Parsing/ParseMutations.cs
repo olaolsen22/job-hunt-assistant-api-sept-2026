@@ -15,8 +15,7 @@ public static class ParseMutations
     // Well above any single ad; quick add has its own limit for whole pasted search pages.
     private const int MaxTextLength = 100_000;
 
-    // Returns the finished job for now. With the queue it will return QUEUED and finish over onParseJobUpdated,
-    // so the UI already handles both.
+    // Returns the finished job: there is no queue yet.
     [Error<InvalidParseRequestException>]
     [Error<UnknownLlmModelException>]
     [Error<AiSafetyException>]
@@ -36,9 +35,7 @@ public static class ParseMutations
             Outcome, ct);
     }
 
-    // Full mode only: the owner is analyzing one saved listing. The URL comes from the listing, never the client, so
-    // the API stays the source of truth for it. The text is what the model sees, so it's stored on the job like
-    // pasted text.
+    // Full mode only. The URL comes from the saved listing, never the client.
     [Error<ListingNotFoundException>]
     [Error<InvalidParseRequestException>]
     [Error<UnknownLlmModelException>]
@@ -64,8 +61,7 @@ public static class ParseMutations
             }, Outcome, ct);
     }
 
-    // For a listing that isn't saved yet, or a company page (COMPANIES: its about, team or contact page), so the URL
-    // has to come from the client. The fetcher's public-address check is what keeps this from reaching internal hosts.
+    // The URL comes from the client here; the fetcher's public-address check keeps it off internal hosts.
     [Error<InvalidParseRequestException>]
     [Error<UnknownLlmModelException>]
     [Error<AiSafetyException>]

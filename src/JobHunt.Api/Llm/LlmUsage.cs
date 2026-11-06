@@ -8,8 +8,7 @@ namespace JobHunt.Api.Llm;
 
 public enum LlmKeySource { Shared, User }
 
-// One row per LLM call, for the usage widget and "would cost" estimates. Gemini has no remaining-quota API,
-// so this is the only way to know how much of the free tier is left.
+// One row per LLM call. Gemini has no remaining-quota API, so this is the only view of the free tier.
 public class LlmUsage
 {
     public int Id { get; set; }
@@ -36,7 +35,7 @@ public class LlmUsageConfiguration : IEntityTypeConfiguration<LlmUsage>
     public void Configure(EntityTypeBuilder<LlmUsage> builder)
     {
         builder.HasOne<AppUser>().WithMany().HasForeignKey(u => u.UserId).OnDelete(DeleteBehavior.Cascade);
-        // Daily usage per user (usage widget, guest cap).
+        // Daily usage per user.
         builder.HasIndex(u => new { u.UserId, u.CreatedAt });
         builder.HasOne<AiOperation>().WithMany().HasForeignKey(u => new { u.AiOperationId, u.UserId })
             .HasPrincipalKey(o => new { o.Id, o.UserId }).OnDelete(DeleteBehavior.NoAction);

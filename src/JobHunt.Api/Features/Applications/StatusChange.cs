@@ -27,8 +27,7 @@ public enum ApplicationOutcome { Offer, Accepted, Rejected, Withdrawn }
 
 public static class ApplicationStatuses
 {
-    // The attempt is over: the listing is closed, and the same URL can be logged again as a new attempt.
-    // The partial unique index on Listing.Url repeats this list in SQL; tests keep the two in step.
+    // Closed: the same URL can be logged again. The partial unique index on Listing.Url repeats this list in SQL.
     public static readonly ApplicationStatus[] Final =
         [ApplicationStatus.Rejected, ApplicationStatus.Withdrawn, ApplicationStatus.Accepted];
 }

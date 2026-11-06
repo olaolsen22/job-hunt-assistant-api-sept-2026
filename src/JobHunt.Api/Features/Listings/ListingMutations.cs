@@ -9,8 +9,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.Listings;
 
-// Company, job role and skills come in by name and are found (case-insensitively) or created,
-// which fits an autocomplete input now and the LLM's output later.
+// Company, job role and skills come in by name and are found (case-insensitively) or created.
 public record ListingInput(
     string Title,
     string CompanyName,
@@ -71,12 +70,8 @@ public class DuplicateListingException(int existingListingId)
     public int ExistingListingId { get; } = existingListingId;
 }
 
-// PreviousAttempts: closed listings with the same URL, i.e. the ad was reposted and this is a new attempt.
-// PossibleDuplicates: same company and normalized title but a different URL: often the same job on another board,
-// but can be a second opening, so it's saved and the matches are returned for the user to judge. Job role alone
-// isn't enough: agencies and consultancies post many ads under one broad role.
-// An open application also matches any other open application to the company that's still active: one at a time
-// is best, but sending another is allowed.
+// PreviousAttempts: closed listings with this URL. PossibleDuplicates: same company and title, other URL, or
+// another active open application there. Saved anyway; the user decides.
 public record CreateListingPayload(Listing Listing, List<Listing> PreviousAttempts, List<Listing> PossibleDuplicates);
 
 public class ListingInUseException(int id) : Exception($"Listing {id} has been applied to and can't be deleted. Archive it instead.");
@@ -99,7 +94,6 @@ public static class ListingMutations
         db.Listings.Add(entity);
         await db.SaveChangesAsync(ct);
 
-        // Any other listing with this URL is closed, or the duplicate check would have thrown.
         // Guarded: EF compares a null URL as IS NULL, which would match every unsolicited application.
         var previousAttempts = entity.Url is null ? [] : await WithDetails(db)
             .Where(l => l.Url == entity.Url && l.Id != entity.Id)
@@ -224,8 +218,7 @@ public static class ListingMutations
         entity.WorkMode = input.WorkMode;
         entity.Description = input.Description;
         entity.Url = string.IsNullOrWhiteSpace(input.Url) ? null : ListingUrls.Normalize(new Uri(input.Url.Trim()));
-        // Only one open listing per URL; closed ones are earlier attempts. Archived listings count too:
-        // re-adding an ad you saved and archived is still a duplicate. A closed listing may share an open one's URL.
+        // One open listing per URL, archived ones included. Closed listings are earlier attempts.
         if (!ApplicationStatuses.Final.Contains(entity.Status))
         {
             var existingId = await OpenListingIdWithUrlAsync(entity, db, ct);
@@ -341,8 +334,7 @@ public static class ListingMutations
             throw new InvalidListingException($"Description is longer than {MaxDescriptionLength} characters.");
         if (input.Kind == ListingKind.Unsolicited)
         {
-            // Nothing was posted. A URL would also take part in the one-open-listing-per-URL rule, so two
-            // applications pointing at the same careers page would block each other.
+            // Nothing was posted. A URL would make two applications to one careers page block each other.
             if (!string.IsNullOrWhiteSpace(input.Url))
                 throw new InvalidListingException("An unsolicited application has no URL; the company's careers URL covers it.");
             if (input.PostedOn is not null)

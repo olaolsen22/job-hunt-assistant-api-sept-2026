@@ -113,8 +113,7 @@ public static class BaseCvExternalPromptQueries
 [MutationType]
 public static class BaseCvExternalPreviewMutations
 {
-    // Validates a pasted reply without saving. The result is ready for createBaseCv or saveBaseCvVersion: the prompt
-    // withholds contact details, so they come back from the profile here.
+    // Validates a pasted reply without saving. The prompt withholds contact details, so the profile fills them here.
     [Error<InvalidTailoredCvDraftException>]
     [UseMutationConvention(PayloadFieldName = "candidate")]
     public static async Task<TailoredCvExternalCandidate> PreviewBaseCvAsync(Language language, string json,
@@ -142,8 +141,7 @@ public static class BaseCvExternalPreviewMutations
         });
     }
 
-    // A bullet may be copied, cut, or combined from bullets of its own entry, so its words are checked against that
-    // whole entry. A bullet with other wording falls back to its source text, so one bad bullet doesn't reject the paste.
+    // Bullets may combine others from their entry, so words are checked against it; other wording falls back to source.
     private static TailoredCvContent KeepEntryWords(TailoredCvContent content, Profile profile)
     {
         var sources = profile.Experiences.Select(e => e.Bullets).Concat(profile.Educations.Select(e => e.Bullets))

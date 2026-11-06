@@ -38,8 +38,7 @@ public partial class ListingPageFetcher(HttpClient http, ILogger<ListingPageFetc
         AutomaticDecompression = DecompressionMethods.All,
         // A proxy would do the connecting, and the check below could never see the real address.
         UseProxy = false,
-        // Runs for every connection, including each redirect hop, and connects to the exact address it checked,
-        // so a redirect or a hostname that flips to a private address can't get past it.
+        // Runs for every connection and redirect, and connects to the address it checked, so DNS can't flip past it.
         ConnectCallback = async (context, ct) =>
         {
             var addresses = await Dns.GetHostAddressesAsync(context.DnsEndPoint.Host, ct);

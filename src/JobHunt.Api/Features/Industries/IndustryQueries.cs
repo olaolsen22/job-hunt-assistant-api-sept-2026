@@ -14,8 +14,7 @@ public static class IndustryQueries
     [UseSorting]
     public static IQueryable<Industry> GetIndustries(string? search, AppDbContext db, ISortingContext sorting)
     {
-        // Default order only without a client `order`: Hot Chocolate adds that as ThenBy, so this would win.
-        // Handled(false): taking ISortingContext turns off automatic sorting otherwise.
+        // Default order only without a client `order`, which Hot Chocolate adds as ThenBy.
         sorting.Handled(false);
         IQueryable<Industry> industries = sorting.IsDefined ? db.Industries : db.Industries.OrderBy(i => i.Name);
         if (search is null) return industries;

@@ -3,8 +3,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.Skills;
 
-// Found case-insensitively or created, so listings, companies and the profile share skill ids. A new skill isn't
-// added to the context here: it's saved through whatever references it, so an unused name never becomes a row.
+// Found or created so features share skill ids.
+// New skills are saved through what references them, so an unused name leaves no row.
 public static class SkillLookup
 {
     // Names arrive validated and trimmed. Returns one skill per distinct name, in order.

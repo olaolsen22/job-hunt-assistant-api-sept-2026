@@ -3,8 +3,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.Profiles;
 
-// Guided sections rather than one text box, so the cover letter prompt can tell origin from motivation.
-// An EF complex type: stored as Story_* columns on Profiles, no table or key of its own.
+// Guided sections, so the cover letter prompt can tell origin from motivation. Stored as Story_* columns.
 public class ProfileStory
 {
     public string? Origin { get; set; }

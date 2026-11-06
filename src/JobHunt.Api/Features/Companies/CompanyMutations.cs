@@ -23,15 +23,13 @@ public record CompanyInput(
         Kind, SizeBand, FoundedYear, Description, WorkMode, WorkingLanguage, Skills ?? [], Contacts);
 }
 
-// Contacts are never replaced: each one is found by name and only filled, or added (see ContactLookup).
-// Null or [] leaves the company's contacts as they are; editing a person goes through updateContact.
+// Contacts are only filled or added, never replaced (ContactLookup); edit a person through updateContact.
 public record CompanyDetailsInput(
     string? OrgNumber, string? WebsiteUrl, string? CareersUrl, string? LinkedInUrl,
     CompanyKind? Kind, CompanySize? SizeBand, int? FoundedYear, string? Description,
     WorkMode? WorkMode, Language? WorkingLanguage, List<string> Skills, List<ContactInput>? Contacts = null);
 
-// Created is false when the company already existed (same org.nr or name). Filled says whether any of its
-// empty fields were filled from the row; fields that already had a value are never overwritten.
+// Created is false for an existing company (same org.nr or name). Filled: its empty fields took values from the row.
 public record CompanyResult(Company Company, bool Created, bool Filled);
 
 public class InvalidCompanyException(string message) : Exception(message);
@@ -48,9 +46,7 @@ public static class CompanyMutations
     private const int MaxSkillNameLength = 100;
     private const int MaxContacts = 20;
 
-    // All or nothing: every row is validated and resolved before anything is added, then one SaveChanges.
-    // A row matching an existing company (org.nr first, then name) or an earlier row only fills that
-    // company's empty fields, so research can be pasted again without undoing manual edits.
+    // All or nothing. A row matching a company (org.nr, then name) only fills blanks, so research can be re-pasted.
     [Error<InvalidCompanyException>]
     [Error<InvalidLocationException>]
     [UseMutationConvention(PayloadFieldName = "results")]
@@ -126,8 +122,7 @@ public static class CompanyMutations
         return results;
     }
 
-    // Full replace of the research fields, for editing them by hand. Separate from updateCompany for the same
-    // reason as setCompanyNotes: clients that only send name, industry and locations mustn't wipe these.
+    // Full replace of the research fields. Separate from updateCompany so clients that don't send them can't wipe them.
     [Error<CompanyNotFoundException>]
     [Error<InvalidCompanyException>]
     public static async Task<Company> UpdateCompanyDetailsAsync(
@@ -345,9 +340,7 @@ public static class CompanyMutations
     }
 }
 
-// Finds or creates industries, skills and locations by name. Rows are resolved before any company is added, so a new
-// lookup isn't tracked yet and FindOrCreate can't see it. Each one is remembered here instead: two rows naming the same
-// new industry must share one instance or the unique index fails on save.
+// Remembers new lookups within a batch: untracked, FindOrCreate can't see them, and duplicates fail the unique index.
 internal class CompanyLookups(AppDbContext db)
 {
     private readonly Dictionary<string, Industry> industries = [];

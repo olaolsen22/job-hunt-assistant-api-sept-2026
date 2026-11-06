@@ -9,8 +9,7 @@ public enum ProfileSection { Summary, Experiences, Educations, Certifications, P
 [MutationType]
 public static class ProfileClearMutations
 {
-    // One transaction, so a wipe of several sections never stops halfway. Bullets and their translations go with
-    // their entries by cascade. Tailored CV drafts are snapshots and stay.
+    // One transaction, so a wipe never stops halfway. Bullets go with their entries; CV drafts are snapshots and stay.
     [Error<InvalidProfileException>]
     public static async Task<Profile> ClearProfileSectionsAsync(
         List<ProfileSection> sections, AppDbContext db, CancellationToken ct)

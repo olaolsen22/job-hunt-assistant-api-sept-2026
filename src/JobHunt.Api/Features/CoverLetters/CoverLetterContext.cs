@@ -10,8 +10,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.CoverLetters;
 
-// Header is a complete letter without a body: every path (prefill, AI, external, paste) starts from it, so only the
-// body and wording come from the model or the paste, never names, contact details or dates.
+// A complete letter without a body: names, contact details and dates never come from the model or the paste.
 public record CoverLetterPromptContext(string Json, Language Language, ListingKind Kind, CoverLetterContent Header);
 
 // Shared by the built-in and external paths, so both send the model exactly the same allowlisted data.
@@ -133,8 +132,7 @@ public static class CoverLetterContext
         return fallback is null ? null : string.Join("\n", CoverLetterValidation.AddressLines(fallback));
     }
 
-    // The CV actually being sent, so the letter backs it up. Contact details stay out. Technologies show where a
-    // skill was used, for "experience with X" form questions.
+    // The CV actually being sent, so the letter backs it up. Contact details stay out.
     private static object FromCv(TailoredCvContent cv) => new
     {
         cv.Headline, cv.Summary,

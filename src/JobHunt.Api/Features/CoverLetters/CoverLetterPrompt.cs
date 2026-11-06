@@ -20,8 +20,7 @@ public class CoverLetterModelOutput
     public string? Closing { get; init; }
 }
 
-// Content guidance distilled from docs/norwegian-cover-letter.md (NAV, NTNU, NMBU, Tekna, ung.no, Telemark);
-// open applications from the åpen søknad research (NAV, NTNU, Tekna, Karriereveiledning.no).
+// Guidance distilled from docs/norwegian-cover-letter.md and the åpen søknad research.
 public static class CoverLetterPrompt
 {
     public const int Version = 5;
@@ -95,8 +94,7 @@ public static class CoverLetterPrompt
             """;
     }
 
-    // Shared with the application answer prompt, which reads the same context. A fluent Norwegian letter is not
-    // evidence of spoken Norwegian, so language levels come only from the candidate's own ratings.
+    // Shared with the answer prompt. A fluent Norwegian letter isn't evidence of spoken Norwegian.
     internal const string TruthGuidance = """
         Truth: use only facts from candidate, story, notes, availability and brief. Never invent experience, skills,
         employers, numbers, results, motivation or personal history. A result can be a reliable release, a simpler
@@ -104,8 +102,7 @@ public static class CoverLetterPrompt
         level above the candidate's languages; writing in a language is not evidence of speaking it.
         """;
 
-    // What the employer does decides what evidence counts: consultancies and brokers sell work with clients
-    // (Folq, DFØ), and recruiters often advertise for an unnamed client.
+    // Consultancies and brokers sell work with clients; recruiters often advertise for an unnamed client.
     internal const string CompanyKindGuidance = """
         Company kind (companyResearch.kind): for CONSULTANCY or BROKER, show evidence of working with people outside
         the candidate's own specialty, such as clarifying needs, learning a domain or explaining a technical choice,

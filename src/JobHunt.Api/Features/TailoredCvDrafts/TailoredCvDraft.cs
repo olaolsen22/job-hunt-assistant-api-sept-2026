@@ -8,8 +8,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace JobHunt.Api.Features.TailoredCvDrafts;
 
-// CV content saved as a snapshot: a listing's tailored draft or a base CV version. Skill and category changes move
-// their links (TailoredCvDraftSkills), never their text.
+// CV content saved as a snapshot. Skill and category changes move their links, never their text.
 public interface ITailoredCvSnapshot
 {
     TailoredCvContent Content { get; set; }
@@ -56,8 +55,8 @@ public record TailoredCvContent(
     TailoredCvContentStyle ContentStyle = TailoredCvContentStyle.Bullets,
     TailoredCvTemplate Template = TailoredCvTemplate.Detailed);
 
-// Standard follows NAV's order. Developer puts links with the contact lines and skills/projects earlier,
-// as Norwegian developer recruiters ask for visible technical evidence (docs/norwegian-cv-formatting.md §10).
+// Standard: NAV's order. Developer: links with contact lines, skills and projects earlier
+// (docs/norwegian-cv-formatting.md §10).
 public enum TailoredCvSectionOrder { Standard, Developer }
 
 public record TailoredCvBullet(string Text, int? SourceBulletId = null);
@@ -66,8 +65,7 @@ public enum TailoredCvContentStyle { Bullets, Paragraph }
 // Detailed keeps the profile's bullet wording; Concise shortens bullets for a one-page CV a recruiter can scan
 // in seconds, and always prints bullets.
 public enum TailoredCvTemplate { Detailed, Concise }
-// Location is display text such as "Lagos, Nigeria"; the guidance favours City, Country for foreign roles.
-// Technologies are the names printed under the entry in the developer order: where the skills were used.
+// Location is display text ("Lagos, Nigeria"). Technologies print under the entry in the developer order.
 public record TailoredCvExperience(string Employer, string Title, DateOnly? StartMonth, DateOnly? EndMonth,
     List<TailoredCvBullet> Bullets, int? SourceEntryId = null, string? Location = null,
     string? Paragraph = null, List<string>? Technologies = null);
@@ -80,9 +78,8 @@ public record TailoredCvCertification(string Name, string? Issuer, DateOnly? Iss
 public record TailoredCvProject(string Name, string? Url, DateOnly? StartMonth, DateOnly? EndMonth,
     List<TailoredCvBullet> Bullets, int? SourceEntryId = null, string? Location = null,
     string? Paragraph = null, ProjectKind? Kind = null, List<string>? Technologies = null);
-// CategoryId is copied from the skill lookup so one CV can override it; the PDF reads the category's current name,
-// so renaming a category updates every draft. Group is a free-text label for this CV only and beats the category,
-// so a CV can merge thin categories into fewer lines. List order is relevance order and prints as is.
+// CategoryId overrides per CV; the PDF reads the category's current name. Group is a CV-only label that beats it.
+// List order is relevance order and prints as is.
 public record TailoredCvSkill(string Name, int? Level, int? SourceSkillId = null, int? CategoryId = null,
     string? Group = null);
 public record TailoredCvLanguage(string Name, LanguageProficiency? Written, LanguageProficiency? Spoken);
@@ -111,8 +108,7 @@ public class TailoredCvDraftConfiguration : IEntityTypeConfiguration<TailoredCvD
     }
 }
 
-// Drafts and base CV versions are snapshots, so a skill or category change only moves their links; a dangling id
-// would block saving the draft or the next version. A snapshot is only rewritten when one of its skills changes.
+// Snapshots only move their links on a skill or category change: a dangling id would block the next save.
 public static class TailoredCvDraftSkills
 {
     public static void Rewrite(IEnumerable<ITailoredCvSnapshot> snapshots, Func<TailoredCvSkill, TailoredCvSkill> map)

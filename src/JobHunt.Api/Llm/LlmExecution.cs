@@ -44,8 +44,7 @@ public class LlmExecution(
             result => new AiOutcome(result.ErrorCode is null, result.ErrorCode), ct);
     }
 
-    // For calls that must return JSON. decode returns null for an answer it can't use; that attempt's usage row is
-    // then marked invalid-json. Usage is otherwise already saved by RunAsync.
+    // For calls that must return JSON. An answer decode rejects marks that attempt's usage row invalid-json.
     public async Task<LlmJsonResult<T>> RunJsonAsync<T>(ResolvedLlmModel model, IEnumerable<ChatMessage> messages,
         ChatOptions options, string operation, AppDbContext db, Func<string, T?> decode, string unreadable,
         CancellationToken ct) where T : class

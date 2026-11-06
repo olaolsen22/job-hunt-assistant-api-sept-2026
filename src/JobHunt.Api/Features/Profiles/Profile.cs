@@ -8,8 +8,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace JobHunt.Api.Features.Profiles;
 
-// One per user, created by LookupSeeder, so the profile query never returns null.
-// The master copy of the user's data: tailored CVs will later be selections from it, not separate copies.
+// One per user, created by LookupSeeder, so the profile query never returns null. The master copy of the user's data.
 public class Profile
 {
     public int Id { get; set; }

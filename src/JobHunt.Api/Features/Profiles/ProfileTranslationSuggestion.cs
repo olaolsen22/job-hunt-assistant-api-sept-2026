@@ -13,9 +13,8 @@ using Microsoft.Extensions.AI;
 
 namespace JobHunt.Api.Features.Profiles;
 
-// Drafts the profile's translation (headline, summary, job titles, degrees and fields, bullets) in the user's own voice in that language, taken from
-// their writing samples and existing translations. Only missing or stale translations are drafted; current ones are
-// examples. Nothing is saved: the reviewed draft goes to applyProfileTranslation.
+// Drafts missing or stale translations in the user's voice; current ones are examples.
+// Unsaved until applyProfileTranslation.
 public record ProfileTranslationDraft(
     List<ProfileBulletText> Bullets, List<ProfileExperienceTitleText> Experiences, List<ProfileEducationText> Educations,
     string? Headline = null, string? Summary = null);
@@ -211,8 +210,7 @@ public class ProfileTranslationSuggester(LlmExecution execution, LlmModelResolve
         catch (JsonException) { return null; }
     }
 
-    // Keeps only missing or stale items that applyProfileTranslation would accept, so current translations
-    // are never overwritten and the review shows nothing it would reject.
+    // Keeps only missing or stale items applyProfileTranslation would accept.
     private static async Task<ProfileTranslationDraft> TargetsAsync(Reply reply, Language language, AppDbContext db, CancellationToken ct)
     {
         var profile = await ProfileQueries.LoadAsync(db, ct);
@@ -256,8 +254,7 @@ public static class ProfileTranslationSuggestionMutations
         Guid? requestId = null) =>
         suggester.SuggestAsync(language, model, db, ct, requestId);
 
-    // Saves a reviewed draft in one go, marked as machine-made. Unlike setProfileTranslation, a null headline,
-    // summary, degree or field leaves that translated field as it is, so a draft of only stale items keeps the rest.
+    // Saves a reviewed draft as machine-made. Unlike setProfileTranslation, a null field keeps its translation.
     [Error<ProfileEntryNotFoundException>]
     [Error<InvalidProfileException>]
     public static async Task<Profile> ApplyProfileTranslationAsync(

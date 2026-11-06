@@ -235,8 +235,7 @@ public static partial class ProfileSkillNode
 
 internal static class ProfileDataLoaders
 {
-    // Computed rather than stored, so it can't go stale when an entry changes. Merged in C#: interval merging isn't
-    // practical in SQLite, and a profile has a handful of jobs.
+    // Computed so it can't go stale. Merged in C#: interval merging isn't practical in SQLite.
     [DataLoader]
     public static async Task<Dictionary<int, int>> GetExperienceMonthsBySkillIdAsync(
         IReadOnlyList<int> skillIds, AppDbContext db, TimeProvider time, CancellationToken ct)

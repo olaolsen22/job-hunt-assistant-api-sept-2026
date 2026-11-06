@@ -48,9 +48,7 @@ public static class BaseCvMutations
         return baseCv;
     }
 
-    // Numbered per language; a language the base CV doesn't have yet starts at 1. Unchanged content returns the latest
-    // version in that language and ignores the note: a new number only when the CV changed, so outcomes aren't split
-    // across identical versions.
+    // Numbered per language. Unchanged content returns the latest version, so outcomes aren't split across copies.
     [Error<BaseCvNotFoundException>]
     [Error<InvalidBaseCvException>]
     [Error<InvalidTailoredCvDraftException>]

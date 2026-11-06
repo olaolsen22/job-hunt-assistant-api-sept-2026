@@ -167,8 +167,7 @@ public static class ProfileMutations
         return profileSkill;
     }
 
-    // From a listing: a skill only goes on the profile together with the jobs or projects that back it up.
-    // Tags are added, never removed, so it can be repeated to back a skill with more entries.
+    // A skill only goes on the profile with the jobs or projects that back it up. Tags are only added.
     [Error<InvalidProfileException>]
     [Error<SkillNotFoundException>]
     [Error<ProfileEntryNotFoundException>]

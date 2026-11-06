@@ -7,16 +7,14 @@ namespace JobHunt.Api.Features.Locations;
 [QueryType]
 public static class LocationQueries
 {
-    // search matches the city only; country names aren't stored, so the UI matches those
-    // itself via Intl.DisplayNames (a user has few enough locations to load them all).
+    // search matches the city only; the UI matches country names itself via Intl.DisplayNames.
     [UsePaging]
     [UseProjection]
     [UseFiltering]
     [UseSorting]
     public static IQueryable<Location> GetLocations(string? search, AppDbContext db, ISortingContext sorting)
     {
-        // Default order only without a client `order`: Hot Chocolate adds that as ThenBy, so this would win.
-        // Handled(false): taking ISortingContext turns off automatic sorting otherwise.
+        // Default order only without a client `order`, which Hot Chocolate adds as ThenBy.
         sorting.Handled(false);
         IQueryable<Location> locations = sorting.IsDefined
             ? db.Locations

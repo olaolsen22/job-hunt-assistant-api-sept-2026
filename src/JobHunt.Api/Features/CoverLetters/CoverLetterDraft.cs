@@ -28,9 +28,7 @@ public class CoverLetterDraft
     }
 }
 
-// Mirrors the traditional Norwegian letter (docs/norwegian-cover-letter.md): sender block with the date below it,
-// recipient block, bold subject, body, sign-off and name. FullName is both the sender line and the signature.
-// Address and RecipientAddress may span lines.
+// Mirrors the traditional Norwegian letter (docs/norwegian-cover-letter.md). FullName is also the signature.
 public record CoverLetterContent(
     Language Language = Language.English,
     string? FullName = null,

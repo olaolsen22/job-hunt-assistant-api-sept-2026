@@ -45,13 +45,11 @@ public class Listing
     public DateTime? FavoritedAt { get; set; }
     // Null = active. Archived listings drop out of the default list but keep their history and documents.
     public DateTime? ArchivedAt { get; set; }
-    // Null = details still to fill in. Set by the user (or ticked by the parse flow), not derived from which
-    // fields happen to be set, so a hand-filled listing counts too. A time so the to-do list can sort by it.
+    // Null = details still to fill in. Set by the user or parse flow, not derived, so a hand-filled listing counts.
     public DateTime? AnalyzedAt { get; set; }
     // Last time a re-analysis was applied; null = never redone. Lets the UI show which listings predate a prompt change.
     public DateTime? ReanalyzedAt { get; set; }
-    // Current status, kept next to its history so the list can filter and sort on it with plain SQL.
-    // Only the application mutations change it, always together with a StatusChange row.
+    // Kept next to its history for plain SQL filtering. Only the application mutations change it, with a StatusChange.
     public ApplicationStatus Status { get; set; }
     // OccurredAt of the latest status change; null while Saved.
     public DateTime? StatusChangedAt { get; set; }
@@ -112,8 +110,7 @@ public enum Schedule { FullTime, PartTime }
 
 public enum WorkMode { Onsite, Hybrid, Remote }
 
-// Many ads have no date and say "Snarest"/"ASAP" or "Løpende" (rolling) instead. Both count as ASAP:
-// in practice they mean the same, so a separate value only gave the parser a choice with no effect.
+// "Snarest" and "Løpende" both count as ASAP: a separate value gave the parser a choice with no effect.
 public enum DeadlineType { Date, Asap, Unspecified }
 
 public enum Language { English, Norwegian }
@@ -125,9 +122,7 @@ public class ListingConfiguration : IEntityTypeConfiguration<Listing>
     public void Configure(EntityTypeBuilder<Listing> builder)
     {
         builder.HasOne<AppUser>().WithMany().HasForeignKey(l => l.UserId).OnDelete(DeleteBehavior.Cascade);
-        // NoAction, not Restrict: SQLite checks NoAction at the end of the statement, so deleting a user
-        // can cascade to its listings and its companies/roles in one go. Restrict can fail mid-cascade,
-        // depending on which table SQLite happens to clear first.
+        // NoAction, not Restrict: SQLite checks it at statement end, so deleting a user can cascade through in one go.
         builder.HasOne(l => l.Company).WithMany().OnDelete(DeleteBehavior.NoAction);
         builder.HasOne(l => l.JobRole).WithMany().OnDelete(DeleteBehavior.NoAction);
         builder.HasIndex(l => new { l.UserId, l.CreatedAt });

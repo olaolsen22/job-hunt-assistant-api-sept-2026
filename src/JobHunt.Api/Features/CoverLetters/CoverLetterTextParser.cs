@@ -2,10 +2,8 @@ using System.Text.RegularExpressions;
 
 namespace JobHunt.Api.Features.CoverLetters;
 
-// Turns a pasted letter into a candidate without AI. Paragraphs are separated by blank lines; text with no blank
-// lines at all (pasted from Word or email) treats each line as a paragraph. Lines before the body are header:
-// date, contact and address lines are dropped (the server header has them), a greeting is kept, and the last
-// remaining short line is the subject. Everything from the sign-off on is closing plus signature.
+// Turns a pasted letter into a candidate without AI: blank lines split paragraphs, short leading lines are header,
+// and everything from the sign-off on is closing plus signature.
 public static partial class CoverLetterTextParser
 {
     public const int MaxTextLength = 30_000;

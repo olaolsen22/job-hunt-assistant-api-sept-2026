@@ -6,8 +6,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace JobHunt.Api.Features.Skills;
 
-// User-defined, so the skills page can add and rename them. SortOrder is the order of the grouped lines on a
-// developer CV; Description tells the AI what belongs in the category.
+// User-defined. SortOrder orders the grouped lines on a developer CV; Description tells the AI what belongs.
 public class SkillCategory
 {
     public const int MaxNameLength = 100;
@@ -55,8 +54,7 @@ public class SkillCategoryTranslationConfiguration : IEntityTypeConfiguration<Sk
     }
 }
 
-// The former fixed categories, so a new account's developer CV groups skills out of the box.
-// Keep in step with the AddUserSkillCategories migration, which seeded existing users with the same rows.
+// Starter categories for a new account. Keep in step with the AddUserSkillCategories migration.
 internal static class StarterSkillCategories
 {
     internal static readonly (string Name, string Norwegian, string Description)[] All =

@@ -4,8 +4,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace JobHunt.Api.Features.Contacts;
 
-// One message, call or meeting with a contact: the outreach log. Looser than an application on purpose; once a
-// conversation turns into a job, that job is an ordinary listing linked to the contact.
+// One message, call or meeting: the outreach log. Looser than an application on purpose.
 public class ContactInteraction
 {
     public int Id { get; set; }

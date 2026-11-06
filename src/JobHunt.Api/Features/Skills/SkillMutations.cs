@@ -95,8 +95,7 @@ public static class SkillMutations
         else skill.Translations.Add(new SkillTranslation { Language = language, Name = name });
     }
 
-    // Works on the shared lookup, so the profile, experience/project tags and listings are all cleaned at once.
-    // One transaction, so a reviewed plan is applied fully or not at all.
+    // On the shared lookup, so the profile, tags and listings clean up together. One transaction: all or nothing.
     [Error<SkillNotFoundException>]
     [Error<InvalidSkillCleanupException>]
     [UseMutationConvention(PayloadFieldName = "skills")]
@@ -205,8 +204,7 @@ public static class SkillMutations
         var removedIds = removed.Select(s => s.Id).ToList();
         if (removedIds.Count == 0) return targets;
 
-        // A target's own row (the profile's or a listing's) keeps its claim as it is; without one, the target
-        // takes the strongest merged row, so a merge never drops a level the user or the listing set.
+        // A target's own row stays; without one it takes the strongest merged row, so a merge never drops a level.
         var profileSkills = await db.ProfileSkills
             .Where(s => removedIds.Contains(s.SkillId) || targetIds.Contains(s.SkillId)).ToListAsync(ct);
         foreach (var group in profileSkills.GroupBy(s => s.ProfileId).Where(g => g.Any(s => removedIds.Contains(s.SkillId))))
@@ -256,9 +254,7 @@ public static class SkillMutations
         return targets;
     }
 
-    // Unlike deleteSkill, removes skills in use: the user reviewed each removal. The database cascades the
-    // profile, listing and experience/project links; drafts and base CV versions only lose the source link and keep
-    // their text.
+    // Unlike deleteSkill, removes skills in use: the user reviewed each one. Drafts only lose the source link.
     private static async Task RemoveAsync(List<int> ids, List<ITailoredCvSnapshot> snapshots, AppDbContext db, CancellationToken ct)
     {
         if (ids.Count == 0) return;

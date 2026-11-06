@@ -97,8 +97,7 @@ public class SkillCleanupSuggester(LlmExecution execution, LlmModelResolver mode
             .Select(r => new SkillCleanupRemoval(r.SkillId!.Value, r.Reason?.Trim() is { Length: > 0 } reason ? reason : "Not a skill"))];
     }
 
-    // Like the other prompts, a suggestion only fills an uncategorized skill: an existing one, or one an operation
-    // creates without inheriting a category. Unknown category names are dropped.
+    // A suggestion only fills an uncategorized skill, existing or created without inheriting. Unknown names are dropped.
     private static async Task<List<SkillCleanupCategory>> CategoriesAsync(
         Plan plan, List<SkillCleanupOperation> operations, AppDbContext db, CancellationToken ct)
     {

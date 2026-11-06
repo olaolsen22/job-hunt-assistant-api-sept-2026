@@ -6,8 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.Documents;
 
-// REST, not GraphQL: GraphQL answers in JSON, and the browser needs a plain URL it can open or download
-// with the auth cookie. Upload, listing and deleting documents stay in GraphQL.
+// REST, not GraphQL: the browser needs a plain URL it can open with the auth cookie.
 public static partial class DocumentEndpoints
 {
     public static void MapDocumentEndpoints(this IEndpointRouteBuilder app)

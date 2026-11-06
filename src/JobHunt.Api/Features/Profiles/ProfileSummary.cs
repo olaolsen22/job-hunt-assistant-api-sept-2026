@@ -12,8 +12,7 @@ using Microsoft.Extensions.AI;
 
 namespace JobHunt.Api.Features.Profiles;
 
-// Drafts the profile's own summary from the whole CV, in the content language. Nothing is saved: the reviewed text
-// goes through updateProfile, which marks a translated summary stale.
+// Drafts the profile's summary from the whole CV. Unsaved: the reviewed text goes through updateProfile.
 public record ProfileSummaryPrompt(int Version, string Instructions);
 
 public enum ProfileSummaryStatus { Succeeded, Failed }

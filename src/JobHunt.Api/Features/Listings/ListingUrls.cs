@@ -2,9 +2,8 @@ namespace JobHunt.Api.Features.Listings;
 
 internal static class ListingUrls
 {
-    // Stored normalized so the unique index catches the same ad pasted with tracking params, a #fragment
-    // or a trailing slash. Other params stay: some boards put the ad id in the query (?finnkode=123).
-    // Uri already lowercases scheme and host and drops the default port.
+    // Stored normalized so the unique index catches tracking params, #fragments and trailing slashes.
+    // Other params stay: some boards put the ad id in the query (?finnkode=123).
     public static string Normalize(Uri url)
     {
         var query = string.Join('&', url.Query.TrimStart('?')

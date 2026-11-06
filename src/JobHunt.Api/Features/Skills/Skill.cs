@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace JobHunt.Api.Features.Skills;
 
-// Shared by listings now and CVs later, so CV-to-listing matching is a join on SkillId.
+// Shared by listings and the profile, so matching a listing is a join on SkillId.
 public class Skill
 {
     public int Id { get; set; }

@@ -15,8 +15,7 @@ public static class CompanyQueries
     [UseSorting]
     public static IQueryable<Company> GetCompanies(string? search, AppDbContext db, ISortingContext sorting)
     {
-        // Default order only without a client `order`: Hot Chocolate adds that as ThenBy, so this would win.
-        // Handled(false): taking ISortingContext turns off automatic sorting otherwise.
+        // Default order only without a client `order`, which Hot Chocolate adds as ThenBy.
         sorting.Handled(false);
         IQueryable<Company> companies = sorting.IsDefined ? db.Companies : db.Companies.OrderBy(c => c.Name);
         if (search is null) return companies;

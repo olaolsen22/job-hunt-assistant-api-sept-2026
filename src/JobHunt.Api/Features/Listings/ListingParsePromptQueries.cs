@@ -7,14 +7,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.Listings;
 
-// Instructions only: the UI appends the ad as <posting>…</posting>, so the ad text never has to reach the server
-// on the copy-paste path. The same prompt will drive the server-side parser, so the two can't drift apart.
+// Instructions only: the UI appends the ad as <posting>…</posting>. The server-side parser sends the same text.
 public record ListingParsePrompt(int Version, string Instructions);
 
 [QueryType]
 public static partial class ListingParsePromptQueries
 {
-    // Bump whenever the prompt or output shape changes; the server-side parse cache keys on it.
+    // Bump whenever the prompt or output shape changes.
     public const int Version = 18;
 
     // Separate from Version: the quick prompt changes on its own schedule.
@@ -174,8 +173,7 @@ public static partial class ListingParsePromptQueries
         return new ListingParsePrompt(Version, instructions);
     }
 
-    // Quick add: several ads (or a search-results page) in one paste → minimal rows, details filled in later.
-    // Same <posting> contract as the full prompt. Skills and descriptions are left out to keep the output short.
+    // Quick add: several ads or a search page in one paste → minimal rows, no skills or descriptions.
     public static Task<ListingParsePrompt> GetListingQuickParsePromptAsync(
         AppDbContext db, TimeProvider time, CancellationToken ct) => BuildQuickAsync(db, time, external: true, ct);
 
@@ -241,8 +239,7 @@ public static partial class ListingParsePromptQueries
         return new ListingParsePrompt(QuickVersion, instructions);
     }
 
-    // External chats can usually browse; the built-in parser only sees the pasted text. Job boards often show a
-    // summary while the employer's application page holds the full requirements (e.g. the exact Norwegian level).
+    // Only external chats can browse. Boards often show a summary; the employer's page has the full requirements.
     private const string ExternalSourcesRule = """
 
         # Sources
@@ -278,8 +275,7 @@ public static partial class ListingParsePromptQueries
             """;
     }
 
-    // Built from the C# enums, so the prompt can't offer a value the schema doesn't have.
-    // Same PascalCase → UPPER_SNAKE conversion Hot Chocolate applies (FixedTerm → FIXED_TERM).
+    // Built from the C# enums, using Hot Chocolate's naming (FixedTerm → FIXED_TERM), so values can't drift.
     internal static string Values<TEnum>() where TEnum : struct, Enum =>
         string.Join(" | ", Enum.GetNames<TEnum>().Select(n => $"\"{WordBoundary().Replace(n, "_").ToUpperInvariant()}\""));
 

@@ -10,9 +10,8 @@ using Path = System.IO.Path;
 
 namespace JobHunt.Api.Features.ListingImports;
 
-// Polls <Folder>/<account email>/*.json and stores each new file as a pending import for that account.
-// Polling rather than FileSystemWatcher: watchers are unreliable on WSL and fire before a file is fully written.
-// Files are only read, never moved or deleted; the stored file name is what marks one as imported.
+// Polls <Folder>/<account email>/*.json into pending imports. Polling because file watchers are unreliable on WSL.
+// Files are only read; the stored file name marks one as imported.
 public partial class ListingImportScanner(
     IServiceScopeFactory scopes,
     IOptions<ListingImportOptions> options,

@@ -2,8 +2,7 @@ using System.Text.RegularExpressions;
 
 namespace JobHunt.Api.Features.TailoredCvDrafts;
 
-// Concise bullets are AI-shortened, so the wording must stay the candidate's: nearly every word comes from the
-// source bullet, or from the listing where it names the same thing (exact listing terms help ATS matching).
+// Concise bullets are AI-shortened, so nearly every word must come from the source bullet or the listing.
 public static partial class TailoredCvWording
 {
     // Room for grammar and inflection, such as "utviklet" for "utvikle" or an added "and".

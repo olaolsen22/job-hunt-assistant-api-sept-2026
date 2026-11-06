@@ -4,8 +4,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace JobHunt.Api.Features.Industries;
 
-// The business a company is in ("Energy", "Shipping"). A lookup rather than free text so companies can be
-// filtered by it, and so AI output settles on the names you already have.
+// The business a company is in. A lookup so companies can be filtered by it and AI output reuses your names.
 public class Industry
 {
     public int Id { get; set; }

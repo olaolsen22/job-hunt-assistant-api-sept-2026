@@ -85,7 +85,7 @@ builder.Services.AddAuthorizationBuilder()
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    // Per client IP. Behind a reverse proxy this needs forwarded headers (M8), or all clients share one bucket.
+    // Per client IP. Behind a reverse proxy this needs forwarded headers, or all clients share one bucket.
     options.AddPolicy(AuthEndpoints.LoginRateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) }));
@@ -99,8 +99,7 @@ builder.Services.AddOptions<GeminiOptions>()
 builder.Services.AddHttpClient(LlmProviders.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(2))
     .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
     .RemoveAllLoggers();
-// Keyed by provider, so Ollama (and later others) can register side by side. The model is picked per call
-// (ChatOptions.ModelId); the default here only applies if a caller doesn't set one.
+// The shared provider. The model is picked per call (ChatOptions.ModelId); this default is only a fallback.
 builder.Services.AddKeyedSingleton<IChatClient>(GeminiOptions.Provider, (sp, _) =>
 {
     var gemini = sp.GetRequiredService<IOptions<GeminiOptions>>().Value;

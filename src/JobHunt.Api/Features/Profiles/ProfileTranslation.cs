@@ -14,10 +14,9 @@ public class ProfileBulletTranslation
     public ProfileBullet Bullet { get; set; } = null!;
     public Language Language { get; set; }
     public string Text { get; set; } = null!;
-    // The bullet text this was made from. Compared with the bullet instead of a stored flag, so editing the
-    // bullet has nothing to update and the UI can show what changed.
+    // The bullet text this was made from, compared with the bullet so edits need no stale flag.
     public string SourceText { get; set; } = null!;
-    // Set by a future auto-translate; saving by hand clears it.
+    // Set when applyProfileTranslation wrote it; saving by hand clears it.
     public bool IsMachine { get; set; }
 
     public bool IsStale => Bullet.Text != SourceText;

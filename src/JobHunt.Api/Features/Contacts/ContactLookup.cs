@@ -4,8 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.Contacts;
 
-// Contacts from a parsed ad or company research: found by name within the company or created. A match only gets its
-// empty fields filled, so a parse can't overwrite what the user edited, and nobody is ever removed.
+// Found by name within the company or created. A match only gets empty fields filled; nobody is removed.
 internal static class ContactLookup
 {
     // Inputs arrive validated, with no name twice. Changed says whether anyone was added or filled.

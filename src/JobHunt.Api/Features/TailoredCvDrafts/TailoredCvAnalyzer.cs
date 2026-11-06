@@ -14,9 +14,7 @@ namespace JobHunt.Api.Features.TailoredCvDrafts;
 public enum TailoredCvSection { Experience, Education, Project, Skills, Summary }
 public enum TailoredCvAnalysisStatus { Succeeded, Failed, Skipped }
 
-// Technologies: names (draft language) for an experience's or project's technologies line; null = no suggestion.
-// Bullets: the selected bullets' text to use, in selection order: the source text, or the shortened text (Concise).
-// Headline: the summary section's suggested CV headline; null = keep the current one.
+// Null Technologies or Headline = no suggestion. Bullets: the text to use, in selection order.
 public record TailoredCvAnalysisResult(TailoredCvAnalysisStatus Status, TailoredCvSection Section,
     int? SourceEntryId, List<int> SelectedBulletIds, List<int> SelectedSkillIds, string? Summary, string? Error,
     string? ErrorCode = null, string? Paragraph = null, List<string>? Technologies = null,
@@ -255,8 +253,7 @@ public class TailoredCvAnalyzer(
         };
     }
 
-    // Recruiters give a CV seconds and weigh the newest role most, so a concise CV keeps the most bullets there.
-    // Profile lists come sorted newest first (ProfileQueries.LoadAsync).
+    // Recruiters weigh the newest role most. Profile lists come sorted newest first.
     private static int ConciseBulletCap(Profile profile, TailoredCvSection section, int? sourceEntryId) => section switch
     {
         TailoredCvSection.Experience => profile.Experiences.FindIndex(e => e.Id == sourceEntryId) switch
@@ -268,8 +265,7 @@ public class TailoredCvAnalyzer(
         _ => 2,
     };
 
-    // Shared with the external prompt: Norwegian developer recruiters look for evidence of contribution and
-    // results, while the wording should stay the candidate's own (docs/norwegian-cv-formatting.md §10).
+    // Recruiters look for contribution and results, in the candidate's own words (docs/norwegian-cv-formatting.md §10).
     internal static string BulletSelectionGuidance(TailoredCvTemplate template) => $"""
         {BulletStrengthGuidance(template)} When companyResearch.kind is CONSULTANCY or BROKER, also prefer client or stakeholder work,
         learning a new domain, and clarifying requirements.
@@ -285,8 +281,7 @@ public class TailoredCvAnalyzer(
         coordination.
         """;
 
-    // Listings often stress a theme (AI-powered features, cloud, accessibility) without naming it as a skill; the
-    // CV should then show the candidate's supported evidence of it rather than only matching skill keywords.
+    // Listings stress themes without naming them as skills; show supported evidence, not just keywords.
     internal const string ThemeGuidance = """
         Identify the themes the listing emphasises, such as AI-powered features, LLMs, cloud or accessibility, and
         actively surface supported evidence of them; never invent it. Keep using AI tools, such as coding
@@ -349,8 +344,7 @@ public class TailoredCvAnalyzer(
         engasjert, dynamisk, innovativ.
         """;
 
-    // A recruiter decides in seconds: one-line bullets, cut from the candidate's own wording rather than rewritten
-    // (TailoredCvWording checks this), with the listing's exact terms where they describe the same thing, for ATS.
+    // One-line bullets cut from the candidate's wording (TailoredCvWording checks), with the listing's exact terms for ATS.
     internal const string ConciseBulletGuidance = """
         Shorten each selected bullet by cutting words, not rewriting: keep the candidate's own verbs, terms, and
         word order, and drop only filler and repeated context. Never cut a fact the listing cares about, such as
@@ -375,8 +369,7 @@ public class TailoredCvAnalyzer(
         ratings for emphasis; never turn them into claims such as "expert" or "advanced".
         """;
 
-    // A broader listing tempts the model to rebrand a specialist as fullstack; NTNU and Tekna ask for a focused,
-    // truthful profile, and a relabelled CV hides the candidate's strongest case.
+    // A broad listing tempts the model to rebrand a specialist as fullstack, hiding their strongest case.
     internal const string SpecializationGuidance = """
         Present the candidate with the specialization their job titles and headline show. For a broader role,
         describe them as that specialist with experience in the other areas the evidence supports (for example
@@ -400,8 +393,7 @@ public class TailoredCvAnalyzer(
         where the source supports it. An intention to learn is not a skill.
         """;
 
-    // The skills section is the inventory; an entry's line only shows where technologies were used. Practices and
-    // AI coding assistants read as mistakes under a "Technologies" label and belong in the paragraph instead.
+    // An entry's line shows where technologies were used; practices and AI assistants read as mistakes there.
     internal const string TechnologiesGuidance = """
         at most 6 of the entry's own skills that are concrete technologies (languages, frameworks, libraries,
         platforms, databases, developer tools) the selected bullets show were used, most relevant to the listing
@@ -566,8 +558,7 @@ public class TailoredCvAnalyzer(
         }
     }
 
-    // A shortened bullet that adds words beyond the source and listing, or is blank or too long, falls back to the
-    // source text rather than failing the section; an unknown id still fails it.
+    // A bullet with new words, blank or too long falls back to the source text; an unknown id fails the section.
     private static List<TailoredCvBullet> DecodeConciseBullets(JsonElement root, Dictionary<int, string> sources,
         JsonElement listing)
     {

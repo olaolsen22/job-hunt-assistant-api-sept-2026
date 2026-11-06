@@ -4,14 +4,12 @@ using JobHunt.Api.Features.TailoredCvDrafts;
 
 namespace JobHunt.Api.Features.BaseCvs;
 
-// UntranslatedFields: paths such as "summary" or "experiences[0].bullets[2]" whose text was kept as it was, because
-// it was edited after the prefill, has no profile source, or the profile has no translation for it.
+// UntranslatedFields: paths like "experiences[0].bullets[2]" whose text had no profile translation to swap in.
 public record BaseCvTranslation(TailoredCvContent Content, Language FromLanguage, List<string> UntranslatedFields);
 
 internal static class BaseCvTranslator
 {
-    // Text the version copied from the profile in `from` becomes the profile's text in `to`, through the source ids.
-    // Proper nouns (employers, schools, project and certification names) and NAV languages stay as they are.
+    // Profile-copied text in `from` becomes the profile's text in `to`, via source ids. Proper nouns stay.
     internal static BaseCvTranslation Translate(TailoredCvContent source, Language from, Language to, Profile profile)
     {
         if (from == to) return new(source, from, []);

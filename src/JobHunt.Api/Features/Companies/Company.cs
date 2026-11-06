@@ -28,8 +28,8 @@ public class Company
     public List<CompanyLocation> Locations { get; set; } = [];
     public List<Contact> Contacts { get; set; } = [];
 
-    // Research: filled by hand or by a pasted research batch, which only fills blanks.
-    // Brønnøysund org.nr, 9 digits: a better match key than the name when research comes back in.
+    // Research: by hand or from a batch, which only fills blanks.
+    // Brønnøysund org.nr, 9 digits: a better match key than the name.
     public string? OrgNumber { get; set; }
     public string? WebsiteUrl { get; set; }
     public string? CareersUrl { get; set; }
@@ -47,8 +47,7 @@ public class Company
     public List<CompanySkill> Skills { get; set; } = [];
 }
 
-// Recruitment places candidates with other employers or hires out staff; Broker matches independent consultants to
-// client assignments. Both are kept apart from Consultancy, which employs its own consultants.
+// Recruitment places candidates or hires out staff; Broker matches independent consultants to assignments.
 public enum CompanyKind { Product, Consultancy, InHouse, PublicSector, Agency, Startup, Recruitment, Broker }
 
 // Bands instead of a headcount, which goes stale: 1–10, 11–50, 51–200, 201–1000, 1000+.

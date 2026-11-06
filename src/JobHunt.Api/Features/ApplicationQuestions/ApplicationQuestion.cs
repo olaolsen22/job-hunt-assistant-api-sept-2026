@@ -5,8 +5,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace JobHunt.Api.Features.ApplicationQuestions;
 
-// A text box on an application form: "Søknadstekst", "Why do you want to work here?". A one-box cover letter is
-// just a question with a limit. Ordered by Id, the order the user entered them from the form.
+// A text box on an application form; a one-box cover letter is a question with a limit. Ordered by Id.
 public class ApplicationQuestion
 {
     public int Id { get; set; }

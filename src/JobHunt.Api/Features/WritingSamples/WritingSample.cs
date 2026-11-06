@@ -19,8 +19,7 @@ public class WritingSample
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
-    // Best fit first: the letter's language, then real cover letters, then the newest. Whole samples only, until
-    // the budget is spent, because a cut-off sample teaches a broken ending.
+    // Best fit first: language, then cover letters, then newest. Whole samples only: a cut-off one teaches a broken ending.
     public static List<WritingSample> ForPrompt(IEnumerable<WritingSample> samples, Language language, int budget)
     {
         var selected = new List<WritingSample>();

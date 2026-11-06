@@ -7,8 +7,7 @@ using Location = JobHunt.Api.Features.Locations.Location;
 
 namespace JobHunt.Api.Data;
 
-// Starter lookups, so a fresh account's pickers aren't empty and the parse prompt has canonical names
-// to reuse ("PostgreSQL", not "Postgres"). Only adds missing rows, so a name added here shows up on the next start.
+// Starter lookups, so pickers aren't empty and the parse prompt has canonical names. Only adds missing rows.
 public static class LookupSeeder
 {
     private static readonly string[] JobRoles =

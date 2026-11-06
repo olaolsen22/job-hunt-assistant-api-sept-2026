@@ -21,8 +21,7 @@ public static class PacificDay
 
     public static DateOnly Of(DateTime utc) => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utc, Zone));
 
-    // Converts the local midnight, so daylight saving shifts the UTC offset correctly. Midnight is never skipped
-    // or repeated in Pacific time (the clock changes at 2am).
+    // Converts local midnight, so daylight saving shifts the UTC offset correctly.
     public static DateTime StartUtc(DateOnly day) => TimeZoneInfo.ConvertTimeToUtc(day.ToDateTime(TimeOnly.MinValue), Zone);
 }
 
@@ -63,8 +62,7 @@ public static class UsageQueries
             PacificDay.StartUtc(today.AddDays(1)), reported.Provider, reported.KeySource, reported.CredentialId);
     }
 
-    // Grouped in memory: bucketing by Pacific day across a daylight-saving change is awkward in SQLite, and
-    // 90 days of rows is small. Days and models without calls get no row.
+    // Grouped in memory: Pacific-day buckets across a DST change are awkward in SQLite, and 90 days of rows is small.
     public static async Task<List<DailyUsage>> GetUsageDailyAsync(
         AppDbContext db, TimeProvider time, IOptions<LlmPricingOptions> pricing,
         IOptions<ProviderLlmPricingOptions> providerPricing, CancellationToken ct, int days = 30, string? credentialId = null)

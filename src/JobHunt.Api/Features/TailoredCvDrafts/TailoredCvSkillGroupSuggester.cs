@@ -18,8 +18,7 @@ public record TailoredCvSkillGroupPrompt(int Version, string Instructions);
 
 public class InvalidTailoredCvSkillGroupsException(string message) : Exception(message);
 
-// Only suggests labels for the draft's skills as the UI holds them, unsaved edits included; nothing is saved but usage.
-// The UI copies the labels into the skills' group and saves the draft.
+// Suggests labels for the skills as the UI holds them. Unsaved: the UI copies them into the draft and saves.
 public class TailoredCvSkillGroupSuggester(LlmExecution execution, LlmModelResolver models, AiOperations operations)
 {
     public const string Operation = "suggest-tailored-cv-skill-groups";

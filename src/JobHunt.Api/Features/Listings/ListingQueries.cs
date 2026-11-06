@@ -12,8 +12,7 @@ public static class ListingQueries
     private const int AsapDays = 14;
     private const int UnspecifiedDays = 30;
 
-    // The effective due date, in one place so the default order, dueWithinDays and dueOn can't disagree.
-    // Member init (not a bare DateOnly lambda) so EF can translate x.Due in the Where/OrderBy that follow.
+    // The effective due date, shared by the default order, dueWithinDays and dueOn. Member init so EF can translate it.
     private static readonly Expression<Func<Listing, ListingWithDue>> WithDue = l => new ListingWithDue
     {
         Listing = l,
@@ -74,9 +73,7 @@ public static class ListingQueries
         AppDbContext db, ISortingContext sorting, TimeProvider time, bool archived = false, int? dueWithinDays = null,
         string? search = null, bool? isTrainingProgram = null)
     {
-        // Hot Chocolate adds a client's `order` as ThenBy, so a fixed OrderBy here would always win.
-        // Default order only without one; with one, Id breaks ties so equal values (e.g. no deadline)
-        // don't shuffle between pages. Handled(false): taking ISortingContext turns off automatic sorting otherwise.
+        // Default order only without a client `order`, which Hot Chocolate adds as ThenBy. With one, Id breaks ties across pages.
         var today = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
         sorting.Handled(false);
         sorting.OnAfterSortingApplied<IQueryable<Listing>>((sortingApplied, query) =>

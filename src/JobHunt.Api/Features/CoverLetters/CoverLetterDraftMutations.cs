@@ -129,8 +129,7 @@ internal static class CoverLetterValidation
     private static string? Lines(string? value, string field) =>
         Text(string.Join("\n", AddressLines(value)), field, MaxAddressLength);
 
-    // Postal addresses print street and house number, then postcode and town, each on its own line.
-    // A one-line address like the CV's "Storgata 1, 0155 Oslo" is split at its commas.
+    // Street, then postcode and town, each on its own line. A one-line address is split at its commas.
     public static List<string> AddressLines(string? value)
     {
         var lines = (value ?? "").Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();

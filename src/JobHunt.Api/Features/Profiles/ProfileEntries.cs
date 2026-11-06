@@ -88,8 +88,7 @@ public class ProfileProject
     public List<Skill> Skills { get; set; } = [];
 }
 
-// The only free text on an entry. A row (not JSON) so a bullet keeps its id when edited or moved, and something
-// outside the profile can refer to it later. Belongs to exactly one entry; one table keeps a single id space.
+// A row, not JSON, so a bullet keeps its id when edited or moved. Belongs to exactly one entry.
 public class ProfileBullet
 {
     public int Id { get; set; }

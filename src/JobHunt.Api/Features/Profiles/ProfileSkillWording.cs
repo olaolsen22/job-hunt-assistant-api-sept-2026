@@ -8,8 +8,7 @@ using Microsoft.Extensions.AI;
 
 namespace JobHunt.Api.Features.Profiles;
 
-// Brings skill mentions in the profile's own wording in line with the skill list, after a skill cleanup.
-// Null headline/summary = no change. Translations aren't touched: edited originals mark them stale.
+// Aligns skill mentions in the profile's wording with the skill list. Null headline/summary = no change.
 public record ProfileBulletText(int Id, string Text);
 public record ProfileSkillWording(List<ProfileBulletText> Bullets, string? Headline = null, string? Summary = null);
 

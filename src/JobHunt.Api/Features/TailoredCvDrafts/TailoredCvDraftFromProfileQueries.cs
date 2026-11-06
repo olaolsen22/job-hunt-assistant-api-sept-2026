@@ -8,9 +8,7 @@ namespace JobHunt.Api.Features.TailoredCvDrafts;
 [QueryType]
 public static class TailoredCvDraftFromProfileQueries
 {
-    // Starting point for a reset: the whole profile as draft content. Nothing is saved; the UI loads it into the
-    // editor and the user saves explicitly. Language: the requested one, else the saved draft's, else the listing's;
-    // null for an unknown listing.
+    // The whole profile as unsaved draft content. Language: requested, else saved draft's, else listing's. Null if unknown.
     public static async Task<TailoredCvContent?> GetTailoredCvDraftFromProfileAsync(
         int listingId, AppDbContext db, CancellationToken ct, Language? language = null)
     {

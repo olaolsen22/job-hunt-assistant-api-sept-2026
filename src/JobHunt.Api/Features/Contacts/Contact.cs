@@ -22,8 +22,7 @@ public class Contact
     // LinkedIn or a profile page.
     public string? Url { get; set; }
     public string? Notes { get; set; }
-    // Copied from the latest interaction, like Listing.StatusChangedAt, so the people list can filter and sort on
-    // them with plain SQL. Only ContactInteractionMutations changes them, through Refresh.
+    // Copied from the latest interaction by Refresh, so the people list can filter and sort on them in SQL.
     public DateTime? LastInteractionAt { get; set; }
     public DateOnly? FollowUpOn { get; set; }
     public List<ContactInteraction> Interactions { get; set; } = [];

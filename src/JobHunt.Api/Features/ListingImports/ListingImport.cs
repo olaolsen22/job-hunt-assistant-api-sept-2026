@@ -4,8 +4,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace JobHunt.Api.Features.ListingImports;
 
-// One generated JSON file picked up from the user's import folder. The listings themselves are only created
-// when the user runs the file through quick add, so dedupe and AI enrichment stay in one place.
+// One generated JSON file from the import folder. Listings are only created when it runs through quick add.
 public class ListingImport
 {
     public int Id { get; set; }
