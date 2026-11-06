@@ -44,7 +44,6 @@ public class ListingParser(
         ];
         var options = new ChatOptions
         {
-            ModelId = job.Model,
             // JSON mode: the model can't wrap the answer in prose or code fences.
             ResponseFormat = ChatResponseFormat.Json,
             Temperature = 0,

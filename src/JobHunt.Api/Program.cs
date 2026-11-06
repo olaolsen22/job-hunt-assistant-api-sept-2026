@@ -130,7 +130,6 @@ builder.Services.AddScoped<TailoredCvAnalyzer>();
 builder.Services.AddScoped<TailoredCvSkillGroupSuggester>();
 builder.Services.AddScoped<CoverLetterGenerator>();
 builder.Services.AddScoped<ApplicationAnswerGenerator>();
-TailoredCvPdfFonts.EnsureRegistered();
 // Browser-like User-Agent: several job boards answer 403 to the default .NET one.
 builder.Services.AddHttpClient<ListingPageFetcher>(client =>
     {

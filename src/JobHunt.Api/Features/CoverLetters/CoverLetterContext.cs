@@ -3,7 +3,6 @@ using System.Text.Json.Serialization;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Profiles;
-using JobHunt.Api.Features.Skills;
 using JobHunt.Api.Features.TailoredCvDrafts;
 using JobHunt.Api.Features.WritingSamples;
 using Microsoft.EntityFrameworkCore;

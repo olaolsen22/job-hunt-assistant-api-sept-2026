@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Claims;
 using System.Text.Json;
 using JobHunt.Api.Data;
+using JobHunt.Api.Features.AiSafeguards;
 using JobHunt.Api.Features.LlmProviderKeys;
 using JobHunt.Api.Llm;
 using Microsoft.AspNetCore.Http;
@@ -27,7 +28,7 @@ public class LlmExecutionTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var protector = scope.ServiceProvider.GetRequiredService<ProviderKeyProtector>();
         var key = await AddAsync(db, protector, provider, "private-personal-key");
         var sharedCalls = factory.Llm.Calls;
-        var result = await scope.ServiceProvider.GetRequiredService<LlmExecution>().RunAsync(
+        var result = await RunAsync(scope, scope.ServiceProvider.GetRequiredService<LlmExecution>(),
             new("picker-id", provider, "configured-model", "Model", key.Id),
             [new(ChatRole.System, "Return JSON"), new(ChatRole.User, "private-user-input")],
             new ChatOptions { ModelId = "incorrect-picker-id", ResponseFormat = ChatResponseFormat.Json,
@@ -85,7 +86,7 @@ public class LlmExecutionTests(ApiFactory factory) : IClassFixture<ApiFactory>
             var execution = new LlmExecution(factory.Llm, scope.ServiceProvider.GetRequiredService<IHttpClientFactory>(), protector,
                 TimeProvider.System, logger, scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>(),
                 scope.ServiceProvider.GetRequiredService<JobHunt.Api.Features.AiSafeguards.AiOperations>());
-            var result = await execution.RunAsync(new("picker-id", provider, "configured-model", "Model", key.Id),
+            var result = await RunAsync(scope, execution, new("picker-id", provider, "configured-model", "Model", key.Id),
                 [new(ChatRole.User, "private-input")], new() { MaxOutputTokens = 4096 }, "test", db, default);
             Assert.Equal(code, result.ErrorCode);
             Assert.False(result.Usage!.Success);
@@ -115,7 +116,7 @@ public class LlmExecutionTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var shared = factory.Llm.Calls;
         foreach (var id in new[] { key.Id, Guid.NewGuid() })
         {
-            var result = await scope.ServiceProvider.GetRequiredService<LlmExecution>().RunAsync(
+            var result = await RunAsync(scope, scope.ServiceProvider.GetRequiredService<LlmExecution>(),
                 new("id", "gemini", "configured-model", "Model", id), [new(ChatRole.User, "input")], new(), "test", db, default);
             Assert.Equal("credential-unavailable", result.ErrorCode);
             Assert.Null(result.Usage);
@@ -133,8 +134,8 @@ public class LlmExecutionTests(ApiFactory factory) : IClassFixture<ApiFactory>
         await using var db = await SignedInDbAsync(scope);
         using var cancel = new CancellationTokenSource();
         factory.Llm.Respond = () => { cancel.Cancel(); throw new OperationCanceledException("private-exception-details"); };
-        var error = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => scope.ServiceProvider.GetRequiredService<LlmExecution>()
-            .RunAsync(new("id", "gemini", "model", "Model"), [new(ChatRole.User, "private-content")], new(), "canceled-test", db, cancel.Token));
+        var error = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => RunAsync(scope, scope.ServiceProvider.GetRequiredService<LlmExecution>(),
+            new("id", "gemini", "model", "Model"), [new(ChatRole.User, "private-content")], new(), "canceled-test", db, cancel.Token));
         Assert.DoesNotContain("private", error.ToString());
         var row = await db.LlmUsages.IgnoreQueryFilters().SingleAsync(u => u.Operation == "canceled-test");
         Assert.False(row.Success);
@@ -150,14 +151,21 @@ public class LlmExecutionTests(ApiFactory factory) : IClassFixture<ApiFactory>
         await using var db = await SignedInDbAsync(scope);
         factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant, "{}"));
         var execution = scope.ServiceProvider.GetRequiredService<LlmExecution>();
-        var result = await execution.RunAsync(new("id", "gemini", "model", "Model"),
+        var result = await RunAsync(scope, execution, new("id", "gemini", "model", "Model"),
             [new(ChatRole.User, "input")], new(), "test", db, default);
         Assert.Null(result.ErrorCode);
         Assert.False(factory.Llm.Disposed);
         using var cancel = new CancellationTokenSource(); cancel.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => execution.RunAsync(
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => RunAsync(scope, execution,
             new("id", "gemini", "model", "Model"), [new(ChatRole.User, "input")], new(), "test", db, cancel.Token));
     }
+
+    // Provider calls always run inside an AI operation.
+    private static Task<LlmCallResult> RunAsync(IServiceScope scope, LlmExecution execution, ResolvedLlmModel model,
+        IEnumerable<ChatMessage> messages, ChatOptions options, string operation, AppDbContext db, CancellationToken ct) =>
+        scope.ServiceProvider.GetRequiredService<AiOperations>().RunAsync(operation, new { }, null, db, () => Task.FromResult(model),
+            selected => execution.RunAsync(selected, messages, options, operation, db, ct),
+            result => new AiOutcome(result.ErrorCode is null, result.ErrorCode), ct);
 
     private static async Task<AppDbContext> SignedInDbAsync(IServiceScope scope)
     {

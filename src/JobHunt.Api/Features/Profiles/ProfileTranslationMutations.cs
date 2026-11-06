@@ -40,7 +40,6 @@ public static class ProfileTranslationMutations
             {
                 UserId = bullet.UserId, Bullet = bullet, Language = language,
             });
-        translation.Bullet = bullet;
         translation.Text = cleanText;
         translation.SourceText = bullet.Text;
         translation.IsMachine = isMachine;

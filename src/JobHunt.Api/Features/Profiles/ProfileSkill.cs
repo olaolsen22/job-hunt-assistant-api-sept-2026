@@ -1,4 +1,3 @@
-using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Skills;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;

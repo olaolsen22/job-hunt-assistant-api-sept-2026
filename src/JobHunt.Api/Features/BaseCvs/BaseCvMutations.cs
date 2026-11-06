@@ -139,7 +139,6 @@ public static class BaseCvMutations
     private static async Task<TailoredCvContent> ContentAsync(TailoredCvContentInput input, Language language,
         AppDbContext db, CancellationToken ct)
     {
-        if (input is null) throw new InvalidTailoredCvDraftException("content is required.");
         var content = TailoredCvDraftValidation.Normalize(input with { Language = language }, language);
         await TailoredCvDraftValidation.ValidateSourceIdsAsync(content, db, ct);
         return await TailoredCvDraftValidation.FillMissingLocationsAsync(content, db, ct);

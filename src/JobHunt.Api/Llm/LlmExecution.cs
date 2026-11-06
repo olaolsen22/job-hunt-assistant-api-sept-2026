@@ -33,17 +33,6 @@ public class LlmExecution(
     IHttpClientFactory http, ProviderKeyProtector protector, TimeProvider time, ILogger<LlmExecution> logger,
     IDbContextFactory<AppDbContext> contexts, AiOperations operations)
 {
-    public Task<LlmCallResult> RunAsync(ResolvedLlmModel model, IEnumerable<ChatMessage> messages,
-        ChatOptions options, string operation, AppDbContext db, CancellationToken ct)
-    {
-        var input = messages.ToList();
-        if (operations.Current is not null) return RunCoreAsync(model, input, options, operation, db, ct);
-        return operations.RunAsync(operation, new { model.Id, Messages = input.Select(m => new { Role = m.Role.ToString(), m.Text }),
-                options.MaxOutputTokens, options.Temperature }, null, db, () => Task.FromResult(model),
-            selected => RunCoreAsync(selected, input, options, operation, db, ct),
-            result => new AiOutcome(result.ErrorCode is null, result.ErrorCode), ct);
-    }
-
     // For calls that must return JSON. An answer decode rejects marks that attempt's usage row invalid-json.
     public async Task<LlmJsonResult<T>> RunJsonAsync<T>(ResolvedLlmModel model, IEnumerable<ChatMessage> messages,
         ChatOptions options, string operation, AppDbContext db, Func<string, T?> decode, string unreadable,
@@ -58,7 +47,8 @@ public class LlmExecution(
         return new(null, unreadable, LlmErrorCodes.InvalidJson);
     }
 
-    private async Task<LlmCallResult> RunCoreAsync(ResolvedLlmModel model, IEnumerable<ChatMessage> messages,
+    // Runs inside AiOperations.RunAsync, whose receipt this attempt is attributed to.
+    public async Task<LlmCallResult> RunAsync(ResolvedLlmModel model, IEnumerable<ChatMessage> messages,
         ChatOptions options, string operation, AppDbContext db, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
