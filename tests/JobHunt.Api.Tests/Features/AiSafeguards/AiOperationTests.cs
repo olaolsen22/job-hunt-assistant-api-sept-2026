@@ -137,7 +137,6 @@ public class AiOperationTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var receipt = await db.AiOperations.IgnoreQueryFilters().SingleAsync(o => o.RequestId == id);
         var stored = JsonSerializer.Serialize(receipt);
         Assert.DoesNotContain("Private", stored); Assert.Null(receipt.ParseJobId);
-        Assert.NotNull(receipt.ProtectedWorkDigest);
     }
 
     [Fact]

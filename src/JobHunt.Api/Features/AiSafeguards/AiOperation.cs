@@ -14,7 +14,6 @@ public class AiOperation
     public string UserId { get; set; } = null!;
     public string Kind { get; set; } = null!;
     public string ProtectedRequestDigest { get; set; } = null!;
-    public string? ProtectedWorkDigest { get; set; }
     public string Provider { get; set; } = null!;
     public string Model { get; set; } = null!;
     public string CredentialId { get; set; } = null!;

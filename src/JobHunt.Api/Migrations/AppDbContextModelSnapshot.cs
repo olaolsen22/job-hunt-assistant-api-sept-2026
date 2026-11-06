@@ -52,9 +52,6 @@ namespace JobHunt.Api.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("ProtectedWorkDigest")
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("Provider")
                         .IsRequired()
                         .HasColumnType("TEXT");

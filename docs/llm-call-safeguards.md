@@ -67,7 +67,7 @@ Analyze-all returns ordered `results` with `status: SUCCEEDED | FAILED | SKIPPED
 
 ## Durable state and recovery
 
-`AiOperation` stores user/request identity, protected request/work digests, safe attribution/state/error/timestamps, and an optional existing parse-job reference. It retains no raw CV input, candidate, tailored suggestion, prompt, secret, or provider body. Receipt states are Running, Succeeded, Failed, and Interrupted. Identities do not silently expire. `UserLlmLimit` stores only the user/provider setting and update time; usage rows hold durable per-operation attempt attribution.
+`AiOperation` stores user/request identity, a protected request digest, safe attribution/state/error/timestamps, and an optional existing parse-job reference. It retains no raw CV input, candidate, tailored suggestion, prompt, secret, or provider body. Receipt states are Running, Succeeded, Failed, and Interrupted. Identities do not silently expire. `UserLlmLimit` stores only the user/provider setting and update time; usage rows hold durable per-operation attempt attribution.
 
 The current deployment supports one API instance. On startup, leftover Running operations become Interrupted and release active admission; pending attempt audits are marked interrupted. Reusing an interrupted ID cannot restart inference. A failed final database save also interrupts the operation; a possibly submitted attempt remains counted. If the database itself is unavailable, admission fails closed until recovery. The system cannot promise provider-side exactly-once execution.
 

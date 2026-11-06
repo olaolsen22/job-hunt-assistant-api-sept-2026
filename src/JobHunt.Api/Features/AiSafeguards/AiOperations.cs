@@ -101,16 +101,6 @@ public class AiOperations(IDbContextFactory<AppDbContext> contexts, AiRequestDig
         throw new AiSafetyException("result-unavailable");
     }
 
-    public async Task RecordWorkAsync(object work, CancellationToken ct)
-    {
-        if (Current is not { } receipt) return;
-        var value = digests.Protect(receipt.UserId, digests.Hash(work));
-        await using var db = await contexts.CreateDbContextAsync(ct);
-        await db.AiOperations.IgnoreQueryFilters().Where(o => o.Id == receipt.Id && o.UserId == receipt.UserId)
-            .ExecuteUpdateAsync(s => s.SetProperty(o => o.ProtectedWorkDigest, value), ct);
-        receipt.ProtectedWorkDigest = value;
-    }
-
     public static async Task RecoverAsync(AppDbContext db, TimeProvider time, CancellationToken ct = default)
     {
         // Startup only, before serving requests, under the application's single-instance deployment contract.

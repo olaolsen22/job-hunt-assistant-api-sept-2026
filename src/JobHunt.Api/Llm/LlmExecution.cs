@@ -99,9 +99,6 @@ public class LlmExecution(
                     return raw;
                 };
             }
-            await operations.RecordWorkAsync(new { model.Provider, model.ModelId, model.CredentialId,
-                Messages = messages.Select(m => new { Role = m.Role.ToString(), m.Text }),
-                mapped.MaxOutputTokens, mapped.Temperature }, ct);
             usage = new LlmUsage
             {
                 UserId = db.CurrentUserId!, Provider = model.Provider, Model = model.ModelId,
