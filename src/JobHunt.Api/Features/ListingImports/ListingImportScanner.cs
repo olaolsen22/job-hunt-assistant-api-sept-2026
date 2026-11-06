@@ -127,6 +127,9 @@ public partial class ListingImportScanner(
         var stamp = match.Groups[1].Value + " " + (match.Groups[2].Success ? match.Groups[2].Value : "00-00-00");
         if (!DateTime.TryParseExact(stamp, "yyyy-MM-dd HH-mm-ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var local))
             return false;
+        // A time the clocks skipped at a DST change has no UTC value, and the throw would stop every later scan.
+        if (time.LocalTimeZone.IsInvalidTime(local))
+            local = local.AddHours(1);
         generatedAt = TimeZoneInfo.ConvertTimeToUtc(local, time.LocalTimeZone);
         kind = match.Groups[3].Value;
         return true;

@@ -1,5 +1,7 @@
 using System.Text.Json;
 using JobHunt.Api.Features.ListingImports;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace JobHunt.Api.Tests.Features.ListingImports;
@@ -152,6 +154,30 @@ public class ListingImportTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal("ListingImportNotFoundError", result.GetProperty("errors")[0].GetProperty("__typename").GetString());
         Assert.Equal(JsonValueKind.Null, Single(await ImportsAsync(owner), "2026-11-03_15-00-00-it.json")
             .GetProperty("reviewedAt").ValueKind);
+    }
+
+    // 02:30 doesn't exist in Oslo on this date; converting it throws, which used to stop every later scan.
+    [Fact]
+    public async Task TimeSkippedByDst_IsImported_AndTheScanContinues()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        Drop(ApiFactory.OwnerEmail, "2026-03-29_02-30-00-dst.json", ValidJson);
+        Drop(ApiFactory.OwnerEmail, "2026-03-29_12-00-00-dst.json", ValidJson);
+        using var oslo = factory.WithWebHostBuilder(b =>
+            b.ConfigureServices(s => s.AddSingleton<TimeProvider>(new OsloTime())));
+
+        await oslo.Services.GetRequiredService<ListingImportScanner>().ScanOnceAsync();
+
+        var imports = await ImportsAsync(client);
+        Assert.Equal(new DateTime(2026, 3, 29, 1, 30, 0, DateTimeKind.Utc),
+            Single(imports, "2026-03-29_02-30-00-dst.json").GetProperty("generatedAt").GetDateTime().ToUniversalTime());
+        Assert.Equal(new DateTime(2026, 3, 29, 10, 0, 0, DateTimeKind.Utc),
+            Single(imports, "2026-03-29_12-00-00-dst.json").GetProperty("generatedAt").GetDateTime().ToUniversalTime());
+    }
+
+    private sealed class OsloTime : TimeProvider
+    {
+        public override TimeZoneInfo LocalTimeZone { get; } = TimeZoneInfo.FindSystemTimeZoneById("Europe/Oslo");
     }
 
     private void Drop(string email, string fileName, string json, bool settled = true)

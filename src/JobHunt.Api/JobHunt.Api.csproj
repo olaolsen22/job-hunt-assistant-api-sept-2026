@@ -27,5 +27,7 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Features\TailoredCvDrafts\Fonts\*.ttf" />
+    <!-- Personal data read at runtime; the SDK would otherwise publish these JSON files. -->
+    <Content Remove="listing-imports\**" />
   </ItemGroup>
 </Project>
