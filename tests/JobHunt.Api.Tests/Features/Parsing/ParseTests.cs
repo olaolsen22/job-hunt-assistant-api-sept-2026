@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using Google.GenAI;
 using JobHunt.Api.Data;
 using JobHunt.Api.Tests.Features.Listings;
@@ -166,6 +167,23 @@ public class ParseTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var payload = (await client.GraphQLAsync(ParseListing, new { text = "   ", mode = "FULL" })).GetProperty("parseListing");
 
         Assert.Equal("InvalidParseRequestError", payload.GetProperty("errors")[0].GetProperty("__typename").GetString());
+    }
+
+    // Quick add takes a whole pasted search page; a single ad never gets near this.
+    [Theory]
+    [InlineData("QUICK", 200_000, true)]
+    [InlineData("QUICK", 200_001, false)]
+    [InlineData("FULL", 100_000, true)]
+    [InlineData("FULL", 100_001, false)]
+    public async Task ParseListing_LengthLimit_DependsOnMode(string mode, int length, bool accepted)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        factory.Llm.Respond = () => Answer(mode == "QUICK" ? "[]" : "{}");
+
+        var payload = (await client.GraphQLAsync(ParseListing, new { text = new string('x', length), mode })).GetProperty("parseListing");
+
+        if (accepted) Assert.Equal(JsonValueKind.Null, payload.GetProperty("errors").ValueKind);
+        else Assert.Equal("InvalidParseRequestError", payload.GetProperty("errors")[0].GetProperty("__typename").GetString());
     }
 
     private const string ParseListingFromUrl = """

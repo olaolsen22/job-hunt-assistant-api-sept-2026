@@ -12,7 +12,7 @@ public class InvalidParseRequestException(string message) : Exception(message);
 [MutationType]
 public static class ParseMutations
 {
-    // Well above any single ad; the parser only sends the first 12k characters anyway.
+    // Well above any single ad; quick add has its own limit for whole pasted search pages.
     private const int MaxTextLength = 100_000;
 
     // Returns the finished job for now. With the queue it will return QUEUED and finish over onParseJobUpdated,
@@ -27,8 +27,9 @@ public static class ParseMutations
         text = text.Trim();
         if (text.Length == 0)
             throw new InvalidParseRequestException("Paste the job ad text first.");
-        if (text.Length > MaxTextLength)
-            throw new InvalidParseRequestException($"The text is longer than {MaxTextLength} characters.");
+        var maxLength = mode == ParseMode.Quick ? ListingParser.QuickMaxInputChars : MaxTextLength;
+        if (text.Length > maxLength)
+            throw new InvalidParseRequestException($"The text is longer than {maxLength} characters.");
 
         return await operations.RunAsync(ListingParser.Operation, new { text, mode, model }, requestId, db,
             () => models.ResolveAsync(model, db, ct), resolved => RunJobAsync(text, mode, resolved, db, parser, time, ct),

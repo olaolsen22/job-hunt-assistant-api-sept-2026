@@ -23,7 +23,7 @@ public class ListingParser(
 
     // Quick add is one call for a whole pasted search page (~150 rows at ~130 output tokens each).
     // Flash-Lite takes 1M input and 65k output tokens, so these only guard against runaway pastes.
-    private const int QuickMaxInputChars = 200_000;
+    internal const int QuickMaxInputChars = 200_000;
     private const int QuickMaxOutputTokens = 32_768;
 
     // Sets the job's outcome; the caller saves the job. LlmExecution records the usage itself.
