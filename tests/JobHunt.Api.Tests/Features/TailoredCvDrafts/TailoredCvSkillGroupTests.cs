@@ -66,6 +66,7 @@ public class TailoredCvSkillGroupTests(ApiFactory factory) : IClassFixture<ApiFa
         Assert.Equal(TailoredCvSkillGroupPromptQueries.Version, prompt.GetProperty("version").GetInt32());
         Assert.Contains("```json", instructions);
         Assert.Contains("Norwegian bokmål", instructions);
+        Assert.Contains("Customer service, Food & hygiene", instructions);
         Assert.EndsWith("<skills>\nVue\nC#\n</skills>", instructions);
     }
 

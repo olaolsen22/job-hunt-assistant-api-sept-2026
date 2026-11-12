@@ -1771,6 +1771,39 @@ namespace JobHunt.Api.Migrations
                     b.ToTable("ProfileWorkModes", (string)null);
                 });
 
+            modelBuilder.Entity("JobHunt.Api.Features.RequirementMaps.RequirementMap", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ContentJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ListingId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ListingId")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("RequirementMaps");
+                });
+
             modelBuilder.Entity("JobHunt.Api.Features.Skills.Skill", b =>
                 {
                     b.Property<int>("Id")
@@ -2950,6 +2983,23 @@ namespace JobHunt.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Profile");
+                });
+
+            modelBuilder.Entity("JobHunt.Api.Features.RequirementMaps.RequirementMap", b =>
+                {
+                    b.HasOne("JobHunt.Api.Features.Listings.Listing", "Listing")
+                        .WithMany()
+                        .HasForeignKey("ListingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("JobHunt.Api.Features.Auth.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Listing");
                 });
 
             modelBuilder.Entity("JobHunt.Api.Features.Skills.Skill", b =>

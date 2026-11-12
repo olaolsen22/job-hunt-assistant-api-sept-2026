@@ -33,11 +33,13 @@ public static class TailoredCvExternalPreviewMutations
         var parsed = ParseCandidate(json);
         // The language the prompt was built for wins over whatever the pasted reply claims.
         var input = parsed.Content! with { Language = language ?? parsed.Content!.Language };
-        var content = TailoredCvDraftValidation.Normalize(input, listing.PostingLanguage) with { Template = template ?? TailoredCvTemplate.Detailed };
-        var concise = template == TailoredCvTemplate.Concise;
-        await TailoredCvDraftValidation.ValidateSourceIdsAsync(content, db, ct, requireSourceBulletText: !concise);
-        if (concise)
-            content = await KeepSourceWordsAsync(content,
+        var templateValue = template ?? TailoredCvTemplate.Detailed;
+        var mode = TailoredCvWording.ModeFor(templateValue, listing: true);
+        var content = TailoredCvDraftValidation.Normalize(input, listing.PostingLanguage) with { Template = templateValue };
+        await TailoredCvDraftValidation.ValidateSourceIdsAsync(content, db, ct,
+            requireSourceBulletText: mode == TailoredCvWordingMode.Exact);
+        if (mode != TailoredCvWordingMode.Exact)
+            content = await KeepSourceWordingAsync(content, mode,
                 TailoredCvWording.ListingText(listing.Title, listing.Description, listing.Skills), db, ct);
         content = await TailoredCvDraftValidation.FillMissingLocationsAsync(content, db, ct);
         content = await TailoredCvDraftValidation.FillMissingSourceDetailsAsync(content, db, ct);
@@ -68,22 +70,18 @@ public static class TailoredCvExternalPreviewMutations
         return parsed;
     }
 
-    // Shortened bullets may only cut source wording or borrow listing terms; others fall back to the source text.
-    private static async Task<TailoredCvContent> KeepSourceWordsAsync(TailoredCvContent content, string listingText,
-        AppDbContext db, CancellationToken ct)
+    // Each bullet is checked against its own source text and its translation in the draft language.
+    private static async Task<TailoredCvContent> KeepSourceWordingAsync(TailoredCvContent content,
+        TailoredCvWordingMode mode, string listingText, AppDbContext db, CancellationToken ct)
     {
         var ids = content.BulletGroups().SelectMany(g => g.Bullets)
             .Where(b => b.SourceBulletId is not null).Select(b => b.SourceBulletId!.Value).Distinct().ToArray();
-        if (ids.Length == 0) return content;
         // Ids were already checked as the user's own by ValidateSourceIdsAsync.
         var sources = await db.ProfileBullets.AsNoTracking().Where(b => ids.Contains(b.Id))
             .Select(b => new { b.Id, b.Text, Translated = b.Translations.Where(t => t.Language == content.Language).Select(t => t.Text).FirstOrDefault() })
             .ToDictionaryAsync(b => b.Id, ct);
-
-        List<TailoredCvBullet> Keep(List<TailoredCvBullet> bullets) => [.. bullets.Select(b =>
-            b.SourceBulletId is not { } id || TailoredCvWording.KeepsSourceWords(b.Text,
-                [sources[id].Text, sources[id].Translated ?? ""], listingText)
-                ? b : b with { Text = sources[id].Translated ?? sources[id].Text })];
-        return content.MapBullets(Keep);
+        return TailoredCvWording.KeepSourceWording(content, mode,
+            id => [sources[id].Text, sources[id].Translated ?? ""],
+            id => sources[id].Translated ?? sources[id].Text, listingText, []);
     }
 }

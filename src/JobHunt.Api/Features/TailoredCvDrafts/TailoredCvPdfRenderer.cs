@@ -39,8 +39,7 @@ public static class TailoredCvPdfRenderer
                 page.Content().Column(column =>
                 {
                     column.Spacing(4);
-                    var style = content.Template == TailoredCvTemplate.Concise
-                        ? TailoredCvContentStyle.Bullets : content.ContentStyle;
+                    var style = content.ContentStyle;
                     AddContact(column, content, t);
                     if (content.SectionOrder == TailoredCvSectionOrder.Developer)
                     {

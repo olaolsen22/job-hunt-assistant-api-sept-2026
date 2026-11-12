@@ -282,18 +282,18 @@ public class TailoredCvPdfRendererTests
     }
 
     [Fact]
-    public void Render_ConciseTemplate_PrintsBulletsEvenWithParagraphStyle()
+    public void Render_ConciseTemplate_FollowsParagraphStyle()
     {
         var content = new TailoredCvContent(Experiences:
         [
             new TailoredCvExperience("Acme", "Developer", null, null,
-                [new TailoredCvBullet("Built the service.")], Paragraph: "A paragraph that must not print."),
+                [new TailoredCvBullet("Built the service.")], Paragraph: "Built and ran the service."),
         ], ContentStyle: TailoredCvContentStyle.Paragraph, Template: TailoredCvTemplate.Concise);
 
         var text = ExtractText(content);
 
-        Assert.Contains("Built the service.", text);
-        Assert.DoesNotContain("A paragraph that must not print.", text);
+        Assert.Contains("Built and ran the service.", text);
+        Assert.DoesNotContain("•", text);
     }
 
     [Fact]

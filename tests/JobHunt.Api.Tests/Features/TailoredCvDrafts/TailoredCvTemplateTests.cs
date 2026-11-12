@@ -18,30 +18,38 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
     private const string Preview = """
         mutation ($listingId: Int!, $json: String!, $template: TailoredCvTemplate) {
           previewTailoredCvDraft(input: { listingId: $listingId, json: $json, template: $template }) {
-            candidate { content { template experiences { bullets { sourceBulletId text } } } }
+            candidate { content { template experiences { paragraph bullets { sourceBulletId text } } } }
             errors { __typename ... on Error { message } }
           }
         }
         """;
 
-    [Fact]
-    public async Task DetailedAnalysis_ReturnsSourceBulletTextAndKeepsParagraph()
+    [Theory]
+    [InlineData("Streamlined development process from start to finish within cross-functional product, design, and mobile teams, making it ~30% faster with a more consistent UI.", true)]
+    [InlineData("Streamlined development process within cross-functional product, design, and mobile teams, making it ~40% faster.", false)]
+    [InlineData("Led every cross-functional team at the company and owned the whole web platform alone.", false)]
+    public async Task DetailedAnalysis_KeepsListingWordingAndFallsBackOtherwise(string text, bool kept)
     {
         var client = await factory.GetOwnerClientAsync();
-        var (entryId, bulletIds) = await AddExperienceAsync(client, "Detailed Employer", "2020-01-01", null,
-            "Built a React application for internal users");
-        var listingId = await TailoredCvAnalysisTests.CreateListingAsync(client, "React developer", "Build React apps", []);
-        factory.Llm.Respond = () => Reply($$"""{"selectedBulletIds":[{{bulletIds[0]}}],"paragraph":"Built a React application."}""");
+        var (entryId, bulletIds) = await AddExperienceAsync(client, "Detailed Employer", "2020-01-01", null, TeamsBullet);
+        var listingId = await TailoredCvAnalysisTests.CreateListingAsync(client, "Frontend developer", TeamsListing, []);
+        factory.Llm.Respond = () => Reply(JsonSerializer.Serialize(new
+        {
+            bullets = new[] { new { id = bulletIds[0], text } },
+            paragraph = "Worked within cross-functional teams to speed up delivery.",
+        }));
 
         var result = await AnalyzeAsync(client, listingId, "EXPERIENCE", entryId, "DETAILED");
 
         Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
-        Assert.Equal("Built a React application.", result.GetProperty("paragraph").GetString());
+        // A DETAILED paragraph may rephrase freely.
+        Assert.Equal("Worked within cross-functional teams to speed up delivery.", result.GetProperty("paragraph").GetString());
         var bullet = Assert.Single(result.GetProperty("bullets").EnumerateArray());
         Assert.Equal(bulletIds[0], bullet.GetProperty("sourceBulletId").GetInt32());
-        Assert.Equal("Built a React application for internal users", bullet.GetProperty("text").GetString());
+        Assert.Equal(kept ? text : TeamsBullet, bullet.GetProperty("text").GetString());
         var instructions = factory.Llm.LastMessages[0].Text;
         Assert.DoesNotContain("Shorten each selected bullet", instructions);
+        Assert.Contains("reword it with the listing's term", instructions);
         Assert.Contains("1-2 pages", instructions);
         Assert.Contains("no em dashes", instructions);
     }
@@ -74,7 +82,56 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
         var instructions = factory.Llm.LastMessages[0].Text;
         Assert.Contains("Select at most 5 of the existing experience bullet IDs", instructions);
         Assert.Contains("Shorten each selected bullet", instructions);
+        Assert.Contains("reword it with the listing's term", instructions);
         Assert.Contains("one page", instructions);
+    }
+
+    [Theory]
+    [InlineData("Trained 3 junior developers and worked with the design team.", true)]
+    [InlineData("Trained 3 junior developers and served 200 customers a day with a smile.", false)]
+    public async Task ConciseAnalysis_KeepsParagraphOnlyInTheBulletsWords(string paragraph, bool kept)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var (entryId, bulletIds) = await AddExperienceAsync(client, "Paragraph Employer", "2020-01-01", null,
+            "Mentored and trained 3 junior developers", "Worked with the design team on UI changes");
+        var listingId = await TailoredCvAnalysisTests.CreateListingAsync(client, "Barista", "Serve coffee", []);
+        factory.Llm.Respond = () => Reply(JsonSerializer.Serialize(new
+        {
+            bullets = bulletIds.Select(id => new { id, text = "Worked with the design team" }),
+            paragraph,
+        }));
+
+        var result = await AnalyzeAsync(client, listingId, "EXPERIENCE", entryId, "CONCISE");
+
+        Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
+        Assert.Equal(kept ? paragraph : null, result.GetProperty("paragraph").GetString());
+        Assert.Contains("short paragraph of at most 2 sentences", factory.Llm.LastMessages[0].Text);
+    }
+
+    [Theory]
+    [InlineData("EXPERIENCE", "outside the field of most of the candidate's experience")]
+    [InlineData("EXPERIENCE", "the entry then shows only its title and dates")]
+    [InlineData("EXPERIENCE", "IT jargon such as UI, UX, frontend, backend")]
+    [InlineData("EXPERIENCE", "this overrides any rule here about keeping such facts")]
+    [InlineData("SKILLS", "leave out the technical stack")]
+    [InlineData("SUMMARY", "present them by that title instead")]
+    public async Task Analysis_AimsAtAListingOutsideTheCandidatesField(string section, string expected)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var (entryId, _) = await AddExperienceAsync(client, "Field Employer", "2020-01-01", null, "Built services");
+        var listingId = await TailoredCvAnalysisTests.CreateListingAsync(client, "Barista", "Serve coffee", []);
+        factory.Llm.Respond = () => Reply(section switch
+        {
+            "SKILLS" => """{"selectedSkillIds":[]}""",
+            "SUMMARY" => """{"summary":null}""",
+            _ => """{"bullets":[]}""",
+        });
+
+        foreach (var template in new[] { "DETAILED", "CONCISE" })
+        {
+            await AnalyzeAsync(client, listingId, section, section == "EXPERIENCE" ? entryId : null, template);
+            Assert.Contains(expected, factory.Llm.LastMessages[0].Text.ReplaceLineEndings(" "));
+        }
     }
 
     [Fact]
@@ -133,8 +190,8 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
             var instructions = factory.Llm.LastMessages[0].Text;
             var json = instructions.Contains(" bullet IDs ", StringComparison.Ordinal)
                 ? factory.Llm.LastMessages[1].Text.Contains($"\"id\":{bulletIds[0]},", StringComparison.Ordinal)
-                    ? $$"""{"selectedBulletIds":[{{bulletIds[0]}}],"paragraph":"Built a payments API."}"""
-                    : "{\"selectedBulletIds\":[]}"
+                    ? $$"""{"bullets":[{"id":{{bulletIds[0]}}}],"paragraph":"Built a payments API."}"""
+                    : "{\"bullets\":[]}"
                 : instructions.Contains("profile skill IDs", StringComparison.Ordinal)
                     ? "{\"selectedSkillIds\":[]}" : "{\"summary\":null}";
             return Reply(json);
@@ -177,10 +234,17 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Contains("The summary and the CV body must agree", detailed);
         Assert.Contains("\"template\": \"CONCISE\"", instructions);
         Assert.Contains("at most 220 characters", instructions);
-        Assert.DoesNotContain("preserve the exact original bullet text", instructions);
-        Assert.Contains("preserve the exact original bullet text", detailed);
+        Assert.DoesNotContain("full text, not shortened", instructions);
+        Assert.Contains("full text, not shortened", detailed);
+        Assert.Contains("reword it with the listing's term", instructions);
+        Assert.Contains("reword it with the listing's term", detailed);
         Assert.Contains("\"template\": \"DETAILED\"", detailed);
         Assert.Contains("no em dashes", detailed);
+        foreach (var prompt in new[] { instructions, detailed }.Select(p => p.ReplaceLineEndings(" ")))
+        {
+            Assert.Contains("outside the field of most of the candidate's experience", prompt);
+            Assert.Contains("select none and the entry shows only its title and dates", prompt);
+        }
     }
 
     [Fact]
@@ -205,22 +269,53 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
     }
 
     [Fact]
-    public async Task Preview_Detailed_StillRejectsChangedBulletText()
+    public async Task Preview_Concise_KeepsParagraphInTheBulletsWordsAndDropsOthers()
     {
         var client = await factory.GetOwnerClientAsync();
-        var (entryId, bulletIds) = await AddExperienceAsync(client, "Exact Employer", "2020-01-01", null,
-            "Designed and built internal web services");
-        var listingId = await TailoredCvAnalysisTests.CreateListingAsync(client, "Developer", "Build web services", []);
-        var json = Candidate(entryId, (bulletIds[0], "Built web services"));
+        var (entryId, bulletIds) = await AddExperienceAsync(client, "Paragraph Preview", "2020-01-01", null,
+            "Took over a stalled client project, handling user discovery and requirements");
+        var listingId = await TailoredCvAnalysisTests.CreateListingAsync(client, "Barista", "Serve coffee", []);
+
+        async Task<string?> ParagraphAsync(string paragraph) => (await client.GraphQLAsync(Preview, new
+            {
+                listingId, template = "CONCISE",
+                json = Candidate(entryId, paragraph, (bulletIds[0], "Took over a stalled client project")),
+            })).GetProperty("previewTailoredCvDraft").GetProperty("candidate").GetProperty("content")
+            .GetProperty("experiences")[0].GetProperty("paragraph").GetString();
+
+        Assert.Equal("Took over a stalled client project and handled user discovery.",
+            await ParagraphAsync("Took over a stalled client project and handled user discovery."));
+        Assert.Null(await ParagraphAsync("Ran the café and trained new baristas in customer service."));
+    }
+
+    [Fact]
+    public async Task Preview_Detailed_KeepsListingWordingAndFallsBackOnAlteredText()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var (entryId, bulletIds) = await AddExperienceAsync(client, "Tailored Employer", "2020-01-01", null,
+            TeamsBullet, "Designed and built internal web services");
+        var listingId = await TailoredCvAnalysisTests.CreateListingAsync(client, "Frontend developer", TeamsListing, []);
+        const string tailored =
+            "Streamlined development process from start to finish within cross-functional product, design, and mobile teams, making it ~30% faster with a more consistent UI.";
+        var json = Candidate(entryId, "Worked within cross-functional teams on internal web services.",
+            (bulletIds[0], tailored), (bulletIds[1], "Architected a cloud platform serving 2 million users"));
 
         var payload = (await client.GraphQLAsync(Preview, new { listingId, json, template = "DETAILED" }))
             .GetProperty("previewTailoredCvDraft");
 
-        Assert.Equal("InvalidTailoredCvDraftError", payload.GetProperty("errors")[0].GetProperty("__typename").GetString());
+        Assert.Equal(JsonValueKind.Null, payload.GetProperty("errors").ValueKind);
+        var experience = payload.GetProperty("candidate").GetProperty("content").GetProperty("experiences")[0];
+        var texts = experience.GetProperty("bullets").EnumerateArray().Select(b => b.GetProperty("text").GetString()).ToList();
+        Assert.Equal([tailored, "Designed and built internal web services"], texts);
+        // A DETAILED paragraph may rephrase freely.
+        Assert.Equal("Worked within cross-functional teams on internal web services.",
+            experience.GetProperty("paragraph").GetString());
     }
 
-    [Fact]
-    public async Task Preview_Concise_RejectsAnotherUsersBullet()
+    [Theory]
+    [InlineData("CONCISE")]
+    [InlineData("DETAILED")]
+    public async Task Preview_RejectsAnotherUsersBullet(string template)
     {
         var owner = await factory.GetOwnerClientAsync();
         var (entryId, bulletIds) = await AddExperienceAsync(owner, "Owner Employer", "2020-01-01", null, "Built services");
@@ -228,7 +323,7 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
         var listingId = await TailoredCvAnalysisTests.CreateListingAsync(guest, "Developer", "Build services", []);
 
         var payload = (await guest.GraphQLAsync(Preview,
-                new { listingId, json = Candidate(entryId, (bulletIds[0], "Built services")), template = "CONCISE" }))
+                new { listingId, json = Candidate(entryId, (bulletIds[0], "Built services")), template }))
             .GetProperty("previewTailoredCvDraft");
 
         Assert.Equal("InvalidTailoredCvDraftError", payload.GetProperty("errors")[0].GetProperty("__typename").GetString());
@@ -263,6 +358,18 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
             ["Built several backend services in C# and .NET", "Utvikle tjenester i Node.js"],
             TailoredCvWording.ListingText("Backend developer", "Build REST APIs with 5 teams", ["C#"])));
 
+    private const string TeamsBullet =
+        "Streamlined development process from start to finish with product, design, and mobile teams, making it ~30% faster with a more consistent UI.";
+    private const string TeamsListing =
+        "Working within cross-functional teams, crafting sophisticated design and modern web that directly engage our users and drive business outcomes. Grow revenue 40%.";
+
+    [Theory]
+    [InlineData("Streamlined development process from start to finish within cross-functional product, design, and mobile teams, making it ~30% faster with a more consistent UI.", true)]
+    [InlineData("Streamlined development process within cross-functional product, design, and mobile teams, making it ~40% faster.", false)]
+    public void KeepsSourceWords_AllowsListingTermsButNotListingNumbers(string text, bool expected) =>
+        Assert.Equal(expected, TailoredCvWording.KeepsSourceWords(text, [TeamsBullet],
+            TailoredCvWording.ListingText("Frontend developer", TeamsListing, [])));
+
     private async Task<JsonElement> AnalyzeAsync(HttpClient client, int listingId, string section, int? sourceEntryId,
         string template) =>
         (await client.GraphQLAsync(Analyze, new { listingId, section, sourceEntryId, template }))
@@ -283,14 +390,17 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
         return (entryId, ids);
     }
 
-    private static string Candidate(int entryId, params (int Id, string Text)[] bullets) => JsonSerializer.Serialize(new
+    private static string Candidate(int entryId, params (int Id, string Text)[] bullets) =>
+        Candidate(entryId, null, bullets);
+
+    private static string Candidate(int entryId, string? paragraph, params (int Id, string Text)[] bullets) => JsonSerializer.Serialize(new
     {
         schemaVersion = 1,
         content = new
         {
             experiences = new[] { new
             {
-                sourceEntryId = entryId, employer = "Employer", title = "Developer",
+                sourceEntryId = entryId, employer = "Employer", title = "Developer", paragraph,
                 bullets = bullets.Select(b => new { sourceBulletId = b.Id, text = b.Text }).ToArray(),
             } },
         },

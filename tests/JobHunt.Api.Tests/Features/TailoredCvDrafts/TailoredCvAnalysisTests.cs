@@ -54,7 +54,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         await AddPrivateProfileDetailsAsync(client);
         var listingId = await CreateListingAsync(client, "React platform", "Build React services", ["React"]);
         factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant,
-            $$"""{"selectedBulletIds":[{{bulletId}}],"paragraph":"Built the React service and improved reliability."}"""));
+            $$"""{"bullets":[{"id":{{bulletId}}}],"paragraph":"Built the React service and improved reliability."}"""));
 
         var payload = await AnalyzeAsync(client, listingId, "EXPERIENCE", entryId);
 
@@ -92,7 +92,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         var bulletId = bulletData.GetProperty("addProfileBullet").GetProperty("profileBullet").GetProperty("id").GetInt32();
         var listingId = await CreateListingAsync(client, "AI developer", "Build AI-powered features", []);
         factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant,
-            $$"""{"selectedBulletIds":[{{bulletId}}],"paragraph":"Parsed job listings with an LLM."}"""));
+            $$"""{"bullets":[{"id":{{bulletId}}}],"paragraph":"Parsed job listings with an LLM."}"""));
 
         var result = (await AnalyzeAsync(client, listingId, "PROJECT", entryId)).GetProperty("result");
 
@@ -116,7 +116,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         var experience = await ProfileEntryTests.AddExperienceAsync(client, employer: "No bullet", skills: []);
         var listingId = await CreateListingAsync(client, "Developer", "Build software", []);
         factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant,
-            "{\"selectedBulletIds\":[2147483647]}"));
+            "{\"bullets\":[{\"id\":2147483647}]}"));
 
         var payload = await AnalyzeAsync(client, listingId, "EXPERIENCE", experience.GetProperty("id").GetInt32());
 
@@ -146,7 +146,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         var bulletId = bulletData.GetProperty("addProfileBullet").GetProperty("profileBullet").GetProperty("id").GetInt32();
         var listingId = await CreateListingAsync(client, "Developer", "Build software", []);
         factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant,
-            $$"""{"selectedBulletIds":[{{bulletId}}],"paragraph":"Graduated with honors."}"""));
+            $$"""{"bullets":[{"id":{{bulletId}}}],"paragraph":"Graduated with honors."}"""));
 
         var payload = await AnalyzeAsync(client, listingId, "EDUCATION", entryId);
 
@@ -311,7 +311,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
             """, new { bulletId });
         var listingId = await CreateListingAsync(client, "Utvikler", "Bygg betalingstjenester", [], "NORWEGIAN");
         factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant,
-            $$"""{"selectedBulletIds":[{{bulletId}}],"paragraph":"Bygde betalingstjenester."}"""));
+            $$"""{"bullets":[{"id":{{bulletId}}}],"paragraph":"Bygde betalingstjenester."}"""));
 
         var result = (await AnalyzeAsync(client, listingId, "EXPERIENCE", entryId)).GetProperty("result");
 
@@ -342,7 +342,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
             """, new { bulletId });
         var listingId = await CreateListingAsync(client, "Utvikler", "Bygg fakturatjenester", [], "NORWEGIAN");
         factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant,
-            $$"""{"selectedBulletIds":[{{bulletId}}],"paragraph":"Built billing services."}"""));
+            $$"""{"bullets":[{"id":{{bulletId}}}],"paragraph":"Built billing services."}"""));
 
         var result = (await client.GraphQLAsync("""
             mutation ($listingId: Int!, $sourceEntryId: Int) {
@@ -379,7 +379,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         var listingId = await CreateListingAsync(client, "Utvikler", "Bygg tjenester", [], "NORWEGIAN");
 
         factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant,
-            $$"""{"selectedBulletIds":[],"paragraph":null,"technologySkillIds":[{{skills[$"Unit{g}"]}}]}"""));
+            $$"""{"bullets":[],"paragraph":null,"technologySkillIds":[{{skills[$"Unit{g}"]}}]}"""));
         var result = (await AnalyzeAsync(client, listingId, "EXPERIENCE", entryId)).GetProperty("result");
 
         Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
@@ -388,7 +388,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Contains($"Enhet{g}", factory.Llm.LastMessages[1].Text);
 
         factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant,
-            $$"""{"selectedBulletIds":[],"paragraph":null,"technologySkillIds":[{{otherSkillId}}]}"""));
+            $$"""{"bullets":[],"paragraph":null,"technologySkillIds":[{{otherSkillId}}]}"""));
         var foreign = (await AnalyzeAsync(client, listingId, "EXPERIENCE", entryId)).GetProperty("result");
 
         Assert.Equal("FAILED", foreign.GetProperty("status").GetString());
@@ -600,7 +600,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
     }
 
     [Fact]
-    public async Task ExternalPreview_RejectsChangedTextForSourceBulletWithoutSaving()
+    public async Task ExternalPreview_ReplacesInventedTextWithSourceWithoutSaving()
     {
         var client = await factory.GetOwnerClientAsync();
         var experience = await ProfileEntryTests.AddExperienceAsync(client, employer: "External Employer", skills: []);
@@ -622,7 +622,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
                 experiences = new[] { new
                 {
                     sourceEntryId = entryId, employer = "External Employer", title = "Developer",
-                    bullets = new[] { new { sourceBulletId = bulletId, text = "Invented achievement" } },
+                    bullets = new[] { new { sourceBulletId = bulletId, text = "Invented a major company-wide achievement" } },
                 } },
             },
         });
@@ -630,9 +630,10 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         var payload = (await client.GraphQLAsync(PreviewExternal, new { listingId, json }))
             .GetProperty("previewTailoredCvDraft");
 
-        Assert.Equal("InvalidTailoredCvDraftError", payload.GetProperty("errors")[0].GetProperty("__typename").GetString());
-        Assert.Contains("must match the source bullet", payload.GetProperty("errors")[0].GetProperty("message").GetString());
-        Assert.Equal(JsonValueKind.Null, payload.GetProperty("candidate").ValueKind);
+        // Words in neither the source nor the listing fall back to the source text.
+        Assert.Equal(JsonValueKind.Null, payload.GetProperty("errors").ValueKind);
+        Assert.Equal("Original source bullet", payload.GetProperty("candidate").GetProperty("content")
+            .GetProperty("experiences")[0].GetProperty("bullets")[0].GetProperty("text").GetString());
         var draft = await client.GraphQLAsync("""
             query ($listingId: Int!) { tailoredCvDraft(listingId: $listingId) { id } }
             """, new { listingId });
@@ -790,7 +791,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         {
             var instructions = factory.Llm.LastMessages[0].Text;
             var json = instructions.Contains(" bullet IDs ", StringComparison.Ordinal)
-                ? "{\"selectedBulletIds\":[]}"
+                ? "{\"bullets\":[]}"
                 : instructions.Contains("profile skill IDs", StringComparison.Ordinal)
                     ? "{\"selectedSkillIds\":[]}" : "{\"summary\":null}";
             return new ChatResponse(new ChatMessage(ChatRole.Assistant, json));
@@ -832,7 +833,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
             if (calls == 1) throw new HttpRequestException("provider detail", null, HttpStatusCode.ServiceUnavailable);
             var instructions = factory.Llm.LastMessages[0].Text;
             var json = instructions.Contains("existing experience bullet IDs", StringComparison.Ordinal)
-                ? "{\"selectedBulletIds\":[]}"
+                ? "{\"bullets\":[]}"
                 : instructions.Contains("profile skill IDs", StringComparison.Ordinal)
                     ? "{\"selectedSkillIds\":[]}" : "{\"summary\":null}";
             return new ChatResponse(new ChatMessage(ChatRole.Assistant, json));

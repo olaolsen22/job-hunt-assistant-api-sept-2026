@@ -124,15 +124,7 @@ public static class ProfileSkillWordingMutations
     public static async Task<Profile> ApplyProfileSkillWordingAsync(
         List<ProfileBulletText> bullets, string? headline, string? summary, AppDbContext db, CancellationToken ct)
     {
-        if (bullets.DistinctBy(b => b.Id).Count() != bullets.Count)
-            throw new InvalidProfileException("A bullet is listed twice.");
-        var ids = bullets.Select(b => b.Id).ToList();
-        var rows = await db.ProfileBullets.Where(b => ids.Contains(b.Id)).ToDictionaryAsync(b => b.Id, ct);
-        foreach (var bullet in bullets)
-        {
-            var row = rows.GetValueOrDefault(bullet.Id) ?? throw new ProfileEntryNotFoundException("Bullet", bullet.Id);
-            row.Text = ProfileMutations.Required(bullet.Text, "Bullet", ProfileBulletMutations.MaxTextLength);
-        }
+        await ProfileBulletMutations.ReplaceTextsAsync(bullets, db, ct);
         var profile = await db.Profiles.SingleAsync(ct);
         if (headline is not null) profile.Headline = ProfileMutations.Required(headline, "Headline");
         if (summary is not null)

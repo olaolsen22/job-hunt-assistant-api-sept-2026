@@ -11,6 +11,7 @@ using JobHunt.Api.Features.LlmModels;
 using JobHunt.Api.Features.LlmProviderKeys;
 using JobHunt.Api.Features.Parsing;
 using JobHunt.Api.Features.Profiles;
+using JobHunt.Api.Features.RequirementMaps;
 using JobHunt.Api.Features.Skills;
 using JobHunt.Api.Features.TailoredCvDrafts;
 using JobHunt.Api.Llm;
@@ -124,12 +125,14 @@ builder.Services.AddScoped<ListingParser>();
 builder.Services.AddScoped<ProfileCvParser>();
 builder.Services.AddScoped<SkillCleanupSuggester>();
 builder.Services.AddScoped<ProfileSkillWordingSuggester>();
+builder.Services.AddScoped<ProfileBulletRefiner>();
 builder.Services.AddScoped<ProfileSummarySuggester>();
 builder.Services.AddScoped<ProfileTranslationSuggester>();
 builder.Services.AddScoped<TailoredCvAnalyzer>();
 builder.Services.AddScoped<TailoredCvSkillGroupSuggester>();
 builder.Services.AddScoped<CoverLetterGenerator>();
 builder.Services.AddScoped<ApplicationAnswerGenerator>();
+builder.Services.AddScoped<RequirementMapGenerator>();
 // Browser-like User-Agent: several job boards answer 403 to the default .NET one.
 builder.Services.AddHttpClient<ListingPageFetcher>(client =>
     {

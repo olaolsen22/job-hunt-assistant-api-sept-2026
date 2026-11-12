@@ -1,6 +1,6 @@
 # Project Status
 
-Updated: 2026-11-06 · Last logged commit: 23c3286
+Updated: 2026-11-10 · Last logged commit: c75fb12
 
 `schema.graphql` is the API contract and code is the authority; this file is the index and the rules neither shows at a glance.
 
@@ -45,14 +45,16 @@ Everything requires auth unless marked anon.
 - **Usage**: Pacific days, because Gemini's limit resets at midnight Pacific. Shared totals sum all users; personal totals only the caller's credential. Missing prices → null, never 0.
 - **Profile** (`Features/Profiles`): never null, loaded whole with server-side list order. Updates are full replaces; address, preferences and story have their own mutations. Months stored as the 1st. Tagging a skill adds it to the profile at level 1; untagging never removes it. `experienceMonths` counts experiences only, overlaps once. `clearProfileSections` is one transaction and keeps personal details, links and preferences.
 - **Bullets and references**: positions stay consecutive from 0; ids survive edits and moves. Bullets ≤500, ≤20 per entry.
+- **Bullet refinement**: `refineProfileBullets` scope = all, `kind`+`entryId`, or `bulletId` (else `InvalidProfileError`, before any AI call). Suggestions `{bulletId, text, note}`: text held to its own bullet's numbers and skill names, else null; English notes ≤300 ask for missing facts. Style from content-language writing samples + the other bullets. Copy-paste: `profileBulletRefinementPrompt` + `previewProfileBulletRefinement` (same checks). `applyProfileBulletRefinement` is not fact-checked.
 - **Translations**: stale = source copy differs from the original, so editing the original changes nothing stored. `contentLanguage` is frozen while translations exist. AI drafts only missing or stale items; `apply*` saves as machine-made.
 - **CV import**: English only, nothing saved until `importProfileCv`, which is atomic and takes reviewed selections. [Guide](profile-cv-import.md).
 - **Skills**: per-user lookup shared by listings, companies and the profile. `cleanUpSkills` merges, splits and removes in one transaction, moves all links, and rewrites only link ids in drafts and base CV versions, never text. `deleteSkill` only works on unused skills. Translations are for word skills; products print as is.
 - **Skill categories**: user-owned, `SortOrder` orders developer CV lines. AI suggestions only fill an uncategorized skill.
 - **Job role categories**: [guide](job-role-categories.md). Listings filter on `jobRole.categoryId`; suggestions never replace an assigned category.
-- **Tailored CV drafts**: one snapshot per listing; profile edits never rewrite it. Language: requested ?? saved draft ?? posting ?? English. Templates: DETAILED, CONCISE (word-origin guard falls back to source text). Section order: STANDARD (NAV), DEVELOPER. [Guide](tailored-cv-drafts.md), [formatting](norwegian-cv-formatting.md).
+- **Tailored CV drafts**: one snapshot per listing; profile edits never rewrite it. Language: requested ?? saved draft ?? posting ?? English. Templates: DETAILED, CONCISE; both reword bullets with listing terms (word-origin guard: bullets fall back to source text, CONCISE paragraphs to null). Prompts adapt to listings outside the candidate's field. Section order: STANDARD (NAV), DEVELOPER. [Guide](tailored-cv-drafts.md), [formatting](norwegian-cv-formatting.md).
 - **Base CVs**: separate stream, sent as-is, immutable numbered versions per language; unchanged content returns the latest version. In use → can't be deleted. Reached through a version, `baseCv` lists every version. [Guide](base-cvs.md).
 - **Cover letters**: the server owns the header; the model writes only subject, greeting, body and closing. Language: letter draft → CV draft → posting → English. Pasted letters are split without AI. [Guide](norwegian-cover-letter.md).
+- **Requirement map** (`Features/RequirementMaps`): one saved map per listing of what it needs, the profile evidence (bullet ids, entry refs; no skill ids) and the gaps. Not called analysis: `AnalyzedAt` means parsed. Saves are strict; AI candidates are corrected instead (unknown ids dropped, unsupported match → GAP). References are a snapshot. No prompt reads it yet. [Guide](requirement-map.md).
 - **Application questions**: form text boxes, ≤20 per listing. Saved answers must fit `charLimit`; AI candidates are flagged instead, with one shorten retry. Length = JS `value.length`.
 - **Dashboard**: `dashboardLayout` always returns every widget; widget data comes from existing queries, except `LLM_USAGE`.
 - **Listing imports**: scanner reads `<Folder>/<account email>/<yyyy-MM-dd>[_HH-mm-ss]-<kind>.json`, read-only, dedupes by file name. Invalid files are stored with `error`. Listings are only created through quick add.
@@ -63,7 +65,7 @@ Everything requires auth unless marked anon.
 - FKs: user cascades to all user tables; Listing → Company/JobRole NoAction so a user delete cascades in one statement.
 - `Names.Normalize` = Trim + ToUpperInvariant. `Location` is aliased in `GlobalUsings.cs` because Hot Chocolate has its own.
 - JSON columns are leaf data: profile links, CV draft and base CV version content, cover letter content.
-- Lossy `Down`, restore a backup instead: `MergeRollingDeadlines`, `AddCompanyIndustryAndLocations`, `AddProfileBullets`, `NavCvLanguages`, `DropCoverLetterPlace`, `AddListingKinds`, `BaseCvVersionLanguages`, `DropAiOperationWorkDigest`.
+- Lossy `Down`, restore a backup instead: `MergeRollingDeadlines`, `AddCompanyIndustryAndLocations`, `AddProfileBullets`, `NavCvLanguages`, `DropCoverLetterPlace`, `AddListingKinds`, `BaseCvVersionLanguages`, `DropAiOperationWorkDigest`, `AddRequirementMaps`.
 
 ## Config keys
 - `ConnectionStrings:Default`: `Data Source=jobhunt.db` (dev), `/data/jobhunt.db` (Docker)
@@ -80,6 +82,12 @@ Everything requires auth unless marked anon.
 - Docker: `docker compose up` → :8080, non-root, volume `jobhunt-data:/data`
 
 ## Decisions log
+- 2026-11-10 — CV work gets one spine: profile is a dump, a reviewed per-listing requirement map states the goal, then CVs and letters are written against it. The map ships first as its own JSON-per-listing slice with no consumers; evidence is bullets and entries, never skill ids, so skill cleanup has nothing to rewrite.
+- 2026-11-10 — Profile bullet refinement checks each bullet against the CV research (delivery, own part, result) and returns notes asking for missing facts instead of inventing them; the fact guard uses only the bullet itself, so siblings can't be merged in.
+- 2026-11-09 — Tailored CV bullets in both templates may take on listing terms, held by the source+listing word check (fallback, not rejection); `Shorten` → `SourceWords`, `ModeFor(listing:)`; base CVs unchanged.
+- 2026-11-08 — CV templates have one wording mode each (`Exact`/`Shorten`/`Rewrite`) checked by one shared function; base CV `DETAILED` is now exact like tailored drafts (no combining), and concise caps are single constants read by both code and prompt text.
+- 2026-11-08 — Base CV `rewrite` flag: opt-in plain-language rewording guided by notes. Accuracy is held by a fact check (no number or profile skill name the entry's bullets lack) instead of the word check; meaning is left to the user's review.
+- 2026-11-08 — CONCISE paragraphs are words from the selected bullets (≤4 new words, server-checked, else dropped) and follow `contentStyle`. Listings outside the candidate's field are judged by the model from listing + job titles (no field flag): own matching title leads, transferable bullets with tech cut, unrelated entries keep only title and dates.
 - 2026-11-06 — Review pass: shared CV prompt rules live in `Features/Prompts`, moved with every prompt byte-identical; base CV and tailored prompts differ in wording, so merging more needs a real prompt change and version bump.
 - 2026-11-06 — Listing lengths capped (names 200, description 20k); `ProtectedWorkDigest` dropped because nothing read it; `ParseJobStatus.Queued/Retrying` commented out until the queue exists.
 - 2026-11-06 — Queries report bad input as GraphQL errors, because typed errors are mutation-only here. STATUS is an index: `schema.graphql` is the contract, code the authority, guides the detail.
@@ -147,7 +155,8 @@ Everything requires auth unless marked anon.
 - Check `/usr/share/zoneinfo/America/Los_Angeles` exists in the Docker aspnet image (usage queries need it).
 - Cover letters: revise loop, save letter as sample; Nuxt UI (incl. application questions).
 - CV import review UI in Nuxt; Norwegian import/translation matching and API-side file extraction remain deferred.
-- Profile ↔ listing matching (skills on SkillId, `experienceMonths` vs `MinYears`, roles, work mode).
+- CV synthesis rework reading the requirement map: bullets written from the whole entry (several → one), one fact guard with review flags instead of three wording modes, voice from example bullets and approved CV text. Then templates on the same rules plus copy-into-draft, and the cover letter reading the map.
+- Deterministic profile ↔ listing matching (skills on SkillId, `experienceMonths` vs `MinYears`, roles, work mode).
 - Nuxt BYOK/model/usage and optional personal-limit settings; UUID-per-action handling and SKIPPED partial analysis.
 - Parse queue: `Channel` + `ParseWorker` (run `job.Model`), per-model RPM limiter, `onParseJobUpdated` over SSE; restore `Queued`/`Retrying`. Then the posting cache.
 - General listing notes. Recruitment agencies: listing → recruiter/end-client link.

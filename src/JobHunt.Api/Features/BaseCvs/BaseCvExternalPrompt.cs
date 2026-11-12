@@ -12,12 +12,15 @@ public record BaseCvExternalPrompt(int Version, string Instructions);
 [QueryType]
 public static class BaseCvExternalPromptQueries
 {
-    public const int Version = 1;
+    public const int Version = 3;
     private const int MaxNotesLength = 2000;
 
     // Copy-paste instructions that pick a CV for a kind of role out of the master profile. Nothing is saved.
+    // rewrite lets the AI reword bullets in plain language, such as IT work for a shop job; previewBaseCv then checks
+    // facts instead of wording, so it must get the same flag.
     public static async Task<BaseCvExternalPrompt> GetBaseCvExternalPromptAsync(Language language, string targetRole,
-        AppDbContext db, CancellationToken ct, string? notes = null, TailoredCvTemplate? template = null)
+        AppDbContext db, CancellationToken ct, string? notes = null, TailoredCvTemplate? template = null,
+        bool rewrite = false)
     {
         var role = Inputs.Clean(targetRole);
         if (role is null || role.Length > BaseCvMutations.MaxNameLength)
@@ -34,21 +37,49 @@ public static class BaseCvExternalPromptQueries
 
         var templateValue = template ?? TailoredCvTemplate.Detailed;
         var concise = templateValue == TailoredCvTemplate.Concise;
-        var pickedBullets = concise
-            ? """
-              Relevant to the target: shorten it by cutting words, not rewriting: keep the candidate's own verbs, terms,
-              and word order, aiming for one line of about 100 characters, up to about 160 when cutting further would lose
-              what was built, a technology, a domain, the scale, or a result. Keep a bullet that is already short as it is.
+        var mode = TailoredCvWording.ModeFor(templateValue, rewrite);
+        var length = concise
+            ? "Aim for one line of about 100 characters, up to about 160."
+            : "Keep it about as long as its source or shorter.";
+        var picked = rewrite
+            ? $"""
+              rewrite it in plain words for the target's reader, following the notes when present. Keep exactly its
+              facts: what the candidate did, for whom, and any result it states; add no fact, number, technology, tool,
+              or claim, and keep it as strong as its source. {length}
               """
-            : "Relevant to the target: copy the bullet exactly as supplied.";
-        var layout = concise
-            ? CvGuidance.ConciseLayout + " Combined bullets count toward these limits."
-            : """
-              For every entry with selected bullets, also return a concise natural paragraph based only on those bullet
-              facts; rephrase or combine facts, but do not infer facts or invent achievements; never leave paragraph null
-              on an entry with selected bullets. Set content.contentStyle to BULLETS by default so the user can choose the
-              presentation for the whole CV.
-              """ + " " + CvGuidance.Coverage;
+            : CvGuidance.ConciseBullets;
+        var combining = rewrite
+            ? "Restate their facts in plain words; add no fact, term, or number they do not state."
+            : "Use those bullets' own words; you may drop words and add at most 2 small linking words, but no other term"
+              + " and no number they do not state.";
+        var fallback = rewrite
+            ? "A bullet that names a number or skill its entry's bullets do not state"
+            : "A bullet changed beyond these rules";
+        // Exact text can't be combined, so DETAILED only picks; shortening and rewriting may fold weaker bullets together.
+        var bulletSteps = mode == TailoredCvWordingMode.Exact
+            ? """
+              1. Relevant to the target: copy the bullet exactly as supplied. Include its sourceBulletId.
+              2. Otherwise: omit it.
+              Every bullet needs a sourceBulletId, and its text must match that source exactly.
+              """
+            : $"""
+              1. Relevant to the target: {picked}
+                 Include its sourceBulletId.
+              2. Less relevant, but still worth a line because it shows breadth or what the job involved: combine it with
+                 related less relevant bullets of the same entry into one short bullet, after that entry's relevant bullets.
+                 {combining} Set sourceBulletId to the first combined bullet's ID. Never combine across
+                 entries or across languages, and never attach one bullet's verb or result to another bullet's work.
+              3. Neither: omit it.
+              {fallback} is replaced by its source text, and every bullet needs a sourceBulletId.
+              """;
+        var notesUse = rewrite
+            ? "use them to decide what to pick and stress, and follow them on how to word the summary, bullets, and paragraphs"
+            : "use them to decide what to pick and stress";
+        var summaryStart = rewrite
+            ? "starting from the profile's own headline and summary and rewording them for the target's reader"
+            : "starting from the profile's own headline and summary and adjusting their emphasis rather than rewriting them";
+        var layout = CvGuidance.Layout(templateValue, rewrite)
+            + (concise ? " Combined bullets count toward these limits." : "");
 
         var instructions = $$"""
             Build a reusable base CV for the target role below from the candidate's master CV (the profile data). The user
@@ -61,7 +92,7 @@ public static class BaseCvExternalPromptQueries
             {{targetJson}}
             </target_json>
             role is the kind of job. notes, when present, are the user's own context on the target, such as the employers,
-            domains, or strengths to aim at: use them to decide what to pick and stress. They are private and are not
+            domains, or strengths to aim at: {{notesUse}}. They are private and are not
             evidence: never quote them or take facts about the candidate from them.
             There is no job listing: wherever the rules below say "the listing", read this target.
             Identify the themes this kind of role emphasises and surface supported evidence of them; never invent it. Keep
@@ -70,15 +101,7 @@ public static class BaseCvExternalPromptQueries
             The profile holds more than one CV should show, so cherry-pick from it. Select only content present in the
             profile; do not invent facts, dates, skills, levels, achievements, or IDs. Include each sourceEntryId, and for
             each bullet of an experience, education, certification, or project, decide:
-            1. {{pickedBullets}}
-               Include its sourceBulletId.
-            2. Less relevant, but still worth a line because it shows breadth or what the job involved: combine it with
-               related less relevant bullets of the same entry into one short bullet, after that entry's relevant bullets.
-               Use those bullets' own words; you may drop words and add at most 2 small linking words, but no other term
-               and no number they do not state. Set sourceBulletId to the first combined bullet's ID. Never combine across
-               entries or across languages, and never attach one bullet's verb or result to another bullet's work.
-            3. Neither: omit it.
-            A bullet changed beyond these rules is replaced by its source text, and every bullet needs a sourceBulletId.
+            {{bulletSteps}}
             {{layout}}
             {{CvGuidance.LanguageEvidence}}
             Omit projects or certifications that are irrelevant. Do not present the same work in full under both an
@@ -87,10 +110,9 @@ public static class BaseCvExternalPromptQueries
             names, exactly as supplied in its skills, of {{CvGuidance.Technologies}} Select profile skills by sourceSkillId: {{CvGuidance.SkillSelection(templateValue)}}
             Copy each skill's categoryId from the profile; only when it is null, suggest one using the rule below. Include
             languages only when present in the profile. Write a concise summary for this kind of role from supported profile
-            facts, starting from the profile's own headline and summary and adjusting their emphasis rather than rewriting
-            them, or null when there is not enough evidence. {{CvGuidance.SummaryConsistency}}
-            {{CvGuidance.ExternalWriting(concise)}}
-            {{CvGuidance.Gap}} Follow Norwegian CV guidance for an ordinary job application. {{CvGuidance.BulletStrength(templateValue)}}
+            facts, {{summaryStart}}, or null when there is not enough evidence. {{CvGuidance.SummaryConsistency}}
+            {{CvGuidance.ExternalWriting(mode != TailoredCvWordingMode.Exact)}}
+            {{CvGuidance.Gap}} Follow Norwegian CV guidance for an ordinary job application. {{CvGuidance.BulletStrength(templateValue, rewrite)}}
             Order experiences, educations, certifications, and projects newest first (ongoing entries first). The CV language is {{TailoredCvLanguageText.Name(language)}}:
             set "language" to "{{(language == Language.Norwegian ? "NORWEGIAN" : "ENGLISH")}}" and write the headline, the summary and every paragraph in that
             language, the summary as plain text without Markdown, {{CvGuidance.SummaryLength(templateValue)}}.
@@ -116,14 +138,19 @@ public static class BaseCvExternalPreviewMutations
     [Error<InvalidTailoredCvDraftException>]
     [UseMutationConvention(PayloadFieldName = "candidate")]
     public static async Task<TailoredCvExternalCandidate> PreviewBaseCvAsync(Language language, string json,
-        AppDbContext db, CancellationToken ct, TailoredCvTemplate? template = null)
+        AppDbContext db, CancellationToken ct, TailoredCvTemplate? template = null, bool rewrite = false)
     {
         var parsed = TailoredCvExternalPreviewMutations.ParseCandidate(json);
+        var templateValue = template ?? TailoredCvTemplate.Detailed;
+        var mode = TailoredCvWording.ModeFor(templateValue, rewrite);
         var content = TailoredCvDraftValidation.Normalize(parsed.Content! with { Language = language }, language)
-            with { Template = template ?? TailoredCvTemplate.Detailed };
-        await TailoredCvDraftValidation.ValidateSourceIdsAsync(content, db, ct);
+            with { Template = templateValue };
+        if (content.BulletGroups().Any(g => g.Bullets.Any(b => b.SourceBulletId is null)))
+            throw new InvalidTailoredCvDraftException("bullets.sourceBulletId: every bullet must name its source bullet.");
+        await TailoredCvDraftValidation.ValidateSourceIdsAsync(content, db, ct,
+            requireSourceBulletText: mode == TailoredCvWordingMode.Exact);
         var profile = await ProfileQueries.LoadAsync(db, ct);
-        content = KeepEntryWords(content, profile);
+        content = KeepEntryWording(content, profile, mode);
         content = await TailoredCvDraftValidation.FillMissingLocationsAsync(content, db, ct);
         content = await TailoredCvDraftValidation.FillMissingSourceDetailsAsync(content, db, ct);
 
@@ -140,23 +167,18 @@ public static class BaseCvExternalPreviewMutations
         });
     }
 
-    // Bullets may combine others from their entry, so words are checked against it; other wording falls back to source.
-    private static TailoredCvContent KeepEntryWords(TailoredCvContent content, Profile profile)
+    // Bullets may combine others from their entry, so they are checked against the whole entry. There is no listing,
+    // so no listing terms are allowed; a rewrite is held to the profile's skill names instead.
+    private static TailoredCvContent KeepEntryWording(TailoredCvContent content, Profile profile, TailoredCvWordingMode mode)
     {
         var sources = profile.BulletLists()
             .SelectMany(entry => entry.Select(bullet => (Bullet: bullet, Entry: entry)))
             .ToDictionary(s => s.Bullet.Id);
-
-        List<TailoredCvBullet> Keep(List<TailoredCvBullet> bullets) => [.. bullets.Select(b =>
-        {
-            if (b.SourceBulletId is not { } id)
-                throw new InvalidTailoredCvDraftException("bullets.sourceBulletId: every bullet must name its source bullet.");
-            var (source, entry) = sources[id];
-            var words = entry.SelectMany(s => new[] { s.Text, TailoredCvLanguageText.Bullet(s, content.Language) });
-            return TailoredCvWording.KeepsSourceWords(b.Text, words, "")
-                ? b : b with { Text = TailoredCvLanguageText.Bullet(source, content.Language) };
-        })];
-
-        return content.MapBullets(Keep);
+        var skillNames = profile.Skills.Select(s => s.Skill)
+            .Concat(profile.Experiences.SelectMany(e => e.Skills)).Concat(profile.Projects.SelectMany(p => p.Skills))
+            .SelectMany(s => new[] { s.Name, s.NameIn(content.Language) }).Distinct().ToList();
+        return TailoredCvWording.KeepSourceWording(content, mode,
+            id => sources[id].Entry.SelectMany(s => new[] { s.Text, TailoredCvLanguageText.Bullet(s, content.Language) }),
+            id => TailoredCvLanguageText.Bullet(sources[id].Bullet, content.Language), "", skillNames);
     }
 }

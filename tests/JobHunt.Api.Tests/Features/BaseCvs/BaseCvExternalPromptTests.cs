@@ -9,14 +9,14 @@ namespace JobHunt.Api.Tests.Features.BaseCvs;
 public class BaseCvExternalPromptTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     private const string Prompt = """
-        query ($language: Language!, $targetRole: String!, $notes: String, $template: TailoredCvTemplate) {
-          baseCvExternalPrompt(language: $language, targetRole: $targetRole, notes: $notes, template: $template) { version instructions }
+        query ($language: Language!, $targetRole: String!, $notes: String, $template: TailoredCvTemplate, $rewrite: Boolean! = false) {
+          baseCvExternalPrompt(language: $language, targetRole: $targetRole, notes: $notes, template: $template, rewrite: $rewrite) { version instructions }
         }
         """;
     private const string Preview = """
-        mutation ($language: Language!, $json: String!, $template: TailoredCvTemplate) {
-          previewBaseCv(input: { language: $language, json: $json, template: $template }) {
-            candidate { content { language template fullName email headline experiences { bullets { text sourceBulletId } } } }
+        mutation ($language: Language!, $json: String!, $template: TailoredCvTemplate, $rewrite: Boolean! = false) {
+          previewBaseCv(input: { language: $language, json: $json, template: $template, rewrite: $rewrite }) {
+            candidate { content { language template fullName email headline experiences { paragraph bullets { text sourceBulletId } } } }
             errors { __typename ... on Error { message } }
           }
         }
@@ -40,8 +40,8 @@ public class BaseCvExternalPromptTests(ApiFactory factory) : IClassFixture<ApiFa
         Assert.Contains("Prompt Base Employer", instructions);
         Assert.Contains($"\"id\":{bulletIds[0]}", instructions);
         Assert.Contains("cherry-pick", instructions);
-        Assert.Contains("combine it with", instructions);
         Assert.Contains("copy the bullet exactly as supplied", instructions);
+        Assert.DoesNotContain("combine it with", instructions);
         Assert.Contains("\"template\": \"DETAILED\"", instructions);
         Assert.DoesNotContain("companyResearch", instructions);
         Assert.DoesNotContain("\"email\"", instructions);
@@ -57,10 +57,39 @@ public class BaseCvExternalPromptTests(ApiFactory factory) : IClassFixture<ApiFa
             language = "NORWEGIAN", targetRole = "Frontend", notes = (string?)null, template = "CONCISE",
         })).GetProperty("baseCvExternalPrompt").GetProperty("instructions").GetString()!;
 
-        Assert.Contains("shorten it by cutting words", instructions);
+        Assert.Contains("Shorten each selected bullet by cutting words", instructions);
+        // A base CV has no listing to take terms from.
+        Assert.DoesNotContain("listing's term", instructions);
+        Assert.Contains("combine it with", instructions);
         Assert.Contains("at most 5 bullets for the newest experience", instructions);
+        Assert.Contains("short paragraph of at most 2 sentences", instructions);
+        Assert.Contains("outside the field of most of the candidate's experience", instructions.ReplaceLineEndings(" "));
         Assert.Contains("\"template\": \"CONCISE\"", instructions);
         Assert.Contains("\"language\" to \"NORWEGIAN\"", instructions);
+    }
+
+    [Theory]
+    [InlineData("CONCISE")]
+    [InlineData("DETAILED")]
+    public async Task Prompt_Rewrite_LetsNotesGuideThePlainWording(string template)
+    {
+        var client = await factory.GetOwnerClientAsync();
+
+        var instructions = (await client.GraphQLAsync(Prompt, new
+        {
+            language = "NORWEGIAN", targetRole = "Barista", notes = "Explain IT work in plain words", template, rewrite = true,
+        })).GetProperty("baseCvExternalPrompt").GetProperty("instructions").GetString()!.ReplaceLineEndings(" ");
+
+        Assert.Contains("follow them on how to word the summary, bullets, and paragraphs", instructions);
+        Assert.Contains("rewrite it in plain words", instructions);
+        Assert.Contains("names a number or skill its entry's bullets do not state", instructions);
+        Assert.DoesNotContain("shorten it by cutting words", instructions);
+        Assert.DoesNotContain("copy the bullet exactly as supplied", instructions);
+        Assert.DoesNotContain("at most 2 small linking words", instructions);
+        Assert.Contains("Translate the other entries rather than dropping them", instructions);
+        Assert.Contains("select at least its most relevant one, rewritten in plain words", instructions);
+        Assert.DoesNotContain("Prefer no bullet over one that only makes sense to IT people", instructions);
+        Assert.DoesNotContain("then select none and the entry shows only its title and dates", instructions);
     }
 
     [Theory]
@@ -82,7 +111,7 @@ public class BaseCvExternalPromptTests(ApiFactory factory) : IClassFixture<ApiFa
     }
 
     [Fact]
-    public async Task Preview_KeepsCopiedAndCombinedBullets_AndAddsProfileContact()
+    public async Task Preview_Concise_KeepsCopiedAndCombinedBullets_AndAddsProfileContact()
     {
         var client = await factory.GetOwnerClientAsync();
         await client.GraphQLAsync("""
@@ -93,19 +122,34 @@ public class BaseCvExternalPromptTests(ApiFactory factory) : IClassFixture<ApiFa
         var combined = "Wrote deployment scripts and maintained the build pipeline";
         var json = Candidate(entryId, (bulletIds[0], "Built the checkout in Vue"), (bulletIds[1], combined));
 
-        var payload = (await client.GraphQLAsync(Preview, new { language = "ENGLISH", json, template = (string?)null }))
+        var payload = (await client.GraphQLAsync(Preview, new { language = "ENGLISH", json, template = "CONCISE" }))
             .GetProperty("previewBaseCv");
 
         Assert.Equal(JsonValueKind.Null, payload.GetProperty("errors").ValueKind);
         var content = payload.GetProperty("candidate").GetProperty("content");
         Assert.Equal("ENGLISH", content.GetProperty("language").GetString());
-        Assert.Equal("DETAILED", content.GetProperty("template").GetString());
+        Assert.Equal("CONCISE", content.GetProperty("template").GetString());
         var bullets = content.GetProperty("experiences")[0].GetProperty("bullets");
         Assert.Equal("Built the checkout in Vue", bullets[0].GetProperty("text").GetString());
         Assert.Equal(combined, bullets[1].GetProperty("text").GetString());
         Assert.Equal(bulletIds[1], bullets[1].GetProperty("sourceBulletId").GetInt32());
         Assert.Equal("Base Owner", content.GetProperty("fullName").GetString());
         Assert.Equal("base@example.com", content.GetProperty("email").GetString());
+    }
+
+    [Fact]
+    public async Task Preview_Detailed_RejectsChangedOrCombinedBulletText()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var (entryId, bulletIds) = await AddExperienceAsync(client, "Exact Employer",
+            "Wrote deployment scripts", "Maintained the build pipeline");
+        var json = Candidate(entryId, (bulletIds[0], "Wrote deployment scripts and maintained the build pipeline"));
+
+        var payload = (await client.GraphQLAsync(Preview, new { language = "ENGLISH", json, template = (string?)null }))
+            .GetProperty("previewBaseCv");
+
+        Assert.Equal("InvalidTailoredCvDraftError", payload.GetProperty("errors")[0].GetProperty("__typename").GetString());
+        Assert.Contains("text must match the source bullet", payload.GetProperty("errors")[0].GetProperty("message").GetString());
     }
 
     [Fact]
@@ -123,6 +167,44 @@ public class BaseCvExternalPromptTests(ApiFactory factory) : IClassFixture<ApiFa
 
         Assert.Equal("Wrote deployment scripts", bullets[0].GetProperty("text").GetString());
         Assert.Equal("Maintained the build pipeline", bullets[1].GetProperty("text").GetString());
+    }
+
+    [Theory]
+    [InlineData("CONCISE", "Wrote deployment scripts and served coffee to customers in the café.", null)]
+    [InlineData("CONCISE", "Wrote and maintained deployment scripts and the build pipeline.", "Wrote and maintained deployment scripts and the build pipeline.")]
+    [InlineData("DETAILED", "Wrote deployment scripts and served coffee to customers in the café.", "Wrote deployment scripts and served coffee to customers in the café.")]
+    public async Task Preview_ConciseParagraph_MustKeepTheEntrysWords(string template, string paragraph, string? expected)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var (entryId, bulletIds) = await AddExperienceAsync(client, "Paragraph Employer",
+            "Wrote deployment scripts", "Maintained the build pipeline");
+        var json = Candidate(entryId, paragraph, (bulletIds[0], "Wrote deployment scripts"));
+
+        var experience = (await client.GraphQLAsync(Preview, new { language = "ENGLISH", json, template }))
+            .GetProperty("previewBaseCv").GetProperty("candidate").GetProperty("content").GetProperty("experiences")[0];
+
+        Assert.Equal(expected, experience.GetProperty("paragraph").GetString());
+    }
+
+    [Fact]
+    public async Task Preview_Rewrite_KeepsPlainWording_ButNotNewNumbersOrSkills()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var (entryId, bulletIds) = await AddExperienceAsync(client, "Rewrite Employer", ["Svelte"],
+            "Maintained 3 Craft CMS applications built with React", "Trained 2 interns", "Fixed bugs in Node.js REST APIs");
+        var plain = "Looked after 3 websites and kept them running";
+        var json = Candidate(entryId, "Looked after websites and kept them running for the people who use them.",
+            (bulletIds[0], plain), (bulletIds[1], "Taught 5 new colleagues"), (bulletIds[2], "Fixed errors in Svelte apps"));
+
+        var experience = (await client.GraphQLAsync(Preview, new { language = "ENGLISH", json, template = "CONCISE", rewrite = true }))
+            .GetProperty("previewBaseCv").GetProperty("candidate").GetProperty("content").GetProperty("experiences")[0];
+
+        var bullets = experience.GetProperty("bullets");
+        Assert.Equal(plain, bullets[0].GetProperty("text").GetString());
+        Assert.Equal("Trained 2 interns", bullets[1].GetProperty("text").GetString());
+        Assert.Equal("Fixed bugs in Node.js REST APIs", bullets[2].GetProperty("text").GetString());
+        Assert.Equal("Looked after websites and kept them running for the people who use them.",
+            experience.GetProperty("paragraph").GetString());
     }
 
     [Fact]
@@ -169,9 +251,13 @@ public class BaseCvExternalPromptTests(ApiFactory factory) : IClassFixture<ApiFa
         Assert.Equal("InvalidTailoredCvDraftError", payload.GetProperty("errors")[0].GetProperty("__typename").GetString());
     }
 
-    private static async Task<(int EntryId, List<int> BulletIds)> AddExperienceAsync(HttpClient client, string employer, params string[] bullets)
+    private static Task<(int EntryId, List<int> BulletIds)> AddExperienceAsync(HttpClient client, string employer, params string[] bullets) =>
+        AddExperienceAsync(client, employer, [], bullets);
+
+    private static async Task<(int EntryId, List<int> BulletIds)> AddExperienceAsync(HttpClient client, string employer,
+        string[] skills, params string[] bullets)
     {
-        var entryId = (await ProfileEntryTests.AddExperienceAsync(client, employer: ListingTests.Unique(employer), skills: []))
+        var entryId = (await ProfileEntryTests.AddExperienceAsync(client, employer: ListingTests.Unique(employer), skills: skills))
             .GetProperty("id").GetInt32();
         var ids = new List<int>();
         foreach (var text in bullets)
@@ -183,14 +269,17 @@ public class BaseCvExternalPromptTests(ApiFactory factory) : IClassFixture<ApiFa
         return (entryId, ids);
     }
 
-    private static string Candidate(int entryId, params (int? Id, string Text)[] bullets) => JsonSerializer.Serialize(new
+    private static string Candidate(int entryId, params (int? Id, string Text)[] bullets) =>
+        Candidate(entryId, null, bullets);
+
+    private static string Candidate(int entryId, string? paragraph, params (int? Id, string Text)[] bullets) => JsonSerializer.Serialize(new
     {
         schemaVersion = 1,
         content = new
         {
             experiences = new[] { new
             {
-                sourceEntryId = entryId, employer = "Employer", title = "Developer", startMonth = "2020-01-01", endMonth = (string?)null,
+                sourceEntryId = entryId, employer = "Employer", title = "Developer", startMonth = "2020-01-01", endMonth = (string?)null, paragraph,
                 bullets = bullets.Select(b => new { sourceBulletId = b.Id, text = b.Text }),
             } },
         },

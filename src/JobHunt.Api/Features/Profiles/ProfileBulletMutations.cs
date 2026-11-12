@@ -91,6 +91,21 @@ public static class ProfileBulletMutations
         return id;
     }
 
+    // Shared by the apply mutations of AI suggestions. Changes tracked rows only; the caller saves, so an unknown id
+    // or invalid text leaves every bullet unchanged.
+    internal static async Task ReplaceTextsAsync(List<ProfileBulletText> bullets, AppDbContext db, CancellationToken ct)
+    {
+        if (bullets.DistinctBy(b => b.Id).Count() != bullets.Count)
+            throw new InvalidProfileException("A bullet is listed twice.");
+        var ids = bullets.Select(b => b.Id).ToList();
+        var rows = await db.ProfileBullets.Where(b => ids.Contains(b.Id)).ToDictionaryAsync(b => b.Id, ct);
+        foreach (var bullet in bullets)
+        {
+            var row = rows.GetValueOrDefault(bullet.Id) ?? throw new ProfileEntryNotFoundException("Bullet", bullet.Id);
+            row.Text = ProfileMutations.Required(bullet.Text, "Bullet", MaxTextLength);
+        }
+    }
+
     // Exactly one of the four foreign keys is set, so equal-or-both-null on all four means the same entry.
     private static IQueryable<ProfileBullet> SameEntry(ProfileBullet bullet, AppDbContext db) =>
         db.ProfileBullets.Where(b => b.ExperienceId == bullet.ExperienceId && b.EducationId == bullet.EducationId

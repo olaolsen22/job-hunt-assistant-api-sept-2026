@@ -16,6 +16,7 @@ using JobHunt.Api.Features.LlmModels;
 using JobHunt.Api.Features.LlmProviderKeys;
 using JobHunt.Api.Features.Parsing;
 using JobHunt.Api.Features.Profiles;
+using JobHunt.Api.Features.RequirementMaps;
 using JobHunt.Api.Features.CoverLetters;
 using JobHunt.Api.Features.TailoredCvDrafts;
 using JobHunt.Api.Features.WritingSamples;
@@ -81,6 +82,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
     public DbSet<WritingSample> WritingSamples => Set<WritingSample>();
     public DbSet<CoverLetterDraft> CoverLetterDrafts => Set<CoverLetterDraft>();
     public DbSet<ApplicationQuestion> ApplicationQuestions => Set<ApplicationQuestion>();
+    public DbSet<RequirementMap> RequirementMaps => Set<RequirementMap>();
 
     // Null outside a request (startup, seeding), so the user filters below then match nothing.
     public string? CurrentUserId => httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -151,5 +153,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
         modelBuilder.Entity<WritingSample>().HasQueryFilter(s => s.UserId == CurrentUserId);
         modelBuilder.Entity<CoverLetterDraft>().HasQueryFilter(d => d.UserId == CurrentUserId);
         modelBuilder.Entity<ApplicationQuestion>().HasQueryFilter(q => q.UserId == CurrentUserId);
+        modelBuilder.Entity<RequirementMap>().HasQueryFilter(m => m.UserId == CurrentUserId);
     }
 }

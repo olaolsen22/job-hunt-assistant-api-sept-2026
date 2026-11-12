@@ -12,6 +12,7 @@ type Query {
     targetRole: String!
     notes: String
     template: TailoredCvTemplate
+    rewrite: Boolean! = false
   ): BaseCvExternalPrompt! @cost(weight: "10")
   baseCvs(archived: Boolean! = false): [BaseCv!]! @cost(weight: "10")
   baseCvVersion(id: Int!): BaseCvVersion @cost(weight: "10")
@@ -201,12 +202,20 @@ type Query {
     )
     @cost(weight: "10")
   parseJob(id: UUID!): ParseJob @cost(weight: "10")
+  profileBulletRefinementPrompt(
+    bulletId: Int
+    kind: ProfileEntryKind
+    entryId: Int
+  ): ProfileBulletRefinementPrompt! @cost(weight: "10")
   profileCvParsePrompt: ProfileCvParsePrompt! @cost(weight: "10")
   profile: Profile! @cost(weight: "10")
   profileSkillWordingPrompt: ProfileSkillWordingPrompt! @cost(weight: "10")
   profileSummaryPrompt: ProfileSummaryPrompt! @cost(weight: "10")
   profileTranslationPrompt(language: Language!): ProfileTranslationPrompt!
     @cost(weight: "10")
+  requirementMapExternalPrompt(listingId: Int!): RequirementMapExternalPrompt!
+    @cost(weight: "10")
+  requirementMap(listingId: Int!): RequirementMap @cost(weight: "10")
   skillCategories(
     "Returns the first _n_ elements from the list."
     first: Int
@@ -403,6 +412,12 @@ type Mutation {
     @cost(weight: "10")
   deleteProfileBullet(input: DeleteProfileBulletInput!): DeleteProfileBulletPayload!
     @cost(weight: "10")
+  refineProfileBullets(input: RefineProfileBulletsInput!): RefineProfileBulletsPayload!
+    @cost(weight: "10")
+  previewProfileBulletRefinement(input: PreviewProfileBulletRefinementInput!): PreviewProfileBulletRefinementPayload!
+    @cost(weight: "10")
+  applyProfileBulletRefinement(input: ApplyProfileBulletRefinementInput!): ApplyProfileBulletRefinementPayload!
+    @cost(weight: "10")
   clearProfileSections(input: ClearProfileSectionsInput!): ClearProfileSectionsPayload!
     @cost(weight: "10")
   importProfileCv(input: ImportProfileCvInput!): ImportProfileCvPayload!
@@ -490,6 +505,14 @@ type Mutation {
   suggestProfileTranslation(input: SuggestProfileTranslationInput!): SuggestProfileTranslationPayload!
     @cost(weight: "10")
   applyProfileTranslation(input: ApplyProfileTranslationInput!): ApplyProfileTranslationPayload!
+    @cost(weight: "10")
+  generateRequirementMap(input: GenerateRequirementMapInput!): GenerateRequirementMapPayload!
+    @cost(weight: "10")
+  previewRequirementMap(input: PreviewRequirementMapInput!): PreviewRequirementMapPayload!
+    @cost(weight: "10")
+  saveRequirementMap(input: SaveRequirementMapInput!): SaveRequirementMapPayload!
+    @cost(weight: "10")
+  deleteRequirementMap(input: DeleteRequirementMapInput!): DeleteRequirementMapPayload!
     @cost(weight: "10")
   createSkillCategory(input: CreateSkillCategoryInput!): CreateSkillCategoryPayload!
     @cost(weight: "10")
@@ -641,6 +664,11 @@ type ApplicationQuestion {
 
 type ApplicationQuestionNotFoundError implements Error {
   message: String!
+}
+
+type ApplyProfileBulletRefinementPayload {
+  profile: Profile
+  errors: [ApplyProfileBulletRefinementError!]
 }
 
 type ApplyProfileSkillWordingPayload {
@@ -1020,6 +1048,11 @@ type DeleteProfileTranslationPayload {
   errors: [DeleteProfileTranslationError!]
 }
 
+type DeleteRequirementMapPayload {
+  listingId: Int
+  errors: [DeleteRequirementMapError!]
+}
+
 type DeleteSkillCategoryPayload {
   id: Int
   errors: [DeleteSkillCategoryError!]
@@ -1117,6 +1150,11 @@ type GenerateCoverLetterPayload {
 type GenerateCvDocumentPayload {
   document: Document
   errors: [GenerateCvDocumentError!]
+}
+
+type GenerateRequirementMapPayload {
+  result: RequirementMapGenerationResult
+  errors: [GenerateRequirementMapError!]
 }
 
 type ImportProfileCvPayload {
@@ -1225,6 +1263,10 @@ type InvalidProfileError implements Error {
 }
 
 type InvalidProfileImportError implements Error {
+  message: String!
+}
+
+type InvalidRequirementMapError implements Error {
   message: String!
 }
 
@@ -1587,9 +1629,19 @@ type PreviewCoverLetterTextPayload {
   errors: [PreviewCoverLetterTextError!]
 }
 
+type PreviewProfileBulletRefinementPayload {
+  result: ProfileBulletRefinementSuggestion
+  errors: [PreviewProfileBulletRefinementError!]
+}
+
 type PreviewProfileCvImportPayload {
   candidate: ProfileCvCandidate
   errors: [PreviewProfileCvImportError!]
+}
+
+type PreviewRequirementMapPayload {
+  candidate: RequirementMapContent
+  errors: [PreviewRequirementMapError!]
 }
 
 type PreviewTailoredCvDraftPayload {
@@ -1636,6 +1688,23 @@ type ProfileBullet {
   id: Int!
   text: String!
   position: Int!
+}
+
+type ProfileBulletRefinement {
+  bulletId: Int!
+  text: String
+  note: String
+}
+
+type ProfileBulletRefinementPrompt {
+  version: Int!
+  instructions: String!
+}
+
+type ProfileBulletRefinementSuggestion {
+  status: ProfileBulletRefinementStatus!
+  bullets: [ProfileBulletRefinement!]
+  error: String
 }
 
 type ProfileBulletText {
@@ -1955,6 +2024,11 @@ type RecordOutcomePayload {
   errors: [RecordOutcomeError!]
 }
 
+type RefineProfileBulletsPayload {
+  result: ProfileBulletRefinementSuggestion
+  errors: [RefineProfileBulletsError!]
+}
+
 type RemoveProfileLanguagePayload {
   name: String
   errors: [RemoveProfileLanguageError!]
@@ -1968,6 +2042,48 @@ type RemoveProfileSkillPayload {
 type RemoveProviderKeyPayload {
   providerKey: ProviderKeyStatus
   errors: [RemoveProviderKeyError!]
+}
+
+type RequirementEntryRef {
+  kind: RequirementEntryKind!
+  id: Int!
+}
+
+type RequirementMap {
+  id: Int!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  content: RequirementMapContent!
+}
+
+type RequirementMapContent {
+  needs: [RequirementNeed!]!
+}
+
+type RequirementMapExternalPrompt {
+  version: Int!
+  instructions: String!
+}
+
+type RequirementMapGenerationResult {
+  status: RequirementMapGenerationStatus!
+  content: RequirementMapContent
+  error: String
+  errorCode: String
+}
+
+type RequirementMapNotFoundError implements Error {
+  message: String!
+}
+
+type RequirementNeed {
+  text: String!
+  kind: RequirementKind!
+  importance: RequirementImportance!
+  match: RequirementMatch!
+  note: String
+  bulletIds: [Int!]!
+  entries: [RequirementEntryRef!]!
 }
 
 type SaveBaseCvVersionPayload {
@@ -1988,6 +2104,11 @@ type SaveDashboardLayoutPayload {
 type SaveLocationPayload {
   location: Location
   errors: [SaveLocationError!]
+}
+
+type SaveRequirementMapPayload {
+  requirementMap: RequirementMap
+  errors: [SaveRequirementMapError!]
 }
 
 type SaveTailoredCvDraftPayload {
@@ -2647,6 +2768,10 @@ union AnalyzeTailoredCvSectionError =
   | UnknownLlmModelError
   | AiSafetyError
 
+union ApplyProfileBulletRefinementError =
+  | ProfileEntryNotFoundError
+  | InvalidProfileError
+
 union ApplyProfileSkillWordingError =
   | ProfileEntryNotFoundError
   | InvalidProfileError
@@ -2716,6 +2841,8 @@ union DeleteProfileReferenceError = ProfileEntryNotFoundError
 
 union DeleteProfileTranslationError = ProfileEntryNotFoundError
 
+union DeleteRequirementMapError = RequirementMapNotFoundError
+
 union DeleteSkillCategoryError = SkillCategoryNotFoundError
 
 union DeleteSkillCategoryTranslationError = SkillCategoryNotFoundError
@@ -2749,6 +2876,12 @@ union GenerateCoverLetterError =
 union GenerateCvDocumentError =
   | ListingNotFoundError
   | TailoredCvDraftNotFoundError
+
+union GenerateRequirementMapError =
+  | ListingNotFoundError
+  | InvalidRequirementMapError
+  | UnknownLlmModelError
+  | AiSafetyError
 
 union ImportProfileCvError =
   | InvalidProfileImportError
@@ -2800,7 +2933,15 @@ union PreviewCoverLetterTextError =
   | ListingNotFoundError
   | InvalidCoverLetterError
 
+union PreviewProfileBulletRefinementError =
+  | InvalidProfileError
+  | ProfileEntryNotFoundError
+
 union PreviewProfileCvImportError = InvalidProfileImportError
+
+union PreviewRequirementMapError =
+  | ListingNotFoundError
+  | InvalidRequirementMapError
 
 union PreviewTailoredCvDraftError =
   | ListingNotFoundError
@@ -2810,6 +2951,12 @@ union RecordOutcomeError =
   | ListingNotFoundError
   | InvalidStatusTransitionError
   | InvalidApplicationError
+
+union RefineProfileBulletsError =
+  | UnknownLlmModelError
+  | AiSafetyError
+  | InvalidProfileError
+  | ProfileEntryNotFoundError
 
 union RemoveProfileLanguageError = ProfileEntryNotFoundError
 
@@ -2827,6 +2974,10 @@ union SaveCoverLetterDraftError = ListingNotFoundError | InvalidCoverLetterError
 union SaveDashboardLayoutError = InvalidDashboardLayoutError
 
 union SaveLocationError = InvalidLocationError
+
+union SaveRequirementMapError =
+  | ListingNotFoundError
+  | InvalidRequirementMapError
 
 union SaveTailoredCvDraftError =
   | ListingNotFoundError
@@ -3130,6 +3281,10 @@ input ApplicationStatusOperationFilterInput {
   neq: ApplicationStatus @cost(weight: "10")
   in: [ApplicationStatus!] @cost(weight: "10")
   nin: [ApplicationStatus!] @cost(weight: "10")
+}
+
+input ApplyProfileBulletRefinementInput {
+  bullets: [ProfileBulletTextInput!]!
 }
 
 input ApplyProfileSkillWordingInput {
@@ -3493,6 +3648,10 @@ input DeleteProfileTranslationInput {
   language: Language!
 }
 
+input DeleteRequirementMapInput {
+  listingId: Int!
+}
+
 input DeleteSkillCategoryInput {
   id: Int!
 }
@@ -3562,6 +3721,12 @@ input GenerateCoverLetterInput {
 
 input GenerateCvDocumentInput {
   listingId: Int!
+}
+
+input GenerateRequirementMapInput {
+  listingId: Int!
+  model: String
+  requestId: UUID
 }
 
 input ImportProfileCvInput {
@@ -4106,6 +4271,7 @@ input PreviewBaseCvInput {
   language: Language!
   json: String!
   template: TailoredCvTemplate
+  rewrite: Boolean! = false
 }
 
 input PreviewCoverLetterDraftInput {
@@ -4118,7 +4284,19 @@ input PreviewCoverLetterTextInput {
   text: String!
 }
 
+input PreviewProfileBulletRefinementInput {
+  json: String!
+  bulletId: Int
+  kind: ProfileEntryKind
+  entryId: Int
+}
+
 input PreviewProfileCvImportInput {
+  json: String!
+}
+
+input PreviewRequirementMapInput {
+  listingId: Int!
   json: String!
 }
 
@@ -4240,6 +4418,14 @@ input RecordOutcomeInput {
   note: String
 }
 
+input RefineProfileBulletsInput {
+  model: String
+  bulletId: Int
+  kind: ProfileEntryKind
+  entryId: Int
+  requestId: UUID
+}
+
 input RemoveProfileLanguageInput {
   name: String!
 }
@@ -4250,6 +4436,25 @@ input RemoveProfileSkillInput {
 
 input RemoveProviderKeyInput {
   provider: String!
+}
+
+input RequirementEntryRefInput {
+  kind: RequirementEntryKind!
+  id: Int!
+}
+
+input RequirementMapContentInput {
+  needs: [RequirementNeedInput!]!
+}
+
+input RequirementNeedInput {
+  text: String!
+  kind: RequirementKind!
+  importance: RequirementImportance!
+  match: RequirementMatch!
+  bulletIds: [Int!]
+  entries: [RequirementEntryRefInput!]
+  note: String
 }
 
 input SaveBaseCvVersionInput {
@@ -4273,6 +4478,11 @@ input SaveLocationInput {
   city: String
   countryCode: String!
   isTarget: Boolean!
+}
+
+input SaveRequirementMapInput {
+  listingId: Int!
+  content: RequirementMapContentInput!
 }
 
 input SaveTailoredCvDraftInput {
@@ -5014,6 +5224,11 @@ enum ParseMode {
   COMPANIES
 }
 
+enum ProfileBulletRefinementStatus {
+  SUCCEEDED
+  FAILED
+}
+
 enum ProfileCvParseStatus {
   SUCCEEDED
   FAILED
@@ -5059,6 +5274,37 @@ enum ProjectKind {
   PERSONAL
   COURSEWORK
   OPEN_SOURCE
+}
+
+enum RequirementEntryKind {
+  EXPERIENCE
+  EDUCATION
+  CERTIFICATION
+  PROJECT
+}
+
+enum RequirementImportance {
+  REQUIRED
+  PREFERRED
+}
+
+enum RequirementKind {
+  SKILL
+  DUTY
+  QUALIFICATION
+  LANGUAGE
+  PRACTICAL
+}
+
+enum RequirementMapGenerationStatus {
+  SUCCEEDED
+  FAILED
+}
+
+enum RequirementMatch {
+  EVIDENCED
+  PARTIAL
+  GAP
 }
 
 enum Schedule {

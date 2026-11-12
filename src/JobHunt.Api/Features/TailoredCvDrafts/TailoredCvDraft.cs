@@ -69,6 +69,15 @@ public record TailoredCvContent(
         Certifications = Certifications?.Select(e => e with { Bullets = map(e.Bullets) }).ToList(),
         Projects = Projects?.Select(e => e with { Bullets = map(e.Bullets) }).ToList(),
     };
+
+    // Replaces each entry's paragraph with map(its bullets, its paragraph).
+    internal TailoredCvContent MapParagraphs(Func<List<TailoredCvBullet>, string?, string?> map) => this with
+    {
+        Experiences = Experiences?.Select(e => e with { Paragraph = map(e.Bullets, e.Paragraph) }).ToList(),
+        Educations = Educations?.Select(e => e with { Paragraph = map(e.Bullets, e.Paragraph) }).ToList(),
+        Certifications = Certifications?.Select(e => e with { Paragraph = map(e.Bullets, e.Paragraph) }).ToList(),
+        Projects = Projects?.Select(e => e with { Paragraph = map(e.Bullets, e.Paragraph) }).ToList(),
+    };
 }
 
 // Standard: NAV's order. Developer: links with contact lines, skills and projects earlier
@@ -78,8 +87,8 @@ public enum TailoredCvSectionOrder { Standard, Developer }
 public record TailoredCvBullet(string Text, int? SourceBulletId = null);
 // One style for the whole CV, so entries print consistently: as bullets or as one paragraph each.
 public enum TailoredCvContentStyle { Bullets, Paragraph }
-// Detailed keeps the profile's bullet wording; Concise shortens bullets for a one-page CV a recruiter can scan
-// in seconds, and always prints bullets.
+// Detailed keeps full bullets (worded to the listing in a tailored CV); Concise shortens them for a one-page CV a recruiter can scan
+// in seconds. TailoredCvWording.ModeFor and CvGuidance.Layout hold what each asks of the AI.
 public enum TailoredCvTemplate { Detailed, Concise }
 // Location is display text ("Lagos, Nigeria"). Technologies print under the entry in the developer order.
 public record TailoredCvExperience(string Employer, string Title, DateOnly? StartMonth, DateOnly? EndMonth,

@@ -49,12 +49,12 @@ Cherry-picks a CV for a kind of role from the master profile: copy the prompt to
 into the preview, review in the editor, then save with `createBaseCv` or `saveBaseCvVersion`. Nothing is saved before that.
 
 ```graphql
-query ($language: Language!, $targetRole: String!, $notes: String, $template: TailoredCvTemplate) {
-  baseCvExternalPrompt(language: $language, targetRole: $targetRole, notes: $notes, template: $template) { version instructions }
+query ($language: Language!, $targetRole: String!, $notes: String, $template: TailoredCvTemplate, $rewrite: Boolean! = false) {
+  baseCvExternalPrompt(language: $language, targetRole: $targetRole, notes: $notes, template: $template, rewrite: $rewrite) { version instructions }
 }
 
-mutation ($language: Language!, $json: String!, $template: TailoredCvTemplate) {
-  previewBaseCv(input: { language: $language, json: $json, template: $template }) {
+mutation ($language: Language!, $json: String!, $template: TailoredCvTemplate, $rewrite: Boolean! = false) {
+  previewBaseCv(input: { language: $language, json: $json, template: $template, rewrite: $rewrite }) {
     candidate { schemaVersion content { summary experiences { title bullets { sourceBulletId text } } } }
     errors { __typename ... on Error { message } }
   }
@@ -64,13 +64,21 @@ mutation ($language: Language!, $json: String!, $template: TailoredCvTemplate) {
 - `targetRole` (1-100 characters) is the kind of job, such as "Frontend developer". `notes` (at most 2000 characters,
   optional) add context on the target, such as the employers, domains, or strengths to aim at. The AI uses them for
   emphasis, never as facts about the candidate. Invalid values are a GraphQL error on the prompt query.
-- `template` is `DETAILED` by default. Pass the same `language` and `template` to the preview.
-- Relevant bullets are copied (`CONCISE`: shortened). Less relevant ones of one entry may be combined into one short
-  bullet whose `sourceBulletId` is the first combined bullet. The rest are dropped; every job and school stays.
-- The preview checks each bullet's words against the bullets of its own entry: at most 2 new words and no new numbers.
-  A bullet failing that falls back to its source text. The check looks at words, not meaning, so review combined bullets.
-- `InvalidTailoredCvDraftError`: invalid JSON, a bullet without `sourceBulletId`, or a source that isn't in that entry
-  of this profile.
+- `template` is `DETAILED` by default. Pass the same `language`, `template` and `rewrite` to the preview.
+- `rewrite: true` lets the AI reword bullets, paragraphs and the summary in plain words, following `notes` (for
+  example IT work explained for a shop job). For a target outside the candidate's field, IT entries keep at least one
+  bullet translated into everyday words instead of showing only title and dates. The preview then checks facts instead of wording: a bullet or paragraph
+  may not name a number or a profile skill (name or translation) that its entry's bullets don't. A failing bullet
+  falls back to its source text and a failing paragraph becomes `null`. Meaning isn't checked, so review rewrites.
+- `DETAILED` (without `rewrite`) copies relevant bullets exactly and drops the rest, like a tailored draft: the
+  preview rejects bullet text that differs from its source or its translation in that language. Every job and school stays.
+- `CONCISE` shortens relevant bullets, and it and `rewrite` may combine less relevant ones of one entry into one short
+  bullet whose `sourceBulletId` is the first combined bullet. The preview checks each such bullet's words against the
+  bullets of its own entry: at most 2 new words and no new numbers; a failing bullet falls back to its source text.
+  A paragraph gets the same check with up to 4 new words; one that fails becomes `null`. The check looks at words, not
+  meaning, so review combined bullets.
+- `InvalidTailoredCvDraftError`: invalid JSON, a bullet without `sourceBulletId`, a source that isn't in that entry
+  of this profile, or (`DETAILED`) changed bullet text.
 - The result fills name, email, phone, address, links, and date of birth from the profile, plus the headline when the
   AI returned none, so it can be saved as-is.
 - A combined or shortened bullet differs from its source, so `baseCvTranslation` keeps its text and lists it in
