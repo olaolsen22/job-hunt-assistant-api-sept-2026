@@ -54,6 +54,7 @@ public class ApiFactory : WebApplicationFactory<Program>
         // CI has no user-secrets; the key is never used because the fake replaces the real client.
         builder.UseSetting("Llm:Gemini:ApiKey", "test-key");
         builder.UseSetting("ListingImports:Folder", ListingImportFolder);
+        builder.UseSetting("Seed:GuestDemoData", "false");
         // A second allowed model next to the appsettings.json default, so the Owner has something to pick.
         builder.UseSetting("Llm:Gemini:Models:1:Id", StrongModel);
         builder.UseSetting("Llm:Gemini:Models:1:Label", "Strong");

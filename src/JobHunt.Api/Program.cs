@@ -166,6 +166,7 @@ using (var scope = app.Services.CreateScope())
         scope.ServiceProvider.GetRequiredService<TimeProvider>());
     await AuthSeeder.SeedAsync(scope.ServiceProvider);
     await LookupSeeder.SeedAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>());
+    await GuestDataSeeder.SeedAsync(scope.ServiceProvider);
 }
 
 if (app.Environment.IsDevelopment())
