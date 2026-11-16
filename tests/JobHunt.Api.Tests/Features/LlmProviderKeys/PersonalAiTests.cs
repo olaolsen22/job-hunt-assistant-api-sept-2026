@@ -13,14 +13,12 @@ public class PersonalAiTests(ApiFactory factory) : IClassFixture<ApiFactory>
     private static string Model(string provider) => provider switch
     {
         "gemini" => ApiFactory.DefaultModel,
-        "anthropic" => "anthropic:claude-haiku-4-5-20251001",
         "openai" => "openai:gpt-4.1-mini",
         _ => "mistral:mistral-large-2512",
     };
 
     [Theory]
     [InlineData("gemini", "FULL")]
-    [InlineData("anthropic", "FULL")]
     [InlineData("openai", "FULL")]
     [InlineData("mistral", "FULL")]
     [InlineData("gemini", "QUICK")]
@@ -110,7 +108,7 @@ public class PersonalAiTests(ApiFactory factory) : IClassFixture<ApiFactory>
     public async Task PersonalCv_SendsCompleteText_WithoutSavingRawContent()
     {
         var owner = await factory.GetOwnerClientAsync();
-        await ProviderKeyTests.SetAsync(owner, "anthropic", "cv-personal-key");
+        await ProviderKeyTests.SetAsync(owner, "openai", "cv-personal-key");
         try
         {
             factory.Providers.ResponseText = ProfileCvCandidateTests.Empty;
@@ -123,15 +121,15 @@ public class PersonalAiTests(ApiFactory factory) : IClassFixture<ApiFactory>
                 mutation($text:String!,$model:String!) { parseProfileCv(input:{text:$text,model:$model}) {
                   result { status error } errors { __typename }
                 } }
-                """, new { text, model = Model("anthropic") });
+                """, new { text, model = Model("openai") });
             Assert.Equal("SUCCEEDED", data.GetProperty("parseProfileCv").GetProperty("result").GetProperty("status").GetString());
             using var body = JsonDocument.Parse(factory.Providers.LastBody!);
-            Assert.Contains(text, body.RootElement.GetProperty("messages")[0].GetProperty("content")[0].GetProperty("text").GetString());
+            Assert.Contains(text, body.RootElement.GetProperty("messages").ToString());
             Assert.Equal(jobs, await db.ParseJobs.IgnoreQueryFilters().CountAsync());
             Assert.Equal(before, (await owner.GraphQLAsync("{ profile { fullName } }")).ToString());
-            Assert.Equal("anthropic", (await LatestAsync()).Provider);
+            Assert.Equal("openai", (await LatestAsync()).Provider);
         }
-        finally { await ProviderKeyTests.RemoveAsync(owner, "anthropic"); }
+        finally { await ProviderKeyTests.RemoveAsync(owner, "openai"); }
     }
 
     [Fact]

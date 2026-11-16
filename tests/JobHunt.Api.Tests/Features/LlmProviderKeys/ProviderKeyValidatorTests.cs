@@ -7,7 +7,6 @@ public class ProviderKeyValidatorTests
 {
     [Theory]
     [InlineData("gemini", "generativelanguage.googleapis.com", "x-goog-api-key")]
-    [InlineData("anthropic", "api.anthropic.com", "x-api-key")]
     [InlineData("openai", "api.openai.com", "Authorization")]
     [InlineData("mistral", "api.mistral.ai", "Authorization")]
     public async Task Validation_UsesFixedEndpoint_AndPerRequestCredentials(string provider, string host, string header)
@@ -47,7 +46,7 @@ public class ProviderKeyValidatorTests
     {
         var fake = new Handler((_, _) => throw new InvalidOperationException());
         var validator = new ProviderKeyValidator(fake);
-        foreach (var (provider, key) in new[] { ("custom", "key"), ("gemini", " "), ("openai", new string('x', 4097)) })
+        foreach (var (provider, key) in new[] { ("custom", "key"), ("anthropic", "key"), ("gemini", " "), ("openai", new string('x', 4097)) })
             Assert.Equal("invalid-input", (await Assert.ThrowsAsync<ProviderKeyException>(() => validator.ValidateAsync(provider, key, default))).Code);
         Assert.Equal(0, fake.Calls);
     }

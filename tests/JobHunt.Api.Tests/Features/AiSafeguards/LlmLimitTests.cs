@@ -84,24 +84,24 @@ public class LlmLimitTests(ApiFactory factory) : IClassFixture<ApiFactory>
     public async Task EnablingLimitIncludesHistoricalModelsAndRetiredCredentials()
     {
         var owner = await factory.GetOwnerClientAsync();
-        await ProviderKeyTests.SetAsync(owner, "anthropic", "historical-key");
+        await ProviderKeyTests.SetAsync(owner, "mistral", "historical-key");
         try
         {
             using var scope = factory.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var user = await db.Users.SingleAsync(u => u.Email == ApiFactory.OwnerEmail);
-            var key = await db.UserProviderKeys.IgnoreQueryFilters().SingleAsync(k => k.UserId == user.Id && k.Provider == "anthropic" && k.RetiredAt == null);
+            var key = await db.UserProviderKeys.IgnoreQueryFilters().SingleAsync(k => k.UserId == user.Id && k.Provider == "mistral" && k.RetiredAt == null);
             var now = DateTime.UtcNow;
             db.LlmUsages.AddRange(Enumerable.Range(0, 7).Select(i => new LlmUsage
             {
-                UserId = user.Id, Provider = "anthropic", Model = i % 2 == 0 ? "old-model" : "new-model", Operation = "legacy",
+                UserId = user.Id, Provider = "mistral", Model = i % 2 == 0 ? "old-model" : "new-model", Operation = "legacy",
                 KeySource = LlmKeySource.User, UserProviderKeyId = key.Id, CreatedAt = now, Success = false,
             }));
-            await db.SaveChangesAsync(); await ProviderKeyTests.RemoveAsync(owner, "anthropic");
-            var result = (await Set(owner, "anthropic", 5)).GetProperty("setLlmCallLimit").GetProperty("limit");
+            await db.SaveChangesAsync(); await ProviderKeyTests.RemoveAsync(owner, "mistral");
+            var result = (await Set(owner, "mistral", 5)).GetProperty("setLlmCallLimit").GetProperty("limit");
             Assert.Equal(7, result.GetProperty("requestsConsumed").GetInt32());
             Assert.Equal(0, result.GetProperty("remainingRequests").GetInt32());
         }
-        finally { await Set(owner, "anthropic", null); await ProviderKeyTests.RemoveAsync(owner, "anthropic"); }
+        finally { await Set(owner, "mistral", null); await ProviderKeyTests.RemoveAsync(owner, "mistral"); }
     }
 
     [Fact]

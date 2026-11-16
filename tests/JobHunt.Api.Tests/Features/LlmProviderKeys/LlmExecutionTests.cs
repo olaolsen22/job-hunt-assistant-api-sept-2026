@@ -17,7 +17,6 @@ public class LlmExecutionTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     [Theory]
     [InlineData("gemini", 25)]
-    [InlineData("anthropic", 20)]
     [InlineData("openai", 20)]
     [InlineData("mistral", 20)]
     public async Task PersonalExecution_MapsNativeModelOptionsAndTokens(string provider, int expectedOutput)
@@ -55,7 +54,7 @@ public class LlmExecutionTests(ApiFactory factory) : IClassFixture<ApiFactory>
             var maxProperty = provider == "openai" ? "max_completion_tokens" : "max_tokens";
             Assert.Equal(32768, body.RootElement.GetProperty(maxProperty).GetInt32());
             Assert.False(body.RootElement.TryGetProperty("reasoning_effort", out _));
-            if (provider != "anthropic") Assert.Equal("json_object", body.RootElement.GetProperty("response_format").GetProperty("type").GetString());
+            Assert.Equal("json_object", body.RootElement.GetProperty("response_format").GetProperty("type").GetString());
         }
         key.RetiredAt = DateTime.UtcNow; key.ProtectedKey = null;
         await db.SaveChangesAsync();
@@ -63,11 +62,9 @@ public class LlmExecutionTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
     [Theory]
     [InlineData("gemini", 401, "invalid-key")]
-    [InlineData("anthropic", 401, "invalid-key")]
     [InlineData("openai", 401, "invalid-key")]
     [InlineData("mistral", 401, "invalid-key")]
     [InlineData("gemini", 429, "rate-limited")]
-    [InlineData("anthropic", 429, "rate-limited")]
     [InlineData("openai", 429, "rate-limited")]
     [InlineData("mistral", 429, "rate-limited")]
     public async Task PersonalFailure_DoesNotRetryOrFallback_AndLogsOnlySafeDetails(string provider, int status, string code)

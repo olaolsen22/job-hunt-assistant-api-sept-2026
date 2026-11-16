@@ -7,7 +7,7 @@ Lets authenticated real users manage private AI provider credentials and run AI 
 ## Requirements
 
 ### Requirement: Private provider key management
-Owners SHALL manage one active personal key per provider through `setProviderKey(provider, apiKey)` and `removeProviderKey(provider)`. Supported providers SHALL be Gemini, Anthropic, OpenAI, and Mistral. Guest and non-Owner callers SHALL be denied before validation requests or writes. Operations SHALL affect only the current user's keys.
+Owners SHALL manage one active personal key per provider through `setProviderKey(provider, apiKey)` and `removeProviderKey(provider)`. Supported providers SHALL be Gemini, OpenAI, and Mistral. Guest and non-Owner callers SHALL be denied before validation requests or writes. Operations SHALL affect only the current user's keys.
 
 #### Scenario: Set a personal key
 - **WHEN** an Owner saves a valid key for a supported provider
@@ -29,6 +29,11 @@ Owners SHALL manage one active personal key per provider through `setProviderKey
 #### Scenario: Different user's key
 - **WHEN** another Owner queries provider keys
 - **THEN** none of the first Owner's credential metadata is returned
+
+#### Scenario: Removed provider
+- **WHEN** an Owner has a stored credential for a provider that is no longer supported
+- **THEN** key status queries omit that credential, including when retired credentials are requested
+- **AND** attempts to configure that provider are rejected before an outbound request
 
 ### Requirement: Validate before replacing a key
 Key save SHALL reject unsupported providers, blank keys, and keys over 4,096 characters before outbound requests. Supported keys SHALL pass a bounded authenticated provider model-list request before persistence. Validation failure or cancellation SHALL preserve the previous active key. Successful validation SHALL NOT imply model access, inference quota, or available credit.
@@ -76,7 +81,7 @@ An allowed Gemini selection SHALL use the caller's active personal Gemini key wh
 - **THEN** the normal operation returns a safe failure and no shared or alternative-provider call is attempted
 
 #### Scenario: Another provider is configured
-- **WHEN** an Owner has an Anthropic key but no Gemini key and selects Gemini
+- **WHEN** an Owner has an OpenAI key but no Gemini key and selects Gemini
 - **THEN** the selected Gemini call uses the shared key
 
 ### Requirement: Provider secrets stay out of diagnostics

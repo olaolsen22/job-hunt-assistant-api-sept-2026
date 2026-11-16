@@ -21,8 +21,7 @@ public class FakeProviderHandler : HttpMessageHandler
     {
         LastHost = request.RequestUri!.Host;
         LastCredential = request.Headers.Authorization?.Parameter
-            ?? (request.Headers.TryGetValues("x-goog-api-key", out var google) ? google.Single() : null)
-            ?? (request.Headers.TryGetValues("x-api-key", out var anthropic) ? anthropic.Single() : null);
+            ?? (request.Headers.TryGetValues("x-goog-api-key", out var google) ? google.Single() : null);
         var validation = request.Method == HttpMethod.Get;
         if (validation) ValidationCalls++;
         else
@@ -37,11 +36,6 @@ public class FakeProviderHandler : HttpMessageHandler
             {
                 candidates = new[] { new { content = new { role = "model", parts = new[] { new { text = ResponseText } } }, finishReason = "STOP" } },
                 usageMetadata = new { promptTokenCount = 100, candidatesTokenCount = 20, thoughtsTokenCount = 5, totalTokenCount = 125 },
-            },
-            "api.anthropic.com" => new
-            {
-                id = "msg_fake", type = "message", role = "assistant", model = "configured-model", stop_reason = "end_turn",
-                content = new[] { new { type = "text", text = ResponseText } }, usage = new { input_tokens = 100, output_tokens = 20 },
             },
             _ => new
             {

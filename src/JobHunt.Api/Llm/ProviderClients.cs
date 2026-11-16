@@ -1,4 +1,3 @@
-using Anthropic;
 using Google.GenAI;
 using Google.GenAI.Types;
 using JobHunt.Api.Features.LlmProviderKeys;
@@ -14,14 +13,12 @@ public static class LlmProviders
     public const string HttpClientName = "LlmProvider";
     public const string SharedCredentialId = "shared-gemini";
     public const string Gemini = "gemini";
-    public const string Anthropic = "anthropic";
     public const string OpenAI = "openai";
     public const string Mistral = "mistral";
-    public static IReadOnlyList<string> Supported { get; } = [Gemini, Anthropic, OpenAI, Mistral];
+    public static IReadOnlyList<string> Supported { get; } = [Gemini, OpenAI, Mistral];
     public static Uri Endpoint(string provider) => new(provider switch
     {
         Gemini => "https://generativelanguage.googleapis.com/",
-        Anthropic => "https://api.anthropic.com/",
         OpenAI => "https://api.openai.com/v1/",
         Mistral => "https://api.mistral.ai/v1/",
         _ => throw new ProviderKeyException(LlmErrorCodes.InvalidInput),
@@ -42,12 +39,6 @@ public static class ProviderClients
                     httpOptions: new HttpOptions { RetryOptions = new HttpRetryOptions { Attempts = 1 } },
                     clientOptions: new ClientOptions { HttpClientFactory = () => transport })
                     .AsIChatClient(model),
-                LlmProviders.Anthropic => new AnthropicClient
-                {
-                    ApiKey = apiKey, BaseUrl = LlmProviders.Endpoint(provider).ToString().TrimEnd('/'),
-                    HttpClient = transport, MaxRetries = 0,
-                    Timeout = TimeSpan.FromMinutes(2),
-                }.AsIChatClient(model),
                 LlmProviders.OpenAI or LlmProviders.Mistral => new OpenAIClient(new ApiKeyCredential(apiKey), new OpenAIClientOptions
                 {
                     Endpoint = LlmProviders.Endpoint(provider),

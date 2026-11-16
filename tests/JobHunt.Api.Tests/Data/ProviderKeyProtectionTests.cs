@@ -21,7 +21,7 @@ public class ProviderKeyProtectionTests
             key.UserId = "other";
             Assert.Equal("credential-unavailable", Assert.Throws<ProviderKeyException>(() => second.Unprotect(key)).Code);
             key.UserId = "first";
-            key.Provider = "anthropic";
+            key.Provider = "mistral";
             Assert.Throws<ProviderKeyException>(() => second.Unprotect(key));
             key.Provider = "gemini";
             var id = key.Id;

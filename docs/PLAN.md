@@ -14,7 +14,7 @@ that other developers browsing GitHub can find their way around.
 | Guest account | Sandbox: full CRUD, data reset nightly, AI calls heavily capped |
 | MVP scope | Tracker: applications + status history, notes, contacts, CVs, dashboard stats |
 | AI in MVP | Job-posting parsing and English CV text import; both support built-in AI and external copy-paste prompts |
-| AI later | CV ↔ job matching, PDF/image parsing, more providers (Claude, OpenAI) |
+| AI later | CV ↔ job matching, PDF/image parsing, more providers (OpenAI, Mistral) |
 | LLM providers | Gemini `gemini-3.1-flash-lite` (free tier) by default; Ollama optional. **Chosen per user**. No Ollama container: if Ollama can't be reached, fail cleanly |
 | API style | **Hybrid**: REST for auth + health, **GraphQL (Hot Chocolate)** for all domain data. No endpoint exists in both |
 | Realtime | Parse progress as a GraphQL subscription over SSE (`graphql-sse`) |
@@ -202,9 +202,9 @@ LlmUsage                           ← built: one row per LLM call (cache hits t
 ## 5. LLM layer
 
 **Abstraction: `Microsoft.Extensions.AI` (`IChatClient`).** It is the standard .NET abstraction,
-and adding Claude/OpenAI later means registering another client, not writing a new code path.
+and adding providers later means registering another client, not writing a new code path.
 
-- Providers are registered as **keyed services** (`"gemini"`, `"ollama"`, later `"anthropic"`, `"openai"`).
+- Providers are registered as **keyed services** (`"gemini"`, `"ollama"`, `"openai"`, `"mistral"`).
 - `LlmProviderResolver` picks the client from `UserSettings.PreferredProvider`, with config as fallback.
 - **Gemini client:** decide at scaffold time between the official Google GenAI .NET SDK (if its
   `IChatClient` adapter is mature) and Gemini's OpenAI-compatible endpoint through the OpenAI
@@ -349,7 +349,7 @@ current paid-tier prices, and the numbers update without code changes.
 **After MVP:** profile ↔ job match, CV generation from the profile (renders a CV as a PDF `Document` on a listing, so
 `applyToListing` sends it like an upload; any LLM step gets only allowlisted profile fields, never date of birth,
 contact details or references; generation takes a target language and uses the translation where one exists, and a
-later auto-translate writes translations one bullet at a time with `isMachine` set), PDF/image posting input, Claude/OpenAI providers,
+later auto-translate writes translations one bullet at a time with `isMachine` set), PDF/image posting input, OpenAI/Mistral providers,
 URL scraping, maybe Postgres. English CV import is built; its Nuxt review UI, Norwegian import/translation matching,
 and API-side CV file extraction remain follow-ups.
 

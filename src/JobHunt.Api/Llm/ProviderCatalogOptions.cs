@@ -6,12 +6,11 @@ namespace JobHunt.Api.Llm;
 public class ProviderCatalogOptions : IValidatableObject
 {
     public const string Section = "Llm:Providers";
-    public List<ProviderModelOption> Anthropic { get; set; } = [];
     public List<ProviderModelOption> OpenAI { get; set; } = [];
     public List<ProviderModelOption> Mistral { get; set; } = [];
 
     public IReadOnlyList<ProviderModelOption> For(string provider) => provider switch
-    { LlmProviders.Anthropic => Anthropic, LlmProviders.OpenAI => OpenAI, LlmProviders.Mistral => Mistral, _ => [] };
+    { LlmProviders.OpenAI => OpenAI, LlmProviders.Mistral => Mistral, _ => [] };
 
     public IEnumerable<ValidationResult> Validate(ValidationContext context)
     {

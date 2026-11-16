@@ -14,7 +14,9 @@ A saved key whose protection material is missing returns `credential-unavailable
 
 ## Key management
 
-Only Owners can manage personal keys; Guests continue to use shared Gemini. One active key is allowed per user/provider: `gemini`, `anthropic`, `openai`, or `mistral` (exact lowercase names). API keys are write-only. Status responses contain safe IDs, last four characters, configuration state, and timestamps.
+Only Owners can manage personal keys; Guests continue to use shared Gemini. One active key is allowed per user/provider: `gemini`, `openai`, or `mistral` (exact lowercase names). API keys are write-only. Status responses contain safe IDs, last four characters, configuration state, and timestamps.
+
+Key status lists include only supported providers, even with `includeRetired: true`. Stored credentials for removed providers cannot enable models or inference.
 
 ```graphql
 query {
@@ -60,13 +62,13 @@ mutation DefaultModel($model: String) {
 }
 ```
 
-Use `models.id` as the existing optional `model` input on all AI mutations and default selection. `modelId` is the native provider ID, used in parse-job and usage records. Gemini IDs remain unchanged. Other selection IDs are qualified, for example `openai:gpt-4.1-mini` and `anthropic:claude-haiku-4-5-20251001`.
+Use `models.id` as the existing optional `model` input on all AI mutations and default selection. `modelId` is the native provider ID, used in parse-job and usage records. Gemini IDs remain unchanged. Other selection IDs are qualified, for example `openai:gpt-4.1-mini` and `mistral:mistral-large-2512`.
 
-`Llm:Gemini` still configures the shared key, default, allowlist, and shared limits. `Llm:Providers:Anthropic`, `Llm:Providers:OpenAI`, and `Llm:Providers:Mistral` configure personal-provider model arrays with `Id`, `Label`, `MaxOutputTokens`, and `ContextWindowTokens`. Catalog entries must have unique selection IDs, at least 32,768 supported output tokens, and a context window of at least 150,000 tokens. Values are operator-declared capabilities, not remotely inferred account permissions. No provider URLs are accepted from the client.
+`Llm:Gemini` still configures the shared key, default, allowlist, and shared limits. `Llm:Providers:OpenAI` and `Llm:Providers:Mistral` configure personal-provider model arrays with `Id`, `Label`, `MaxOutputTokens`, and `ContextWindowTokens`. Catalog entries must have unique selection IDs, at least 32,768 supported output tokens, and a context window of at least 150,000 tokens. Values are operator-declared capabilities, not remotely inferred account permissions. No provider URLs are accepted from the client.
 
-The initial text catalogs use [GPT-4.1 mini](https://developers.openai.com/api/docs/models/gpt-4.1-mini), [Claude Haiku 4.5](https://platform.claude.com/docs/en/models/haiku-4-5/overview), and [Mistral Large 3](https://docs.mistral.ai/models/mistral-large-3-25-12). Review catalog entries when providers retire models. Model availability and limits can still depend on the user's provider account.
+The initial text catalogs use [GPT-4.1 mini](https://developers.openai.com/api/docs/models/gpt-4.1-mini) and [Mistral Large 3](https://docs.mistral.ai/models/mistral-large-3-25-12). Review catalog entries when providers retire models. Model availability and limits can still depend on the user's provider account.
 
-Owners see configured Gemini models and other provider models only while they have that provider's active key. Other users see only shared Gemini's default. Gemini uses the Owner's personal Gemini key when present, otherwise shared Gemini; an Anthropic key does not change that Gemini route. Personal-key failure returns an error without switching to any other key or provider. To switch explicitly, choose another available model, or remove the failing Gemini key to use the shared Gemini key. A stored default whose catalog entry/key disappeared resolves to configured Gemini; an explicitly requested unavailable model is rejected before URL fetches or AI calls.
+Owners see configured Gemini models and other provider models only while they have that provider's active key. Other users see only shared Gemini's default. Gemini uses the Owner's personal Gemini key when present, otherwise shared Gemini; an OpenAI key does not change that Gemini route. Personal-key failure returns an error without switching to any other key or provider. To switch explicitly, choose another available model, or remove the failing Gemini key to use the shared Gemini key. A stored default whose catalog entry/key disappeared resolves to configured Gemini; an explicitly requested unavailable model is rejected before URL fetches or AI calls.
 
 ## Usage per credential
 

@@ -23,8 +23,8 @@ while the server alone decides which models each user may use.
 - **THEN** the request is rejected as unauthenticated
 
 #### Scenario: Provider key enables configured models
-- **WHEN** an Owner saves an Anthropic key
-- **THEN** the configured Anthropic models become available only to that Owner
+- **WHEN** an Owner saves an OpenAI key
+- **THEN** the configured OpenAI models become available only to that Owner
 - **AND** the API accepts no arbitrary provider endpoint or unconfigured model
 
 #### Scenario: Colliding native model names
@@ -43,7 +43,7 @@ A user's effective default SHALL be their stored selection when it is in their a
 - **THEN** the effective default is the configured Gemini default and no error is returned
 
 #### Scenario: Key removed for default provider
-- **WHEN** the Owner removes the Anthropic key for their stored default
+- **WHEN** the Owner removes the OpenAI key for their stored default
 - **THEN** that selection becomes unavailable and the effective default is configured Gemini
 
 ### Requirement: Set default model
@@ -65,8 +65,8 @@ A user's effective default SHALL be their stored selection when it is in their a
 `parseListing`, `parseListingFromUrl`, `parseUrl`, `parseProfileCv`, `analyzeTailoredCvSection` and `analyzeAllTailoredCv` SHALL accept optional `model` as a selection ID. Each SHALL use that selection when given, otherwise the effective default, and resolve provider/native model/credential before calling AI. Usage SHALL record that resolved attribution; parse jobs SHALL record provider and native model. Raw credentials SHALL never be stored on jobs.
 
 #### Scenario: Override for one call
-- **WHEN** the Owner's default is Gemini A and the Owner parses a listing with an allowed Anthropic selection B
-- **THEN** the provider receives B's native model ID using the Owner's Anthropic key
+- **WHEN** the Owner's default is Gemini A and the Owner parses a listing with an allowed OpenAI selection B
+- **THEN** the provider receives B's native model ID using the Owner's OpenAI key
 - **AND** the parse job and usage record the actual provider and native model
 
 #### Scenario: No override
@@ -94,5 +94,5 @@ An AI mutation whose selection ID is not in the current user's allowed list, com
 - **THEN** `UnknownLlmModelError` is returned
 
 #### Scenario: Provider key no longer configured
-- **WHEN** the Owner explicitly requests an Anthropic selection after removing its key
+- **WHEN** the Owner explicitly requests an OpenAI selection after removing its key
 - **THEN** the selection is rejected without an AI call or implicit Gemini fallback

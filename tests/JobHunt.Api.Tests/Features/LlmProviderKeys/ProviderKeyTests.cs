@@ -29,11 +29,11 @@ public class ProviderKeyTests(ApiFactory factory) : IClassFixture<ApiFactory>
     {
         var owner = await factory.GetOwnerClientAsync();
         var other = await factory.GetSecondOwnerClientAsync();
-        var first = (await SetAsync(owner, "anthropic", "private-first-key-1234")).GetProperty("setProviderKey").GetProperty("providerKey");
+        var first = (await SetAsync(owner, "mistral", "private-first-key-1234")).GetProperty("setProviderKey").GetProperty("providerKey");
         var oldId = first.GetProperty("credentialId").GetString();
         Assert.Equal("1234", first.GetProperty("last4").GetString());
         Assert.All((await other.GraphQLAsync(Status)).GetProperty("providerKeys").EnumerateArray(), k => Assert.False(k.GetProperty("configured").GetBoolean()));
-        var replacement = (await SetAsync(owner, "anthropic", "private-next-key-5678")).GetProperty("setProviderKey").GetProperty("providerKey");
+        var replacement = (await SetAsync(owner, "mistral", "private-next-key-5678")).GetProperty("setProviderKey").GetProperty("providerKey");
         Assert.NotEqual(oldId, replacement.GetProperty("credentialId").GetString());
         var statuses = (await owner.GraphQLAsync(Status)).GetProperty("providerKeys");
         Assert.DoesNotContain("private-", statuses.ToString());
@@ -42,9 +42,9 @@ public class ProviderKeyTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var old = await db.UserProviderKeys.IgnoreQueryFilters().SingleAsync(k => k.Id == Guid.Parse(oldId!));
         Assert.Null(old.ProtectedKey);
         Assert.NotNull(old.RetiredAt);
-        await RemoveAsync(owner, "anthropic");
-        await RemoveAsync(owner, "anthropic");
-        Assert.All(await db.UserProviderKeys.IgnoreQueryFilters().Where(k => k.Provider == "anthropic").ToListAsync(), k => Assert.Null(k.ProtectedKey));
+        await RemoveAsync(owner, "mistral");
+        await RemoveAsync(owner, "mistral");
+        Assert.All(await db.UserProviderKeys.IgnoreQueryFilters().Where(k => k.Provider == "mistral").ToListAsync(), k => Assert.Null(k.ProtectedKey));
     }
 
     [Fact]

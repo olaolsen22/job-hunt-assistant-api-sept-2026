@@ -17,7 +17,7 @@ public static class ProviderKeyQueries
         if (http.HttpContext?.User.IsInRole(Roles.Owner) != true)
             return [.. LlmProviders.Supported.Select(p => new ProviderKeyStatus(p, false, null, null, null, null))];
         var rows = await db.UserProviderKeys.AsNoTracking()
-            .Where(k => includeRetired || k.RetiredAt == null).OrderBy(k => k.CreatedAt).ToListAsync(ct);
+            .Where(k => LlmProviders.Supported.Contains(k.Provider) && (includeRetired || k.RetiredAt == null)).OrderBy(k => k.CreatedAt).ToListAsync(ct);
         var statuses = rows.Select(Status).ToList();
         statuses.AddRange(LlmProviders.Supported.Where(p => rows.All(k => k.Provider != p || k.RetiredAt != null))
             .Select(p => new ProviderKeyStatus(p, false, null, null, null, null)));

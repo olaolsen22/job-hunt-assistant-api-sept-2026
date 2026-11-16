@@ -38,7 +38,7 @@ No admission error includes submitted text, provider bodies, keys, or other user
 
 ## Optional personal-provider limits
 
-Owners can set their own daily request limit per personal-key provider: Gemini, Anthropic, OpenAI, and Mistral. Settings start disabled. Null disables enforcement; zero pauses personal inference; a positive integer sets the maximum daily attempts. The setting can exist before adding a key and survives removing/replacing it. Guests cannot manage personal limits.
+Owners can set their own daily request limit per personal-key provider: Gemini, OpenAI, and Mistral. Settings start disabled. Null disables enforcement; zero pauses personal inference; a positive integer sets the maximum daily attempts. The setting can exist before adding a key and survives removing/replacing it. Guests cannot manage personal limits.
 
 ```graphql
 mutation SetLimit($provider: String!, $limit: Int) {

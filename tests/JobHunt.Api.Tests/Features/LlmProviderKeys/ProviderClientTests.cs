@@ -7,7 +7,6 @@ public class ProviderClientTests
 {
     [Theory]
     [InlineData("gemini")]
-    [InlineData("anthropic")]
     [InlineData("openai")]
     [InlineData("mistral")]
     public void AllAdapters_ConstructWithoutNetwork(string provider)

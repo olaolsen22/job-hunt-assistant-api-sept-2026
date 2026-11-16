@@ -1,7 +1,6 @@
 using System.ClientModel;
 using System.Net;
 using System.Text.Json;
-using Anthropic.Exceptions;
 using Google.GenAI;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.AiSafeguards;
@@ -73,8 +72,6 @@ public class LlmExecution(
             var mapped = options.Clone();
             mapped.ModelId = model.ModelId;
             if (model.Provider != GeminiOptions.Provider) mapped.Reasoning = null;
-            // Anthropic's text adapter uses the shared strict-JSON instructions and decoder.
-            if (model.Provider == LlmProviders.Anthropic) mapped.ResponseFormat = null;
             if (model.Provider == LlmProviders.Mistral && mapped.MaxOutputTokens is { } maximum)
             {
                 // OpenAI's adapter otherwise emits max_completion_tokens, which Mistral doesn't accept.
@@ -110,15 +107,6 @@ public class LlmExecution(
             return Failed(status is { } s ? ProviderKeyValidator.CodeFor(s) : LlmErrorCodes.ProviderError);
         }
         catch (ClientResultException ex) { return Failed(ProviderKeyValidator.CodeFor((HttpStatusCode)ex.Status)); }
-        catch (AnthropicException ex)
-        {
-            return Failed(ex switch
-            {
-                AnthropicUnauthorizedException or AnthropicForbiddenException => LlmErrorCodes.InvalidKey,
-                AnthropicRateLimitException => LlmErrorCodes.RateLimited,
-                _ => LlmErrorCodes.ProviderError,
-            });
-        }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return Failed(LlmErrorCodes.Timeout); }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
