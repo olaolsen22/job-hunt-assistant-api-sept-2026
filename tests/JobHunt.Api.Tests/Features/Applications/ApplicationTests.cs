@@ -9,7 +9,7 @@ public class ApplicationTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     private const string ListingFields = """
         listing {
-          status statusChangedAt
+          status statusChangedAt shortlistedAt favoritedAt
           statusHistory(order: { id: ASC }) { id status occurredAt note }
           documents { id kind fileName sentAt }
         }
@@ -45,6 +45,33 @@ public class ApplicationTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
     private static string Iso(DateTimeOffset time) => time.ToString("yyyy-MM-ddTHH:mm:sszzz");
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Apply_ClearsShortlistAndKeepsFavorite(bool withDocument)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var (listingId, cvId) = await ListingWithCvAsync(client);
+        var marked = await MarkShortlistedAndFavoriteAsync(client, listingId);
+
+        var payload = (await client.GraphQLAsync(Apply,
+            new { listingId, cvDocumentId = withDocument ? (int?)cvId : null })).GetProperty("applyToListing");
+
+        Assert.Equal("APPLIED", Listing(payload).GetProperty("status").GetString());
+        Assert.Equal(JsonValueKind.Null, Listing(payload).GetProperty("shortlistedAt").ValueKind);
+        Assert.Equal(marked.GetProperty("favoritedAt").GetString(), Listing(payload).GetProperty("favoritedAt").GetString());
+        var undone = (await client.GraphQLAsync(Undo, new { listingId })).GetProperty("undoStatusChange");
+        Assert.Equal(JsonValueKind.Null, Listing(undone).GetProperty("shortlistedAt").ValueKind);
+    }
+
+    private static async Task<JsonElement> MarkShortlistedAndFavoriteAsync(HttpClient client, int id) =>
+        (await client.GraphQLAsync("""
+            mutation ($id: Int!) {
+              setListingShortlisted(input: { id: $id, isShortlisted: true }) { listing { shortlistedAt } }
+              setListingFavorite(input: { id: $id, isFavorite: true }) { listing { favoritedAt } }
+            }
+            """, new { id })).GetProperty("setListingFavorite").GetProperty("listing");
+
     [Fact]
     public async Task Apply_MarksDocumentsSent_RenamedWithAppliedDate()
     {
@@ -78,11 +105,17 @@ public class ApplicationTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var client = await factory.GetOwnerClientAsync();
         var listingId = await DocumentTests.CreateListingAsync(client, "Acme");
         var letterId = await DocumentTests.UploadIdAsync(client, listingId, "COVER_LETTER");
+        await MarkShortlistedAndFavoriteAsync(client, listingId);
 
         var payload = (await client.GraphQLAsync(Apply, new { listingId, cvDocumentId = letterId }))
             .GetProperty("applyToListing");
 
         Assert.Equal("InvalidDocumentError", ErrorType(payload));
+        var saved = await client.GraphQLAsync("""
+            query ($id: Int!) { listingById(id: $id) { shortlistedAt status } }
+            """, new { id = listingId });
+        Assert.NotEqual(JsonValueKind.Null, saved.GetProperty("listingById").GetProperty("shortlistedAt").ValueKind);
+        Assert.Equal("SAVED", saved.GetProperty("listingById").GetProperty("status").GetString());
     }
 
     [Fact]

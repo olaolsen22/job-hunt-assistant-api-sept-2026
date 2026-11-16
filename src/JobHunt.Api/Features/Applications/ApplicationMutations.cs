@@ -44,6 +44,7 @@ public static class ApplicationMutations
             Send(listing, cvDocumentId.Value, DocumentKind.Cv, change.OccurredAt);
         if (coverLetterDocumentId is not null)
             Send(listing, coverLetterDocumentId.Value, DocumentKind.CoverLetter, change.OccurredAt);
+        listing.ShortlistedAt = null;
         await db.SaveChangesAsync(ct);
         return listing;
     }
