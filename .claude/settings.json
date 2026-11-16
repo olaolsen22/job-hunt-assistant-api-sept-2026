@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build:*)",
+      "Bash(dotnet test:*)",
+      "Bash(dotnet restore:*)",
+      "Bash(dotnet format:*)",
+      "Bash(make build)",
+      "Bash(make test)",
+      "Bash(make backup)",
+      "Bash(openspec:*)",
+      "Bash(rg:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)"
+    ],
+    "ask": [
+      "Bash(make migration:*)",
+      "Bash(dotnet ef:*)",
+      "Bash(make run)",
+      "Bash(make watch)",
+      "Bash(dotnet run:*)",
+      "Bash(dotnet watch:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
+    ],
+    "deny": [
+      "Bash(pkill:*)",
+      "Bash(killall:*)",
+      "Bash(dotnet user-secrets list:*)",
+      "Bash(rm src/JobHunt.Api/jobhunt.db*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean:*)",
+      "Bash(git checkout -- :*)",
+      "Read(./src/JobHunt.Api/*.db)",
+      "Read(./src/JobHunt.Api/*.db-*)",
+      "Read(./src/JobHunt.Api/*.bak*)",
+      "Read(./src/JobHunt.Api/.local/**)",
+      "Read(./src/JobHunt.Api/listing-imports/**)",
+      "Read(./.local/backup-*/**)",
+      "Read(~/.microsoft/usersecrets/**)",
+      "Read(**/bin/**)",
+      "Read(**/obj/**)"
+    ]
+  }
+}

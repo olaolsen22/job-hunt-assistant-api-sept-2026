@@ -489,3 +489,6 @@ $RECYCLE.BIN/
 *.db-shm
 *.db-wal
 *.db.bak*
+
+# Claude Code personal settings
+.claude/settings.local.json
