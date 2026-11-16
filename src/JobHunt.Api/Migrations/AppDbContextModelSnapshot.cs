@@ -907,6 +907,9 @@ namespace JobHunt.Api.Migrations
                     b.Property<string>("Seniority")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("ShortlistedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("TEXT");

@@ -132,11 +132,25 @@ public static class ListingMutations
         int id, bool isFavorite, AppDbContext db, TimeProvider time, CancellationToken ct)
     {
         var entity = await FindWithDetailsAsync(id, db, ct);
-        // ??= keeps the original time when favoriting twice, so the shortlist order doesn't jump.
+        // ??= keeps the original time when favoriting twice, so the favorites order doesn't jump.
         if (isFavorite)
             entity.FavoritedAt ??= time.GetUtcNow().UtcDateTime;
         else
             entity.FavoritedAt = null;
+        await db.SaveChangesAsync(ct);
+        return entity;
+    }
+
+    // Independent of favorites and application status; leaves UpdatedAt unchanged.
+    [Error<ListingNotFoundException>]
+    public static async Task<Listing> SetListingShortlistedAsync(
+        int id, bool isShortlisted, AppDbContext db, TimeProvider time, CancellationToken ct)
+    {
+        var entity = await FindWithDetailsAsync(id, db, ct);
+        if (isShortlisted)
+            entity.ShortlistedAt ??= time.GetUtcNow().UtcDateTime;
+        else
+            entity.ShortlistedAt = null;
         await db.SaveChangesAsync(ct);
         return entity;
     }

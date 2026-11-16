@@ -39,8 +39,10 @@ public class Listing
     public Language? PostingLanguage { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
-    // Null = not favorited. A time rather than a bool so the shortlist can sort by when you favorited.
+    // Null = not favorited. A time rather than a bool so favorites can sort by when you favorited.
     public DateTime? FavoritedAt { get; set; }
+    // Independent of favorites: jobs set aside for review before deciding to apply.
+    public DateTime? ShortlistedAt { get; set; }
     // Null = active. Archived listings drop out of the default list but keep their history and documents.
     public DateTime? ArchivedAt { get; set; }
     // Null = details still to fill in. Set by the user or parse flow, not derived, so a hand-filled listing counts.

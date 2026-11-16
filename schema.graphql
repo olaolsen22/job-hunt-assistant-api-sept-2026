@@ -387,6 +387,8 @@ type Mutation {
     @cost(weight: "10")
   setListingFavorite(input: SetListingFavoriteInput!): SetListingFavoritePayload!
     @cost(weight: "10")
+  setListingShortlisted(input: SetListingShortlistedInput!): SetListingShortlistedPayload!
+    @cost(weight: "10")
   setListingArchived(input: SetListingArchivedInput!): SetListingArchivedPayload!
     @cost(weight: "10")
   deleteListing(input: DeleteListingInput!): DeleteListingPayload!
@@ -1387,6 +1389,7 @@ type Listing {
   createdAt: DateTime!
   updatedAt: DateTime!
   favoritedAt: DateTime
+  shortlistedAt: DateTime
   archivedAt: DateTime
   analyzedAt: DateTime
   reanalyzedAt: DateTime
@@ -2159,6 +2162,11 @@ type SetListingFavoritePayload {
 type SetListingImportReviewedPayload {
   listingImport: ListingImport
   errors: [SetListingImportReviewedError!]
+}
+
+type SetListingShortlistedPayload {
+  listing: Listing
+  errors: [SetListingShortlistedError!]
 }
 
 type SetLlmCallLimitPayload {
@@ -3002,6 +3010,8 @@ union SetListingArchivedError = ListingNotFoundError
 union SetListingFavoriteError = ListingNotFoundError
 
 union SetListingImportReviewedError = ListingImportNotFoundError
+
+union SetListingShortlistedError = ListingNotFoundError
 
 union SetLlmCallLimitError = AiSafetyError
 
@@ -3957,6 +3967,7 @@ input ListingFilterInput {
   createdAt: DateTimeOperationFilterInput
   updatedAt: DateTimeOperationFilterInput
   favoritedAt: DateTimeOperationFilterInput
+  shortlistedAt: DateTimeOperationFilterInput
   archivedAt: DateTimeOperationFilterInput
   analyzedAt: DateTimeOperationFilterInput
   reanalyzedAt: DateTimeOperationFilterInput
@@ -4099,6 +4110,7 @@ input ListingSortInput {
   createdAt: SortEnumType @cost(weight: "10")
   updatedAt: SortEnumType @cost(weight: "10")
   favoritedAt: SortEnumType @cost(weight: "10")
+  shortlistedAt: SortEnumType @cost(weight: "10")
   archivedAt: SortEnumType @cost(weight: "10")
   analyzedAt: SortEnumType @cost(weight: "10")
   reanalyzedAt: SortEnumType @cost(weight: "10")
@@ -4532,6 +4544,11 @@ input SetListingFavoriteInput {
 input SetListingImportReviewedInput {
   id: Int!
   isReviewed: Boolean!
+}
+
+input SetListingShortlistedInput {
+  id: Int!
+  isShortlisted: Boolean!
 }
 
 input SetLlmCallLimitInput {
