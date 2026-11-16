@@ -43,4 +43,4 @@
 - [x] 5.1 Run `dotnet test` (full suite) so `SchemaTests` refreshes `schema.graphql`, then check the diff shows only the
   new query, mutations and types
 - [x] 5.2 Update the Profile line in `docs/STATUS.md` via `log-progress` (scopes, fact guard, notes, style source) and
-  add a `.claude/commit-notes.md` line for the change
+  add a `.local/commit-notes.md` line for the change

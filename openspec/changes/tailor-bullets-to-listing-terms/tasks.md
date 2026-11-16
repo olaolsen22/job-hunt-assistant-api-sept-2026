@@ -22,4 +22,4 @@
 ## 5. Docs and integration
 
 - [x] 5.1 Update the bullet-wording section of `docs/tailored-cv-drafts.md`, and run `log-progress` to update the relevant `docs/STATUS.md` lines. Verify that no unrelated sections changed.
-- [x] 5.2 Add a commit note to `.claude/commit-notes.md`, run the full `dotnet test`, and confirm `schema.graphql` has no shape change.
+- [x] 5.2 Add a commit note to `.local/commit-notes.md`, run the full `dotnet test`, and confirm `schema.graphql` has no shape change.

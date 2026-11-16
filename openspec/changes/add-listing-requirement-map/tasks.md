@@ -21,7 +21,7 @@
 
 - [x] 4.1 Run `dotnet test --filter SchemaTests` twice so `schema.graphql` is rewritten and then passes; verify the diff only adds the two queries, four mutations and their types
 - [x] 4.2 Write `docs/requirement-map.md` as a short UI integration guide (queries and mutations with example documents, the review-then-save flow, validation rules the UI must expect, snapshot references); verify each example document matches `schema.graphql`
-- [x] 4.3 Update `docs/STATUS.md` with the `log-progress` skill (feature rule line, decision log entry, lossy `Down` note, and "Next up" pointing at the synthesis rework that will read the map) and add the rationale line to `.claude/commit-notes.md`; verify both files mention the requirement map
+- [x] 4.3 Update `docs/STATUS.md` with the `log-progress` skill (feature rule line, decision log entry, lossy `Down` note, and "Next up" pointing at the synthesis rework that will read the map) and add the rationale line to `.local/commit-notes.md`; verify both files mention the requirement map
 
 ## 5. Integration check
 

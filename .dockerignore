@@ -3,8 +3,10 @@
 **/*.db*
 .git/
 .github/
-.claude/
 tests/
 docs/
 **/listing-imports/
 **/.local/
+.agents/
+.codex/
+AGENTS.md

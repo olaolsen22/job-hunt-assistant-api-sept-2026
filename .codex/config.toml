@@ -1,0 +1,9 @@
+# Repository defaults. Model choice and credentials belong in personal settings.
+# Project config loads only after this repository is trusted in Codex.
+approval_policy = "on-request"
+approvals_reviewer = "auto_review"
+sandbox_mode = "workspace-write"
+web_search = "live"
+
+[sandbox_workspace_write]
+network_access = false

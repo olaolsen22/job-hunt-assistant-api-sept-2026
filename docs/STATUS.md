@@ -1,6 +1,6 @@
 # Project Status
 
-Updated: 2026-11-10 · Last logged commit: c75fb12
+Updated: 2026-11-15 · Last logged commit: 4df7e59
 
 `schema.graphql` is the API contract and code is the authority; this file is the index and the rules neither shows at a glance.
 
@@ -29,11 +29,11 @@ Everything requires auth unless marked anon.
 
 ## GraphQL rules by feature
 - **Conventions**: all data scoped by the global user filter. Typed errors on mutations only; queries report bad input as top-level errors. `listings` uses offset paging, lookups use cursors. `search` matches normalized columns because SQLite only folds ASCII. A default order applies only without a client `order`.
-- **Listings** (`Features/Listings`): company, role and skills come in by name, found or created. `updateListing` is a full replace, except `contacts` (null keeps links; changing company clears them) and `trainingProgram` (omitted keeps, null removes). Title, company and role ≤200, description ≤20000. `deleteListing` is blocked once status ≠ SAVED. Favorite and archive keep the first timestamp and leave `updatedAt` alone.
+- **Listings** (`Features/Listings`): company, role and skills come in by name, found or created. `updateListing` is a full replace, except `contacts` (null keeps links; changing company clears them) and `trainingProgram` (omitted keeps, null removes). Title, company and role ≤200, description ≤20000. `deleteListing` is blocked once status ≠ SAVED. Favorite, shortlist and archive keep the first timestamp and leave `updatedAt` alone. `setListingShortlisted` manages an independent review list via `shortlistedAt`; filtering/sorting uses the standard listing query.
 - **Listing URLs**: normalized (no `utm_*`, `fbclid`, `gclid`, fragment, trailing `/`), unique per user among open listings, archived included; closed listings are earlier attempts. `createListing` also returns `previousAttempts` and `possibleDuplicates` (same company and title, other URL; for non-vacancies also other active ones at the company). Partial index must match `ApplicationStatuses.Final`. [Preflight guide](listing-url-preflight.md).
 - **Listing kinds**: VACANCY (default), OPEN_INVITATION, UNSOLICITED (no url, postedOn or deadline).
 - **Due date** (`ListingQueries.WithDue`, drives order, `dueWithinDays`, `dueOn`): DATE → `deadlineOn`, ASAP → `postedOn`+14, UNSPECIFIED → `postedOn`+30, UNSOLICITED → null. Expired affects only order and filter.
-- **Applications**: SAVED→APPLIED→INTERVIEWING (first `addInterview`)→OFFER/REJECTED/WITHDRAWN; APPLIED→OFFER/REJECTED/WITHDRAWN; OFFER→ACCEPTED/REJECTED/WITHDRAWN. Final = REJECTED, WITHDRAWN, ACCEPTED. Dates not in the future, nothing before the applied date. `applyToListing` is the only way to mark documents sent and re-dates their file names; undoing APPLIED unsends them. Documents are optional on apply.
+- **Applications**: SAVED→APPLIED→INTERVIEWING (first `addInterview`)→OFFER/REJECTED/WITHDRAWN; APPLIED→OFFER/REJECTED/WITHDRAWN; OFFER→ACCEPTED/REJECTED/WITHDRAWN. Final = REJECTED, WITHDRAWN, ACCEPTED. Dates not in the future, nothing before the applied date. `applyToListing` is the only way to mark documents sent and re-dates their file names; undoing APPLIED unsends them. Documents are optional on apply. Applying clears `shortlistedAt`; undo does not restore it.
 - **Documents**: PDF only (`%PDF-` magic bytes), ≤5 MB, multipart needs `GraphQL-Preflight: 1`. Bytes live in `DocumentContent`. Sent documents can't be deleted. Each generation adds a new document. `origin`: UPLOADED, TAILORED, BASE_CV.
 - **Companies**: `createCompanies` is all-or-nothing, 1–100 rows, matches org.nr then name, and only fills blanks, so research can be re-pasted. `updateCompanyDetails` is a full replace of research fields. Org.nr uses mod-11. Favorite, avoided and notes have their own mutations so clients can't wipe them.
 - **Contacts**: per company, name unique; found by name and fill-only from parses and research, never removed. Outreach log: `Contact.lastInteractionAt`/`followUpOn` copy the latest interaction, so a reply without a date clears the follow-up.
@@ -71,17 +71,18 @@ Everything requires auth unless marked anon.
 - `ConnectionStrings:Default`: `Data Source=jobhunt.db` (dev), `/data/jobhunt.db` (Docker)
 - `Seed:OwnerEmail`, `Seed:OwnerPassword`: required, password re-applied on startup. `Seed:GuestEmail`: guest has no password. `Seed:Users:N:Email`/`Password`: optional extra Owner accounts
 - `Llm:Gemini:ApiKey` (required), `DefaultModel`, `Models:[{Id, Label, RequestsPerDay?}]` (the allowlist); `Llm:Pricing:{model}`
-- `Llm:Providers:{Anthropic|OpenAI|Mistral}`: `{Id, Label, MaxOutputTokens, ContextWindowTokens}`; `Llm:ProviderPricing:{provider}:{model}`
+- `Llm:Providers:{OpenAI|Mistral}`: `{Id, Label, MaxOutputTokens, ContextWindowTokens}`; `Llm:ProviderPricing:{provider}:{model}`
 - `ListingImports:Folder` (default `listing-imports`; Docker `/data/listing-imports`), `ListingImports:PollSeconds` (default 60)
 - `DataProtection:KeyRingPath`: default `<content root>/.local/dp-keys`, Docker `/data/dp-keys`; back up ring and DB together
 
 ## Stack
-- .NET 10, EF Core + SQLite, Hot Chocolate 16 (source-generated types), Microsoft.Extensions.AI with Google.GenAI, OpenAI and Anthropic clients. Versions in `Directory.Packages.props`; `dotnet-ef` in `dotnet-tools.json`
+- .NET 10, EF Core + SQLite, Hot Chocolate 16 (source-generated types), Microsoft.Extensions.AI with Google.GenAI and OpenAI clients. Versions in `Directory.Packages.props`; `dotnet-ef` in `dotnet-tools.json`
 - PDF: QuestPDF, embedded Source Sans 3; PdfPig in tests checks extracted text
 - Tests: `ApiFactory` = in-memory SQLite per factory; `factory.Llm`, `factory.Providers`, `factory.Pages` fakes; `client.GraphQLAsync` fails on top-level errors, `client.GraphQLErrorAsync` returns the message
 - Docker: `docker compose up` → :8080, non-root, volume `jobhunt-data:/data`
 
 ## Decisions log
+- 2026-11-12 — Removed the Anthropic provider and SDK. Supported providers are Gemini, OpenAI and Mistral; obsolete keys are hidden, saved unavailable defaults resolve to Gemini, and explicit removed-model selections fail before inference.
 - 2026-11-10 — CV work gets one spine: profile is a dump, a reviewed per-listing requirement map states the goal, then CVs and letters are written against it. The map ships first as its own JSON-per-listing slice with no consumers; evidence is bullets and entries, never skill ids, so skill cleanup has nothing to rewrite.
 - 2026-11-10 — Profile bullet refinement checks each bullet against the CV research (delivery, own part, result) and returns notes asking for missing facts instead of inventing them; the fact guard uses only the bullet itself, so siblings can't be merged in.
 - 2026-11-09 — Tailored CV bullets in both templates may take on listing terms, held by the source+listing word check (fallback, not rejection); `Shorten` → `SourceWords`, `ModeFor(listing:)`; base CVs unchanged.
