@@ -29,17 +29,17 @@ public class ApplicationQuestionTests(ApiFactory factory) : IClassFixture<ApiFac
         }
         """;
     private const string Generate = """
-        mutation ($questionId: Int!) {
-          generateApplicationAnswer(input: { questionId: $questionId }) {
-            result { status error errorCode candidate { answer length overLimit } }
+        mutation ($listingId: Int!) {
+          generateApplicationAnswers(input: { listingId: $listingId }) {
+            result { status error errorCode candidates { questionId answer length overLimit } }
             errors { __typename }
           }
         }
         """;
     private const string Preview = """
-        mutation ($questionId: Int!, $json: String!) {
-          previewApplicationAnswer(input: { questionId: $questionId, json: $json }) {
-            candidate { answer length overLimit }
+        mutation ($listingId: Int!, $json: String!) {
+          previewApplicationAnswers(input: { listingId: $listingId, json: $json }) {
+            candidates { questionId answer length overLimit }
             errors { __typename }
           }
         }
@@ -106,36 +106,65 @@ public class ApplicationQuestionTests(ApiFactory factory) : IClassFixture<ApiFac
         Assert.Equal("ListingNotFoundError", add.GetProperty("errors")[0].GetProperty("__typename").GetString());
         var update = (await guest.GraphQLAsync(Update, new { id, question = "Hijack" })).GetProperty("updateApplicationQuestion");
         Assert.Equal("ApplicationQuestionNotFoundError", update.GetProperty("errors")[0].GetProperty("__typename").GetString());
-        var generate = (await guest.GraphQLAsync(Generate, new { questionId = id })).GetProperty("generateApplicationAnswer");
-        Assert.Equal("ApplicationQuestionNotFoundError", generate.GetProperty("errors")[0].GetProperty("__typename").GetString());
+        var generate = (await guest.GraphQLAsync(Generate, new { listingId })).GetProperty("generateApplicationAnswers");
+        Assert.Equal("ListingNotFoundError", generate.GetProperty("errors")[0].GetProperty("__typename").GetString());
+        var preview = (await guest.GraphQLAsync(Preview, new { listingId, json = "{}" })).GetProperty("previewApplicationAnswers");
+        Assert.Equal("ListingNotFoundError", preview.GetProperty("errors")[0].GetProperty("__typename").GetString());
         var delete = (await guest.GraphQLAsync("mutation ($id: Int!) { deleteApplicationQuestion(input: { id: $id }) { errors { __typename } } }", new { id }))
             .GetProperty("deleteApplicationQuestion");
         Assert.Equal("ApplicationQuestionNotFoundError", delete.GetProperty("errors")[0].GetProperty("__typename").GetString());
     }
 
     [Fact]
-    public async Task Generate_SendsQuestionNotesAndOtherAnswers_AndNeverSaves()
+    public async Task Generate_AnswersTheWholeFormInOneCall_AndNeverSaves()
     {
         var client = await factory.GetOwnerClientAsync();
         var listingId = await CreateListingAsync(client);
-        await AddAsync(client, listingId, "OTHER_QUESTION", answer: "OTHER_ANSWER");
-        var id = await AddAsync(client, listingId, "QUESTION_TEXT", charLimit: 500, notes: "QUESTION_NOTES");
-        factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant, """{"answer":"Short answer."}"""));
+        var first = await AddAsync(client, listingId, "WHY_US_QUESTION", answer: "MY_DRAFT");
+        var second = await AddAsync(client, listingId, "EXPERIENCE_QUESTION", charLimit: 500, notes: "QUESTION_NOTES");
+        factory.Llm.Respond = () => Reply((second, "Experience answer."), (first, "Short answer."));
+        var before = await UsageCountAsync();
 
-        var result = (await client.GraphQLAsync(Generate, new { questionId = id }))
-            .GetProperty("generateApplicationAnswer").GetProperty("result");
+        var result = (await client.GraphQLAsync(Generate, new { listingId }))
+            .GetProperty("generateApplicationAnswers").GetProperty("result");
 
         Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
-        var candidate = result.GetProperty("candidate");
-        Assert.Equal("Short answer.", candidate.GetProperty("answer").GetString());
-        Assert.Equal(13, candidate.GetProperty("length").GetInt32());
-        Assert.False(candidate.GetProperty("overLimit").GetBoolean());
+        var candidates = result.GetProperty("candidates");
+        Assert.Equal(first, candidates[0].GetProperty("questionId").GetInt32());
+        Assert.Equal("Short answer.", candidates[0].GetProperty("answer").GetString());
+        Assert.Equal(13, candidates[0].GetProperty("length").GetInt32());
+        Assert.Equal(second, candidates[1].GetProperty("questionId").GetInt32());
+        Assert.False(candidates[1].GetProperty("overLimit").GetBoolean());
+        Assert.Equal(before + 1, await UsageCountAsync());
         var prompt = string.Join("\n", factory.Llm.LastMessages.Select(m => m.Text));
-        foreach (var expected in new[] { "QUESTION_TEXT", "QUESTION_NOTES", "OTHER_QUESTION", "OTHER_ANSWER", "Build services", "at most 500 characters" })
+        foreach (var expected in new[]
+        {
+            "WHY_US_QUESTION", "\"draft\":\"MY_DRAFT\"", "EXPERIENCE_QUESTION", "QUESTION_NOTES", "Build services",
+            "\"lengthTarget\":\"425-450 characters, never more than 500\"",
+        })
             Assert.Contains(expected, prompt);
-        var saved = await client.GraphQLAsync("query ($id: Int!) { listingById(id: $id) { applicationQuestions(order: { id: DESC }) { answer } } }",
+        var saved = await client.GraphQLAsync("query ($id: Int!) { listingById(id: $id) { applicationQuestions(order: { id: ASC }) { answer } } }",
             new { id = listingId });
-        Assert.Equal(JsonValueKind.Null, saved.GetProperty("listingById").GetProperty("applicationQuestions")[0].GetProperty("answer").ValueKind);
+        var questions = saved.GetProperty("listingById").GetProperty("applicationQuestions");
+        Assert.Equal("MY_DRAFT", questions[0].GetProperty("answer").GetString());
+        Assert.Equal(JsonValueKind.Null, questions[1].GetProperty("answer").ValueKind);
+    }
+
+    [Fact]
+    public async Task Generate_NoQuestionsOrAnIncompleteReply_Fails()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var listingId = await CreateListingAsync(client);
+        var empty = (await client.GraphQLAsync(Generate, new { listingId })).GetProperty("generateApplicationAnswers");
+        Assert.Equal("InvalidApplicationQuestionError", empty.GetProperty("errors")[0].GetProperty("__typename").GetString());
+
+        var first = await AddAsync(client, listingId, "Why us?");
+        await AddAsync(client, listingId, "Experience?");
+        factory.Llm.Respond = () => Reply((first, "Only one answer."));
+        var result = (await client.GraphQLAsync(Generate, new { listingId }))
+            .GetProperty("generateApplicationAnswers").GetProperty("result");
+        Assert.Equal("FAILED", result.GetProperty("status").GetString());
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("candidates").ValueKind);
     }
 
     [Fact]
@@ -158,9 +187,9 @@ public class ApplicationQuestionTests(ApiFactory factory) : IClassFixture<ApiFac
         await ProfileEntryTests.AddExperienceAsync(client, employer: "Second", start: "2021-01-01", end: "2022-06-01", skills: [skill]);
         var listingId = await CreateListingAsync(client);
         var id = await AddAsync(client, listingId, "How many years have you worked with Svelte?");
-        factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant, """{"answer":"Two and a half years."}"""));
+        factory.Llm.Respond = () => Reply((id, "Two and a half years."));
 
-        await client.GraphQLAsync(Generate, new { questionId = id });
+        await client.GraphQLAsync(Generate, new { listingId });
 
         var prompt = string.Join("\n", factory.Llm.LastMessages.Select(m => m.Text));
         Assert.Contains($"{{\"name\":\"{skill}\",\"workMonths\":30}}", prompt);
@@ -173,35 +202,42 @@ public class ApplicationQuestionTests(ApiFactory factory) : IClassFixture<ApiFac
     }
 
     [Fact]
-    public async Task Generate_OverLimit_RetriesOnceWithTheMeasuredLength()
+    public async Task Generate_OverLimit_RetriesOnlyThoseAnswersOnce()
     {
         var client = await factory.GetOwnerClientAsync();
         var listingId = await CreateListingAsync(client);
-        var id = await AddAsync(client, listingId, "Why us?", charLimit: 20);
-        var answers = new Queue<string>([new string('a', 30), "Fits the limit."]);
-        factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant, JsonSerializer.Serialize(new { answer = answers.Dequeue() })));
+        var limited = await AddAsync(client, listingId, "Why us?", charLimit: 20);
+        var open = await AddAsync(client, listingId, "Experience?");
+        var replies = new Queue<ChatResponse>([
+            Reply((limited, new string('a', 30)), (open, "Kept as is.")),
+            Reply((limited, "Fits the limit.")),
+        ]);
+        factory.Llm.Respond = () => replies.Dequeue();
         var before = await UsageCountAsync();
 
-        var candidate = (await client.GraphQLAsync(Generate, new { questionId = id }))
-            .GetProperty("generateApplicationAnswer").GetProperty("result").GetProperty("candidate");
+        var candidates = (await client.GraphQLAsync(Generate, new { listingId }))
+            .GetProperty("generateApplicationAnswers").GetProperty("result").GetProperty("candidates");
 
-        Assert.Equal("Fits the limit.", candidate.GetProperty("answer").GetString());
-        Assert.False(candidate.GetProperty("overLimit").GetBoolean());
-        Assert.Contains("That answer is 30 characters", factory.Llm.LastMessages[^1].Text);
+        Assert.Equal("Fits the limit.", candidates[0].GetProperty("answer").GetString());
+        Assert.False(candidates[0].GetProperty("overLimit").GetBoolean());
+        Assert.Equal("Kept as is.", candidates[1].GetProperty("answer").GetString());
+        var retry = factory.Llm.LastMessages[^1].Text;
+        Assert.Contains($"questionId {limited}: 30 characters", retry);
+        Assert.DoesNotContain($"questionId {open}:", retry);
         Assert.Equal(before + 2, await UsageCountAsync());
     }
 
     [Fact]
-    public async Task Generate_StillOverLimit_ReturnsTheAnswerFlagged()
+    public async Task Generate_StillOverLimit_ReturnsTheShorterAnswerFlagged()
     {
         var client = await factory.GetOwnerClientAsync();
         var listingId = await CreateListingAsync(client);
         var id = await AddAsync(client, listingId, "Why us?", charLimit: 20);
-        var answers = new Queue<string>([new string('a', 30), new string('b', 25)]);
-        factory.Llm.Respond = () => new ChatResponse(new ChatMessage(ChatRole.Assistant, JsonSerializer.Serialize(new { answer = answers.Dequeue() })));
+        var replies = new Queue<ChatResponse>([Reply((id, new string('a', 30))), Reply((id, new string('b', 25)))]);
+        factory.Llm.Respond = () => replies.Dequeue();
 
-        var candidate = (await client.GraphQLAsync(Generate, new { questionId = id }))
-            .GetProperty("generateApplicationAnswer").GetProperty("result").GetProperty("candidate");
+        var candidate = (await client.GraphQLAsync(Generate, new { listingId }))
+            .GetProperty("generateApplicationAnswers").GetProperty("result").GetProperty("candidates")[0];
 
         Assert.Equal(25, candidate.GetProperty("length").GetInt32());
         Assert.True(candidate.GetProperty("overLimit").GetBoolean());
@@ -213,25 +249,43 @@ public class ApplicationQuestionTests(ApiFactory factory) : IClassFixture<ApiFac
         var client = await factory.GetOwnerClientAsync();
         var listingId = await CreateListingAsync(client);
         var id = await AddAsync(client, listingId, "Why us?", charLimit: 10, answer: "MY_DRAFT", notes: "QUESTION_NOTES");
+        var other = await AddAsync(client, listingId, "OTHER_QUESTION");
 
         var prompt = (await client.GraphQLAsync("""
-            query ($questionId: Int!) { applicationAnswerExternalPrompt(questionId: $questionId) { version instructions } }
-            """, new { questionId = id })).GetProperty("applicationAnswerExternalPrompt");
-        Assert.Equal(3, prompt.GetProperty("version").GetInt32());
-        foreach (var expected in new[] { "QUESTION_NOTES", "\"draft\":\"MY_DRAFT\"", "Build services", "\"schemaVersion\": 3", "at most 10 characters" })
+            query ($listingId: Int!) { applicationAnswerExternalPrompt(listingId: $listingId) { version instructions } }
+            """, new { listingId })).GetProperty("applicationAnswerExternalPrompt");
+        Assert.Equal(4, prompt.GetProperty("version").GetInt32());
+        foreach (var expected in new[] { "QUESTION_NOTES", "\"draft\":\"MY_DRAFT\"", "OTHER_QUESTION", "Build services", "\"schemaVersion\": 4", "never more than 10" })
             Assert.Contains(expected, prompt.GetProperty("instructions").GetString());
 
-        var flagged = (await client.GraphQLAsync(Preview, new { questionId = id, json = """{"schemaVersion":3,"answer":" Longer than ten "}""" }))
-            .GetProperty("previewApplicationAnswer").GetProperty("candidate");
-        Assert.Equal("Longer than ten", flagged.GetProperty("answer").GetString());
-        Assert.True(flagged.GetProperty("overLimit").GetBoolean());
+        var json = $$"""{"schemaVersion":4,"answers":[{"questionId":{{id}},"answer":" Longer than ten "},{"questionId":{{other}},"answer":"Other."}]}""";
+        var candidates = (await client.GraphQLAsync(Preview, new { listingId, json }))
+            .GetProperty("previewApplicationAnswers").GetProperty("candidates");
+        Assert.Equal("Longer than ten", candidates[0].GetProperty("answer").GetString());
+        Assert.True(candidates[0].GetProperty("overLimit").GetBoolean());
+        Assert.Equal(other, candidates[1].GetProperty("questionId").GetInt32());
 
-        foreach (var json in new[] { """{"answer":"No version"}""", """{"schemaVersion":2,"answer":"Stale prompt"}""", """{"schemaVersion":3,"answer":"  "}""", "not json" })
+        foreach (var invalid in new[]
         {
-            var invalid = (await client.GraphQLAsync(Preview, new { questionId = id, json })).GetProperty("previewApplicationAnswer");
-            Assert.Equal("InvalidApplicationQuestionError", invalid.GetProperty("errors")[0].GetProperty("__typename").GetString());
+            $$"""{"answers":[{"questionId":{{id}},"answer":"A"},{"questionId":{{other}},"answer":"B"}]}""",
+            $$"""{"schemaVersion":3,"answers":[{"questionId":{{id}},"answer":"A"},{"questionId":{{other}},"answer":"B"}]}""",
+            $$"""{"schemaVersion":4,"answers":[{"questionId":{{id}},"answer":"  "},{"questionId":{{other}},"answer":"B"}]}""",
+            $$"""{"schemaVersion":4,"answers":[{"questionId":{{id}},"answer":"A"}]}""",
+            $$"""{"schemaVersion":4,"answers":[{"questionId":{{id}},"answer":"A"},{"questionId":{{id}},"answer":"B"}]}""",
+            $$"""{"schemaVersion":4,"answers":[{"questionId":{{id}},"answer":"A"},{"questionId":{{other}},"answer":"B"},{"questionId":-1,"answer":"C"}]}""",
+            "not json",
+        })
+        {
+            var payload = (await client.GraphQLAsync(Preview, new { listingId, json = invalid })).GetProperty("previewApplicationAnswers");
+            Assert.Equal("InvalidApplicationQuestionError", payload.GetProperty("errors")[0].GetProperty("__typename").GetString());
         }
     }
+
+    private static ChatResponse Reply(params (int QuestionId, string Answer)[] answers) =>
+        new(new ChatMessage(ChatRole.Assistant, JsonSerializer.Serialize(new
+        {
+            answers = answers.Select(a => new { questionId = a.QuestionId, answer = a.Answer }),
+        })));
 
     private async Task<int> UsageCountAsync()
     {

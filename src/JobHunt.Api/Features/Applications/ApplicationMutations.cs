@@ -113,8 +113,9 @@ public static class ApplicationMutations
             foreach (var document in listing.Documents.Where(d => d.SentAt is not null))
             {
                 document.SentAt = null;
-                document.FileName = DocumentMutations.FileName(
-                    listing.Company.Name, listing.JobRole.Name, document.Kind, document.CreatedAt);
+                document.FileName = DocumentMutations.FileName(listing.Company.Name,
+                    DocumentMutations.RoleName(listing.PostingLanguage, listing.Title, listing.JobRole.Name),
+                    document.Kind, document.CreatedAt);
             }
         listing.StatusHistory.Remove(last);
         db.StatusChanges.Remove(last);
@@ -169,7 +170,8 @@ public static class ApplicationMutations
     private static void MarkSent(Listing listing, Document document, DateTime sentAt)
     {
         document.SentAt = sentAt;
-        document.FileName = DocumentMutations.FileName(listing.Company.Name, listing.JobRole.Name, document.Kind, sentAt);
+        document.FileName = DocumentMutations.FileName(listing.Company.Name,
+            DocumentMutations.RoleName(listing.PostingLanguage, listing.Title, listing.JobRole.Name), document.Kind, sentAt);
     }
 }
 
