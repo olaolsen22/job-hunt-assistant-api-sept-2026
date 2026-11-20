@@ -1,12 +1,23 @@
 API := src/JobHunt.Api
 
-.PHONY: run watch build test backup migration up down db
+.PHONY: run watch restart build test backup migration up down db
+
+# Anchored so the pattern never matches the restart recipe's own shell.
+WATCH_PIDS = pgrep -f '^make watch$$|^([^ ]*/)?dotnet (watch|[^ ]*dotnet-watch\.dll|run) .*--project $(API)$$'
 
 run:
 	dotnet run --project $(API)
 
 watch:
 	dotnet watch --project $(API)
+
+# Stop any running watch and start a detached one, logging to .local/watch.log.
+# dotnet watch can ignore SIGTERM, so leftovers get SIGKILL.
+restart:
+	@pids=$$($(WATCH_PIDS)); [ -n "$$pids" ] && kill $$pids; sleep 3; \
+		pids=$$($(WATCH_PIDS)); [ -n "$$pids" ] && kill -9 $$pids; \
+		mkdir -p .local; setsid nohup $(MAKE) watch > .local/watch.log 2>&1 < /dev/null & \
+		echo "restarting; see .local/watch.log"
 
 build:
 	dotnet build

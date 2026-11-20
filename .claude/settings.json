@@ -24,7 +24,6 @@
       "Bash(make watch)",
       "Bash(dotnet run:*)",
       "Bash(dotnet watch:*)",
-      "Bash(git commit:*)",
       "Bash(git push:*)"
     ],
     "deny": [

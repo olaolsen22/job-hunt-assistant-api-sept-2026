@@ -34,6 +34,14 @@ spawn subagents unless asked.
 - Docs: `docs/STATUS.md` (current), `docs/PLAN.md` (roadmap), feature docs in
   `docs/*.md`; OpenSpec in `openspec/changes/` and `openspec/specs/`.
 
+## Long-running server
+Owner standing request (overrides AGENTS.md "do not start or stop"): after
+finishing code changes in a task, restart the API once so it runs the new code
+and applies pending migrations. Skip for docs-only edits.
+Run `make restart`: it stops only this API's watch processes (SIGKILL for
+leftovers) and starts a detached `make watch` that outlives the Bash tool.
+Check `.local/watch.log` for startup.
+
 ## Off-limits
 Never read `*.db*` / `*.db.bak*`, `src/JobHunt.Api/.local/` (data-protection
 keys), `src/JobHunt.Api/listing-imports/`, `.local/backup-*`, or user-secrets.
