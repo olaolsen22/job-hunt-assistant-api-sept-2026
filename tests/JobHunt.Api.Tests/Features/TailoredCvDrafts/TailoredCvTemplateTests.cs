@@ -55,18 +55,19 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
     }
 
     [Fact]
-    public async Task ConciseAnalysis_NewestRole_ShortensBulletsAndFallsBackWhenWordsAreAdded()
+    public async Task ConciseAnalysis_NewestRole_MergesBulletsAndFallsBackOnInventedFacts()
     {
         var client = await factory.GetOwnerClientAsync();
-        var (entryId, bulletIds) = await AddExperienceAsync(client, "Concise Employer", "2030-01-01", null,
+        var (entryId, bulletIds) = await AddExperienceAsync(client, "Concise Employer", "2040-01-01", null,
             "Designed and built several internal web services for the payments team using C# and ASP.NET Core",
-            "Worked on deployment scripts with the team");
+            "Worked on deployment scripts with the team", "Ran the weekly demo");
         var listingId = await TailoredCvAnalysisTests.CreateListingAsync(client, "Backend developer",
-            "You will build REST APIs and lead a team of 5 engineers", ["ASP.NET Core"]);
+            "You will build REST APIs, use Kubernetes and lead a team of 5 engineers", ["ASP.NET Core", "Kubernetes"]);
         factory.Llm.Respond = () => Reply($$"""
             {"bullets":[
-              {"id":{{bulletIds[0]}},"text":"Built REST APIs for the payments team using C# and ASP.NET Core"},
-              {"id":{{bulletIds[1]}},"text":"Led a team of 5 engineers automating deployments"}
+              {"id":{{bulletIds[0]}},"text":"Built payments services and their deployment scripts in C# and ASP.NET Core"},
+              {"id":{{bulletIds[1]}},"text":"Led a team of 5 engineers automating deployments"},
+              {"id":{{bulletIds[2]}},"text":"Presented the team's work in a weekly demo on Kubernetes"}
             ],"technologySkillIds":[]}
             """);
 
@@ -76,28 +77,32 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Equal(bulletIds, result.GetProperty("selectedBulletIds").EnumerateArray().Select(v => v.GetInt32()));
         Assert.Equal(JsonValueKind.Null, result.GetProperty("paragraph").ValueKind);
         var texts = result.GetProperty("bullets").EnumerateArray().Select(b => b.GetProperty("text").GetString()).ToList();
-        // The listing's "REST APIs" may replace the bullet's wording; an invented lead role and headcount may not.
-        Assert.Equal("Built REST APIs for the payments team using C# and ASP.NET Core", texts[0]);
+        // A merged, reworded bullet keeps its entry's facts; an invented headcount or listing skill falls back.
+        Assert.Equal("Built payments services and their deployment scripts in C# and ASP.NET Core", texts[0]);
         Assert.Equal("Worked on deployment scripts with the team", texts[1]);
+        Assert.Equal("Ran the weekly demo", texts[2]);
         var instructions = factory.Llm.LastMessages[0].Text;
-        Assert.Contains("Select at most 5 of the existing experience bullet IDs", instructions);
-        Assert.Contains("Shorten each selected bullet", instructions);
-        Assert.Contains("reword it with the listing's term", instructions);
+        Assert.Contains("Write at most 5 CV bullets for this experience", instructions);
+        Assert.Contains("raw notes, not a finished CV", instructions);
+        Assert.Contains("Merge related bullets of the same entry", instructions);
         Assert.Contains("one page", instructions);
     }
 
     [Theory]
     [InlineData("Trained 3 junior developers and worked with the design team.", true)]
     [InlineData("Trained 3 junior developers and served 200 customers a day with a smile.", false)]
-    public async Task ConciseAnalysis_KeepsParagraphOnlyInTheBulletsWords(string paragraph, bool kept)
+    // An overview of the role may use an unselected bullet's words.
+    [InlineData("Kept the shop clean and trained 3 junior developers.", true)]
+    [InlineData("Developed software in a team and mentored new colleagues.", true)]
+    public async Task ConciseAnalysis_KeepsParagraphToTheEntrysFacts(string paragraph, bool kept)
     {
         var client = await factory.GetOwnerClientAsync();
         var (entryId, bulletIds) = await AddExperienceAsync(client, "Paragraph Employer", "2020-01-01", null,
-            "Mentored and trained 3 junior developers", "Worked with the design team on UI changes");
+            "Mentored and trained 3 junior developers", "Worked with the design team on UI changes", "Kept the shop clean");
         var listingId = await TailoredCvAnalysisTests.CreateListingAsync(client, "Barista", "Serve coffee", []);
         factory.Llm.Respond = () => Reply(JsonSerializer.Serialize(new
         {
-            bullets = bulletIds.Select(id => new { id, text = "Worked with the design team" }),
+            bullets = bulletIds.Take(2).Select(id => new { id, text = "Worked with the design team" }),
             paragraph,
         }));
 
@@ -105,7 +110,7 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
 
         Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
         Assert.Equal(kept ? paragraph : null, result.GetProperty("paragraph").GetString());
-        Assert.Contains("short paragraph of at most 2 sentences", factory.Llm.LastMessages[0].Text);
+        Assert.Contains("short overview paragraph of at most 2 sentences", factory.Llm.LastMessages[0].Text);
     }
 
     [Theory]
@@ -147,7 +152,23 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
         var result = await AnalyzeAsync(client, listingId, "EXPERIENCE", entryId, "CONCISE");
 
         Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
-        Assert.Contains("Select at most 2 of the existing experience bullet IDs", factory.Llm.LastMessages[0].Text);
+        Assert.Contains("Write at most 2 CV bullets for this experience", factory.Llm.LastMessages[0].Text);
+    }
+
+    [Fact]
+    public async Task ConciseAnalysis_LongOlderRole_AllowsFiveBullets()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        for (var i = 0; i < 3; i++)
+            await ProfileEntryTests.AddExperienceAsync(client, employer: $"Internship {i}", start: "2029-01-01", skills: []);
+        var (entryId, _) = await AddExperienceAsync(client, "Senior Employer", "1990-01-01", "1994-01-01", "Led the frontend team");
+        var listingId = await TailoredCvAnalysisTests.CreateListingAsync(client, "Developer", "Build software", []);
+        factory.Llm.Respond = () => Reply("""{"bullets":[]}""");
+
+        var result = await AnalyzeAsync(client, listingId, "EXPERIENCE", entryId, "CONCISE");
+
+        Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
+        Assert.Contains("Write at most 5 CV bullets for this experience", factory.Llm.LastMessages[0].Text);
     }
 
     [Fact]
@@ -211,7 +232,7 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
     }
 
     [Fact]
-    public async Task ExternalPrompt_ConciseAsksForShortenedBulletsAndCaps()
+    public async Task ExternalPrompt_ConciseAsksForWrittenBulletsAndCaps()
     {
         var client = await factory.GetOwnerClientAsync();
         var listingId = await TailoredCvAnalysisTests.CreateListingAsync(client, "Developer", "Build software", []);
@@ -228,7 +249,8 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
 
         Assert.Equal(TailoredCvExternalPromptQueries.Version, concise.GetProperty("version").GetInt32());
         var instructions = concise.GetProperty("instructions").GetString()!;
-        Assert.Contains("Shorten each selected bullet", instructions);
+        Assert.Contains("raw notes, not a finished CV", instructions);
+        Assert.DoesNotContain("raw notes, not a finished CV", detailed);
         Assert.Contains("at most 5 bullets for the newest experience", instructions);
         Assert.Contains("every requirement the profile supports is shown", instructions);
         Assert.Contains("The summary and the CV body must agree", detailed);
@@ -236,7 +258,7 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Contains("at most 220 characters", instructions);
         Assert.DoesNotContain("full text, not shortened", instructions);
         Assert.Contains("full text, not shortened", detailed);
-        Assert.Contains("reword it with the listing's term", instructions);
+        Assert.Contains("Merge related bullets of the same entry", instructions);
         Assert.Contains("reword it with the listing's term", detailed);
         Assert.Contains("\"template\": \"DETAILED\"", detailed);
         Assert.Contains("no em dashes", detailed);
@@ -269,11 +291,11 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
     }
 
     [Fact]
-    public async Task Preview_Concise_KeepsParagraphInTheBulletsWordsAndDropsOthers()
+    public async Task Preview_Concise_KeepsParagraphToTheEntrysFacts()
     {
         var client = await factory.GetOwnerClientAsync();
         var (entryId, bulletIds) = await AddExperienceAsync(client, "Paragraph Preview", "2020-01-01", null,
-            "Took over a stalled client project, handling user discovery and requirements");
+            "Took over a stalled client project, handling user discovery and requirements", "Built internal web services");
         var listingId = await TailoredCvAnalysisTests.CreateListingAsync(client, "Barista", "Serve coffee", []);
 
         async Task<string?> ParagraphAsync(string paragraph) => (await client.GraphQLAsync(Preview, new
@@ -285,7 +307,11 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
 
         Assert.Equal("Took over a stalled client project and handled user discovery.",
             await ParagraphAsync("Took over a stalled client project and handled user discovery."));
-        Assert.Null(await ParagraphAsync("Ran the café and trained new baristas in customer service."));
+        // The unselected bullet still describes the role.
+        Assert.Equal("Built internal web services and took over a stalled client project.",
+            await ParagraphAsync("Built internal web services and took over a stalled client project."));
+        // Plain new words are fine in an overview; a number the entry never states is not.
+        Assert.Null(await ParagraphAsync("Ran the café for 5 years and trained new baristas."));
     }
 
     [Fact]

@@ -42,13 +42,23 @@ internal static class TailoredCvAnalysisDecoder
             .ToDictionary(b => b.GetProperty("id").GetInt32(), b => b.GetProperty("text").GetString()!);
         var concise = template == TailoredCvTemplate.Concise;
         var listingText = ListingText(context.GetProperty("listing"));
-        var bullets = DecodeBullets(root, sources, listingText);
+        List<string> skillNames =
+        [
+            .. context.GetProperty("listing").GetProperty("skills").EnumerateArray().Select(s => s.GetProperty("name").GetString() ?? ""),
+            .. entry.TryGetProperty("skills", out var entrySkills)
+                ? entrySkills.EnumerateArray().Select(s => s.GetProperty("name").GetString() ?? "") : [],
+        ];
+        // A concise bullet may merge and condense its entry's bullets, so it is held to their facts instead of words.
+        Func<string, string, bool> keeps = concise
+            ? (text, _) => TailoredCvWording.KeepsSourceFacts(text, sources.Values, skillNames)
+            : (text, source) => TailoredCvWording.KeepsSourceWords(text, [source], listingText);
+        var bullets = DecodeBullets(root, sources, keeps);
         if (bullets.Count > MaxSelectedSourceIds) throw new JsonException();
         bullets = [.. bullets.DistinctBy(b => b.SourceBulletId)];
         var paragraph = DecodeParagraph(root);
-        // A concise paragraph must keep the selected bullets' words; otherwise the PDF joins the bullets instead.
-        if (concise && paragraph is not null && !TailoredCvWording.KeepsSourceWords(paragraph,
-                bullets.Select(b => sources[b.SourceBulletId!.Value]), listingText, TailoredCvWording.MaxNewParagraphWords))
+        // A concise paragraph is an overview of the role in plain words: it may state no number or listing skill the
+        // entry's bullets do not; otherwise the PDF joins the bullets instead.
+        if (concise && paragraph is not null && !TailoredCvWording.KeepsSourceFacts(paragraph, sources.Values, skillNames))
             paragraph = null;
         return new(TailoredCvAnalysisStatus.Succeeded, section, sourceEntryId,
             [.. bullets.Select(b => b.SourceBulletId!.Value)], [], null, null,
@@ -85,17 +95,17 @@ internal static class TailoredCvAnalysisDecoder
         return paragraph?.Length > Inputs.MaxMarkdownLength ? throw new JsonException() : paragraph;
     }
 
-    // Both templates may reword bullets with the listing's terms. A bullet with other new words, without text, blank or
-    // too long falls back to the source text; an unknown id fails the section.
+    // keeps(text, source) is the template's wording check. A bullet failing it, without text, blank or too long falls
+    // back to the source text; an unknown id fails the section.
     private static List<TailoredCvBullet> DecodeBullets(JsonElement root, Dictionary<int, string> sources,
-        string listingText) =>
+        Func<string, string, bool> keeps) =>
         [.. root.GetProperty("bullets").EnumerateArray().Select(b =>
         {
             var id = b.GetProperty("id").GetInt32();
             if (!sources.TryGetValue(id, out var source)) throw new JsonException();
             var text = b.TryGetProperty("text", out var value) ? value.GetString()?.Trim() : null;
             return new TailoredCvBullet(text is { Length: > 0 and <= TailoredCvDraftValidation.MaxBulletLength }
-                && TailoredCvWording.KeepsSourceWords(text, [source], listingText) ? text : source, id);
+                && keeps(text, source) ? text : source, id);
         })];
 
     private static string ListingText(JsonElement listing) =>

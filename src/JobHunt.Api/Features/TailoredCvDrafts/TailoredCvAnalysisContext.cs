@@ -15,17 +15,20 @@ internal static class TailoredCvListingContext
             .Include(l => l.Languages)
             .FirstOrDefaultAsync(l => l.Id == listingId, ct);
 
-    public static object ForAnalysis(Listing listing) => new
+    // The description in the CV's language, so a Norwegian CV can echo the ad's own wording.
+    public static object ForAnalysis(Listing listing, Language language) => new
     {
         listing.Kind, listing.Title, Company = listing.Company.Name, JobRole = listing.JobRole.Name,
-        listing.Description, Skills = Skills(listing), Languages = Languages(listing), CompanyResearch = Research(listing),
+        Description = listing.DescriptionIn(language), Skills = Skills(listing), Languages = Languages(listing),
+        CompanyResearch = Research(listing),
     };
 
     // With the url, because only an external chat can browse.
-    public static object ForExternalPrompt(Listing listing) => new
+    public static object ForExternalPrompt(Listing listing, Language language) => new
     {
         listing.Kind, listing.Title, Company = listing.Company.Name, JobRole = listing.JobRole.Name, listing.Url,
-        listing.Description, Skills = Skills(listing), Languages = Languages(listing), CompanyResearch = Research(listing),
+        Description = listing.DescriptionIn(language), Skills = Skills(listing), Languages = Languages(listing),
+        CompanyResearch = Research(listing),
     };
 
     private static object Skills(Listing listing) =>
@@ -44,12 +47,12 @@ internal static class TailoredCvListingContext
 internal static class TailoredCvAnalysisContext
 {
     public static object Build(Listing listing, Profile profile, TailoredCvSection section, int? sourceEntryId,
-        Language language, List<string>? cvBullets)
+        Language language, List<string>? cvBullets, DateOnly today)
     {
         if (section is not (TailoredCvSection.Experience or TailoredCvSection.Education or TailoredCvSection.Project)
             && sourceEntryId is not null)
             throw new InvalidTailoredCvAnalysisException("sourceEntryId is only valid for an experience, education or project section.");
-        var job = TailoredCvListingContext.ForAnalysis(listing);
+        var job = TailoredCvListingContext.ForAnalysis(listing, language);
         return section switch
         {
             TailoredCvSection.Experience => BuildExperienceContext(job, profile, sourceEntryId, language),
@@ -74,10 +77,14 @@ internal static class TailoredCvAnalysisContext
                     Headline = profile.Translations.FirstOrDefault(t => t.Language == language)?.Headline ?? profile.Headline,
                     Summary = profile.Translations.FirstOrDefault(t => t.Language == language)?.Summary ?? profile.Summary,
                     Skills = profile.Skills.Select(s => new { Name = s.Skill.NameIn(language), s.Level }),
-                    // Dates and employers keep durations accurate; education is the evidence for juniors.
+                    // Counted here, since the summary states years; education is the evidence for juniors.
+                    ExperienceMonths = ProfileDataLoaders.ExperienceMonths(
+                        profile.Experiences.Select(e => (e.StartMonth, e.EndMonth)), today),
                     Experience = profile.Experiences.Select(e => new
                     {
-                        Title = e.TitleIn(language), e.Employer, e.StartMonth, e.EndMonth, Skills = e.Skills.Select(s => s.Name),
+                        Title = e.TitleIn(language), e.Employer, e.StartMonth, e.EndMonth,
+                        Months = ProfileDataLoaders.ExperienceMonths([(e.StartMonth, e.EndMonth)], today),
+                        Skills = e.Skills.Select(s => s.Name),
                         Bullets = e.Bullets.Select(b => TailoredCvLanguageText.Bullet(b, language)),
                     }),
                     Education = profile.Educations.Select(e => new

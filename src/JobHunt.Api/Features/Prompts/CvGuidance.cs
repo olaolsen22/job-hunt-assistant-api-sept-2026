@@ -19,7 +19,16 @@ internal static class CvGuidance
         design and product; an API role: endpoints, integrations, data flows, authentication; a platform role:
         deployment, automation, monitoring, operations; a senior role: technical decisions, ownership, mentoring,
         coordination; a service or retail role: customer contact, payments, hygiene and safety routines, pace,
-        teamwork. {(rewrite ? RewrittenOtherField : OtherField)}
+        teamwork. {(rewrite ? RewrittenOtherField : OtherField)} {EngagementTerms}
+        """;
+
+    // A bullet such as "Arbeidstrening via NAV" shows a role was unpaid work training, not employment; dropped as
+    // weak evidence, the CV passes it off as a paid job.
+    private const string EngagementTerms = """
+        A bullet that states the terms of the role, such as arbeidstrening, work training, internship, volunteer
+        work, or unpaid work, is not evidence but tells the reader the role was not ordinary paid employment: always
+        select it as its own bullet, never combined with others, and keep those terms in its text, even when it
+        is the entry's only selected bullet or uses one of its limited places.
         """;
 
     // A software developer applying for a café or shop job still has relevant evidence in their IT roles, but
@@ -94,10 +103,37 @@ internal static class CvGuidance
         candidate's field.
         """;
 
+    // Uncapped, the detailed CV gives every role equal space; recruiters weigh the newest relevant roles most and
+    // want older or less relevant ones shortened first, never at the cost of evidence for a requirement.
+    internal const string DetailedRecency = """
+        Give the most space to the newest and most relevant roles; for older or less relevant roles keep only one
+        or two bullets. Never drop a bullet that is the only evidence of a listing requirement just to shorten the CV.
+        """;
+
+    // Course codes and internal module names say nothing to a reader outside the institution.
+    internal const string EducationWording = """
+        Prefer bullets that name the subject, project, or thesis in words a reader outside the institution
+        understands over course codes or internal module names.
+        """;
+
     // A capped concise CV easily drops a requirement the profile does show; recruiters screen for those first.
     internal const string RequirementCoverage = """
         Before picking a second bullet on the same theme, pick the bullet that shows a listing requirement or
         required skill not yet covered, so every requirement the profile supports is shown somewhere in the CV.
+        """;
+
+    // What a Norwegian key-qualifications summary names (NTNU, Tekna): the field, the work, and a few specifics.
+    internal const string SummaryContent = $"""
+        Name the candidate's specialization, the kind of work they have done, and one or two tools, methods, or
+        responsibilities the body supports, shown through what they built or solved rather than a bare list of
+        technology names. {SummaryYears}
+        """;
+
+    // Recruiters look for years in the summary, and models miscount them from dates, so the server counts months.
+    private const string SummaryYears = """
+        State how many years of work experience the candidate has in their field, in whole years rounded down:
+        use experienceMonths when all their work experiences are in that field, otherwise add up the months of
+        the experiences in that field. Never count years from the dates yourself, and omit years under one.
         """;
 
     // The summary is read first; a claim the body doesn't back, or a key strength it omits, reads as padding.
@@ -135,6 +171,28 @@ internal static class CvGuidance
         them); aim for one line of about 100 characters and use up to about 160 when cutting further would lose such
         a fact. Never add a technology, tool, number, or claim the bullet does not state. Do not shorten a bullet
         that is already short.
+        """;
+
+    // A CONCISE CV tailored to a listing. The profile is a dumping ground, so cutting words from one bullet at a time
+    // left long lists and cherry-picked fragments. The bullets are written here, merged and condensed;
+    // TailoredCvWording.KeepsSourceFacts holds them to their entry's numbers and skill names.
+    internal const string ConciseWrittenBullets = """
+        The profile is the candidate's raw notes, not a finished CV: write the entry's CV bullets from its bullets
+        instead of copying them. The reader is a hiring manager who must quickly assess the experience: each entry
+        should show its key points, enough to back the CV, with each point easy to scan. Each bullet is one line of
+        about 100 characters, never more than 140. Cut filler and repeated context, and condense lists of uses,
+        tools, or tasks to the items that matter to the listing. Merge related bullets of the same entry into one
+        bullet where that reads shorter and stronger, using the first merged bullet's ID; a merged bullet counts
+        once toward the limit.
+        Never attach one bullet's verb or result to another bullet's work, and never merge bullets in different
+        languages. Write like the candidate: keep their verbs, terms, sentence shape, tense, and tone, so each
+        bullet reads as their own tightened sentence, not generic CV phrasing. Where a bullet shows work the
+        listing names, you may use the listing's term for it. Add no fact, technology, tool, number, or claim the
+        entry's bullets do not state. For example, "Evaluated and implemented practical uses of AI in development
+        for checks before peer review, code quality reviews, boilerplate generation, unit and end-to-end test
+        creation, and analysis of legacy functionality where requirements and documentation were missing" becomes
+        "Implemented AI in development for checks before peer review, test creation, and analysis of undocumented
+        legacy code".
         """;
 
     // Recruiters and ATS match the listing's own terms, but a CV that parrots the listing reads as fake.
@@ -224,6 +282,18 @@ internal static class CvGuidance
         words and add at most 4 small linking words, but no other term and no number the bullets do not state.
         """;
 
+    // The tailored CV's overview needs plain words of its own, so it is checked by TailoredCvWording.KeepsSourceFacts
+    // against all of the entry's bullets: no new number or listing skill.
+    internal const string ConciseListingParagraph = $"""
+        For every entry with selected bullets, also return a short overview paragraph of at most 2 sentences (about
+        250 characters), in the language the bullets are supplied in: first say plainly what the role involved, based
+        on its title and all of its bullets, not only the selected ones; then what carries over to the listing. For a
+        role outside the listing's field, describe the work in general terms (for example that the candidate
+        developed software in a team) and focus on transferable qualities such as collaboration, customer contact,
+        responsibility, or routines, without product names, tools, or technical detail. {ParagraphOnly}
+        State no fact, number, technology, or tool this entry's bullets do not state.
+        """;
+
     // Checked by TailoredCvWording.KeepsSourceFacts instead: new words are fine, new numbers and skills are not.
     internal const string RewrittenConciseParagraph = """
         For every entry with selected bullets, also return a short paragraph of at most 2 sentences (about 250
@@ -235,11 +305,15 @@ internal static class CvGuidance
     internal const int NewestRoleBullets = 5;
     internal const int RecentRoleBullets = 3; // the next two roles
     internal const int OtherEntryBullets = 2; // older roles, each education entry and each project
+    // A senior role held for years outweighs the short internships that may follow it (e.g. after moving country),
+    // so length earns the newest role's room too.
+    internal const int MajorRoleMonths = 24;
     internal const int ConciseProjects = 2;
 
-    internal static int ConciseBulletCap(TailoredCvSection section, int experienceIndex) =>
+    internal static int ConciseBulletCap(TailoredCvSection section, int experienceIndex, int months) =>
         section != TailoredCvSection.Experience ? OtherEntryBullets
-        : experienceIndex switch { 0 => NewestRoleBullets, 1 or 2 => RecentRoleBullets, _ => OtherEntryBullets };
+        : experienceIndex == 0 || months >= MajorRoleMonths ? NewestRoleBullets
+        : experienceIndex is 1 or 2 ? RecentRoleBullets : OtherEntryBullets;
 
     // A mix of entries with and without a paragraph looks unfinished when the user switches to paragraph style.
     internal const string DetailedParagraph = """
@@ -248,22 +322,42 @@ internal static class CvGuidance
         on an entry with selected bullets.
         """;
 
+    // Selection keeps few, loosely related bullets for a role outside the listing's field; a paragraph made only
+    // from those ("work training with language course") never says what the job was.
+    internal const string ListingParagraph = $"""
+        For every entry with selected bullets, also return a natural overview paragraph of 2-3 sentences;
+        never leave paragraph null on such an entry. First say plainly what the role involved, based on its title and all of its
+        bullets, not only the selected ones; then name the selected facts and the qualities those bullets show that
+        carry over to the listing. For a role outside the listing's field, describe the work in general terms (for
+        example that the candidate developed software in a team) and focus on transferable qualities such as
+        collaboration, customer contact, responsibility, or routines, without product names, tools, or technical
+        detail. {ParagraphOnly} Rephrase or combine facts, but do not infer facts or invent achievements.
+        """;
+
+    // An earlier "never make it the main content" made the AI drop the role's only bullet, and with it the paragraph.
+    private const string ParagraphOnly = """
+        Inside the paragraph, mention a work-training scheme or language course only after the work itself; this
+        paragraph rule never changes which bullets you select.
+        """;
+
     // The paragraph, timeline and (CONCISE) cap rules of both external CV prompts.
-    internal static string Layout(TailoredCvTemplate template, bool rewrite = false)
+    internal static string Layout(TailoredCvTemplate template, bool rewrite = false, bool listing = false)
     {
         var concise = template == TailoredCvTemplate.Concise;
-        var paragraph = !concise ? DetailedParagraph : rewrite ? RewrittenConciseParagraph : ConciseParagraph;
+        var paragraph = !concise ? (listing ? ListingParagraph : DetailedParagraph)
+            : rewrite ? RewrittenConciseParagraph : listing ? ConciseListingParagraph : ConciseParagraph;
         var caps = concise
             ? $"""
-              Select at most {NewestRoleBullets} bullets for the newest experience, {RecentRoleBullets} for each of
-              the next two, and {OtherEntryBullets} for each older experience and each education entry; include at most
+              Select at most {NewestRoleBullets} bullets for the newest experience and for any experience with months
+              of at least {MajorRoleMonths}, however old, {RecentRoleBullets} for each other of the next two, and
+              {OtherEntryBullets} for each other older experience and each education entry; include at most
               {ConciseProjects} projects, with at most {OtherEntryBullets} bullets each, and only those clearly relevant
               to the listing's main requirements.
               """
             : "";
         return $"""
             {paragraph} Set content.contentStyle to BULLETS by default so the user can choose the presentation for
-            the whole CV. {(rewrite ? RewrittenTimeline : Timeline)} {caps}
+            the whole CV. {(rewrite ? RewrittenTimeline : Timeline)} {(concise ? caps : DetailedRecency)}
             """.TrimEnd();
     }
 

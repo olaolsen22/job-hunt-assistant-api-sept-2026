@@ -2,6 +2,7 @@ using System.Globalization;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Profiles;
 using JobHunt.Api.Features.Skills;
+using QuestPDF.Elements;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -13,7 +14,9 @@ public static class TailoredCvPdfRenderer
 {
     private const string Bullet = "•";
 
-    public static byte[] Render(TailoredCvContent content, IReadOnlyList<SkillCategory>? categories = null)
+    // relocateTo: the listing's city when the CV's location is elsewhere; see RelocationTarget.
+    public static byte[] Render(TailoredCvContent content, IReadOnlyList<SkillCategory>? categories = null,
+        string? relocateTo = null)
     {
         TailoredCvPdfFonts.EnsureRegistered();
         var t = CvText.For(content.Language);
@@ -27,25 +30,20 @@ public static class TailoredCvPdfRenderer
                 page.Size(PageSizes.A4);
                 page.MarginHorizontal(2, Unit.Centimetre);
                 page.MarginVertical(1.7f, Unit.Centimetre);
-                page.DefaultTextStyle(style => style.FontFamily(TailoredCvPdfFonts.FamilyName).FontSize(11)
+                page.DefaultTextStyle(style => style.FontFamily(TailoredCvPdfFonts.FamilyName).FontSize(10)
                     .LineHeight(1.27f).FontColor(Colors.Black));
-                page.Footer().AlignCenter().Text(text =>
-                {
-                    text.CurrentPageNumber();
-                    text.Span(" / ");
-                    text.TotalPages();
-                });
+                page.Footer().Dynamic(new PageNumberFooter());
 
                 page.Content().Column(column =>
                 {
-                    column.Spacing(4);
+                    column.Spacing(2);
                     var style = content.ContentStyle;
-                    AddContact(column, content, t);
+                    AddContact(column, content, t, relocateTo);
+                    // Profile links read as labelled contact lines, like E-post and Telefon (NTNU: contact details).
+                    foreach (var link in content.Links ?? [])
+                        AddLabelledLine(column, link.Label, link.Url);
                     if (content.SectionOrder == TailoredCvSectionOrder.Developer)
                     {
-                        // Profile links read as labelled contact lines, like E-post and Telefon.
-                        foreach (var link in content.Links ?? [])
-                            AddLabelledLine(column, link.Label, link.Url);
                         AddTextSection(column, t.Summary, content.Summary);
                         AddGroupedSkillsSection(column, content.Skills, categories ?? [], content.Language, t);
                         AddExperienceSection(column, style, content.Experiences, t, showTechnologies: true);
@@ -64,7 +62,6 @@ public static class TailoredCvPdfRenderer
                         AddProjectSection(column, t.Projects, style, content.Projects, t);
                         AddLanguagesSection(column, content.Languages, t);
                         AddSkillsSection(column, content.Skills, t);
-                        AddLinksSection(column, content.Links, t);
                     }
                     // References belong last.
                     if (content.ReferencesOnRequest)
@@ -81,7 +78,20 @@ public static class TailoredCvPdfRenderer
         .GeneratePdf();
     }
 
-    private static void AddContact(ColumnDescriptor column, TailoredCvContent content, CvText t)
+    // A distant location raises doubt about availability (research §8): say the move on the location line.
+    // Applying for an onsite/hybrid job elsewhere is the decision to move there if hired, as in the cover letter.
+    public static string? RelocationTarget(string? address, WorkMode? workMode, IEnumerable<string?> listingCities)
+    {
+        if (string.IsNullOrWhiteSpace(address) || workMode == WorkMode.Remote)
+            return null;
+        var cities = listingCities.OfType<string>().Where(c => !string.IsNullOrWhiteSpace(c))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (cities.Count == 0 || cities.Any(c => address.Contains(c, StringComparison.OrdinalIgnoreCase)))
+            return null;
+        return string.Join(" / ", cities);
+    }
+
+    private static void AddContact(ColumnDescriptor column, TailoredCvContent content, CvText t, string? relocateTo)
     {
         if (!string.IsNullOrWhiteSpace(content.FullName))
             // Body line height would add a large gap at 22pt.
@@ -94,7 +104,8 @@ public static class TailoredCvPdfRenderer
         // Plain labelled lines rather than icons or separators, so each value extracts unambiguously.
         AddLabelledLine(column, t.Email, content.Email);
         AddLabelledLine(column, t.Phone, content.Phone);
-        AddLabelledLine(column, t.Address, content.Address);
+        AddLabelledLine(column, t.Address,
+            relocateTo is null ? content.Address : $"{content.Address} | {t.WillRelocateTo} {relocateTo}");
         AddLabelledLine(column, t.DateOfBirth, content.DateOfBirth is { } born ? t.FormatDate(born) : null);
     }
 
@@ -148,7 +159,7 @@ public static class TailoredCvPdfRenderer
 
     // Entries stay whole and the heading shares the first entry's block, so a heading never ends a page alone.
     private static void AddEntrySection<T>(ColumnDescriptor column, string heading, List<T>? items,
-        Action<ColumnDescriptor, T> addEntry, float entrySpacing = 6)
+        Action<ColumnDescriptor, T> addEntry, float entrySpacing = 3)
     {
         if (items is not { Count: > 0 })
             return;
@@ -217,16 +228,10 @@ public static class TailoredCvPdfRenderer
             if (showTechnologies) AddTechnologies(entry, project.Technologies, t);
         });
 
-    // NAV's layout: the language name, then written and spoken levels on their own lines.
+    // One line per language; a shared written/spoken level is shown once.
     private static void AddLanguagesSection(ColumnDescriptor column, List<TailoredCvLanguage>? languages, CvText t) =>
         AddEntrySection(column, t.Languages, languages, (entry, language) =>
-        {
-            entry.Item().Text(t.LanguageName(language.Name)).Bold();
-            if (language.Written is { } written)
-                AddLabelledText(entry, t.Written, t.Proficiency(written));
-            if (language.Spoken is { } spoken)
-                AddLabelledText(entry, t.Spoken, t.Proficiency(spoken));
-        });
+            AddLabelledText(entry, t.LanguageName(language.Name), t.LanguageLevels(language.Written, language.Spoken)));
 
     // Plain, comma-separated names: no bars/dots for level, which an ATS can't read anyway.
     private static void AddSkillsSection(ColumnDescriptor column, List<TailoredCvSkill>? skills, CvText t)
@@ -263,10 +268,6 @@ public static class TailoredCvPdfRenderer
     }
 
     // Link lines sit at the column's normal spacing rather than entry spacing.
-    private static void AddLinksSection(ColumnDescriptor column, List<TailoredCvLink>? links, CvText t) =>
-        AddEntrySection(column, t.Links, links, (entry, link) => AddLabelledText(entry, link.Label, link.Url),
-            entrySpacing: 0);
-
     // Developer CVs: where the listed skills were used, closing the entry. Muted and not bold, so it doesn't
     // compete with the bold title or read as a second heading.
     private static void AddTechnologies(ColumnDescriptor entry, List<string>? technologies, CvText t)
@@ -302,25 +303,25 @@ public static class TailoredCvPdfRenderer
 
     private static void AddHeading(ColumnDescriptor column, string text) =>
         // The rule is a border, not text: nothing is added to the PDF text layer for an ATS to trip over.
-        column.Item().PaddingTop(12).PaddingBottom(4).BorderBottom(0.75f).BorderColor(Colors.Grey.Darken1)
-            .PaddingBottom(2).Text(text).FontSize(13).Bold();
+        column.Item().PaddingTop(5).PaddingBottom(4).BorderBottom(0.75f).BorderColor(Colors.Grey.Darken1)
+            .PaddingBottom(2).Text(text).FontSize(12).Bold();
 }
 
 // Fixed CV wording per language. Norwegian follows NAV; the developer order uses IT headings.
 internal sealed record CvText(
     string Summary, string Experience, string Education, string Certifications, string Projects,
-    string Languages, string Skills, string Links, string References, string ReferencesOnRequest,
+    string Languages, string Skills, string References, string ReferencesOnRequest,
     string TechnicalSkills, string SelectedProjects, string Technologies,
-    string Email, string Phone, string Address, string DateOfBirth,
+    string Email, string Phone, string Address, string WillRelocateTo, string DateOfBirth,
     string Present, string ValidUntil, string Written, string Spoken,
     string OtherSkills,
     string[] Months, string[] Levels, string[] ProjectKinds, bool NumericDates, Dictionary<string, string> LanguageNames)
 {
     private static readonly CvText English = new(
-        "Summary", "Experience", "Education", "Courses and certifications", "Projects",
-        "Languages", "Skills", "Links", "References", "Available on request.",
+        "Professional summary", "Work experience", "Education", "Courses and certifications", "Projects",
+        "Languages", "Skills", "References", "Available on request.",
         "Technical skills", "Selected projects", "Technologies",
-        "Email", "Phone", "Address", "Date of birth",
+        "Email", "Phone", "Location", "Will relocate to", "Date of birth",
         "Present", "Valid until", "Written", "Spoken",
         "Other",
         ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
@@ -334,10 +335,10 @@ internal sealed record CvText(
         });
 
     private static readonly CvText Norwegian = new(
-        "Sammendrag", "Arbeidsforhold", "Utdanning", "Kurs og sertifiseringer", "Prosjekter",
-        "Språk", "Kompetanser", "Lenker", "Referanser", "Oppgis ved forespørsel.",
+        "Sammendrag", "Arbeidserfaring", "Utdanning", "Kurs og sertifiseringer", "Prosjekter",
+        "Språk", "Kompetanser", "Referanser", "Oppgis ved forespørsel.",
         "Teknisk kompetanse", "Utvalgte prosjekter", "Teknologier",
-        "E-post", "Telefon", "Adresse", "Fødselsdato",
+        "E-post", "Telefon", "Bosted", "Vil flytte til", "Fødselsdato",
         "Nåværende", "Gyldig til", "Skriftlig", "Muntlig",
         "Annet",
         ["Januar", "Februar", "Mars", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Desember"],
@@ -369,8 +370,29 @@ internal sealed record CvText(
 
     public string Proficiency(LanguageProficiency level) => Levels[(int)level];
 
+    public string LanguageLevels(LanguageProficiency? written, LanguageProficiency? spoken) =>
+        written == spoken && written is { } same
+            ? Proficiency(same)
+            : string.Join(", ", new[] { (written, Written), (spoken, Spoken) }
+                .Where(x => x.Item1 is not null)
+                .Select(x => $"{Proficiency(x.Item1!.Value)} ({x.Item2.ToLowerInvariant()})"));
+
     public string? ProjectKindName(ProjectKind? kind) => kind is { } k ? ProjectKinds[(int)k] : null;
 
     // Common names stored in the other language read naturally; anything else prints as entered.
     public string LanguageName(string name) => LanguageNames.GetValueOrDefault(name.Trim(), name);
+}
+
+// "1 / 2" only on multi-page CVs. A dynamic component, because the page count is known only at render time.
+internal sealed class PageNumberFooter : IDynamicComponent
+{
+    public DynamicComponentComposeResult Compose(DynamicContext context) => new()
+    {
+        Content = context.TotalPages > 1
+            ? context.CreateElement(footer => footer.AlignCenter()
+                .Text($"{context.PageNumber} / {context.TotalPages}")
+                .FontFamily(TailoredCvPdfFonts.FamilyName).FontSize(10))
+            : context.CreateElement(_ => { }),
+        HasMoreContent = false,
+    };
 }

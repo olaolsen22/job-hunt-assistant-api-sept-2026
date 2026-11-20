@@ -12,14 +12,14 @@ public record BaseCvExternalPrompt(int Version, string Instructions);
 [QueryType]
 public static class BaseCvExternalPromptQueries
 {
-    public const int Version = 3;
+    public const int Version = 5;
     private const int MaxNotesLength = 2000;
 
     // Copy-paste instructions that pick a CV for a kind of role out of the master profile. Nothing is saved.
     // rewrite lets the AI reword bullets in plain language, such as IT work for a shop job; previewBaseCv then checks
     // facts instead of wording, so it must get the same flag.
     public static async Task<BaseCvExternalPrompt> GetBaseCvExternalPromptAsync(Language language, string targetRole,
-        AppDbContext db, CancellationToken ct, string? notes = null, TailoredCvTemplate? template = null,
+        AppDbContext db, TimeProvider time, CancellationToken ct, string? notes = null, TailoredCvTemplate? template = null,
         bool rewrite = false)
     {
         var role = Inputs.Clean(targetRole);
@@ -30,7 +30,8 @@ public static class BaseCvExternalPromptQueries
             throw new GraphQLException($"notes must be at most {MaxNotesLength} characters.");
 
         var profile = await ProfileQueries.LoadAsync(db, ct);
-        var profileJson = await TailoredCvExternalPromptQueries.ProfileJsonAsync(profile, language, db, ct);
+        var profileJson = await TailoredCvExternalPromptQueries.ProfileJsonAsync(profile, language,
+            DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime), db, ct);
         if (profileJson.Length > TailoredCvAnalyzer.MaxContextLength)
             throw new GraphQLException($"Prompt context must be at most {TailoredCvAnalyzer.MaxContextLength} characters.");
         var targetJson = JsonSerializer.Serialize(new { Role = role, Notes = cleanNotes }, TailoredCvJson.Options);
@@ -110,9 +111,10 @@ public static class BaseCvExternalPromptQueries
             names, exactly as supplied in its skills, of {{CvGuidance.Technologies}} Select profile skills by sourceSkillId: {{CvGuidance.SkillSelection(templateValue)}}
             Copy each skill's categoryId from the profile; only when it is null, suggest one using the rule below. Include
             languages only when present in the profile. Write a concise summary for this kind of role from supported profile
-            facts, {{summaryStart}}, or null when there is not enough evidence. {{CvGuidance.SummaryConsistency}}
+            facts, {{summaryStart}}, or null when there is not enough evidence. {{CvGuidance.SummaryContent}}
+            {{CvGuidance.SummaryConsistency}}
             {{CvGuidance.ExternalWriting(mode != TailoredCvWordingMode.Exact)}}
-            {{CvGuidance.Gap}} Follow Norwegian CV guidance for an ordinary job application. {{CvGuidance.BulletStrength(templateValue, rewrite)}}
+            {{CvGuidance.Gap}} {{CvGuidance.BulletStrength(templateValue, rewrite)}}
             Order experiences, educations, certifications, and projects newest first (ongoing entries first). The CV language is {{TailoredCvLanguageText.Name(language)}}:
             set "language" to "{{(language == Language.Norwegian ? "NORWEGIAN" : "ENGLISH")}}" and write the headline, the summary and every paragraph in that
             language, the summary as plain text without Markdown, {{CvGuidance.SummaryLength(templateValue)}}.

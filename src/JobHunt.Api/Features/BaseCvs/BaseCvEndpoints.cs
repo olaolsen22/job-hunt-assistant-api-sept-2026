@@ -30,7 +30,9 @@ public static class BaseCvEndpoints
         var bytes = await TailoredCvDraftMutations.RenderPdfAsync(version.Content, db, ct);
 
         var language = version.Language == Language.Norwegian ? "NO" : "EN";
-        var fileName = $"{DocumentMutations.Slug(version.BaseCv.Name)}_{language}_v{version.Number}.pdf";
+        // Prefixed with the name printed on the CV, like a downloaded document: "Kari-Nordmann_Developer_EN_v3.pdf".
+        var fileName = DocumentEndpoints.DownloadName(version.Content.FullName,
+            $"{DocumentMutations.Slug(version.BaseCv.Name)}_{language}_v{version.Number}.pdf");
         return DocumentEndpoints.InlinePdf(context, bytes, fileName);
     }
 }

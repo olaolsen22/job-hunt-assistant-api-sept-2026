@@ -229,6 +229,10 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Contains("\"employer\":\"Summary Context Employer\",\"startMonth\":\"2019-04-01\"", factory.Llm.LastMessages[1].Text);
         Assert.Contains("Summary Context School", factory.Llm.LastMessages[1].Text);
         Assert.Contains("years alone are not", factory.Llm.LastMessages[0].Text);
+        // Years in the summary come from the server's month count, not the model's date arithmetic.
+        Assert.Contains("\"experienceMonths\":", factory.Llm.LastMessages[1].Text);
+        Assert.Contains("\"endMonth\":null,\"months\":", factory.Llm.LastMessages[1].Text);
+        Assert.Contains("years of work experience the candidate has", factory.Llm.LastMessages[0].Text);
         Assert.Contains("never claim it", factory.Llm.LastMessages[0].Text);
         Assert.Contains("never relabel them as fullstack", factory.Llm.LastMessages[0].Text);
         Assert.Contains("null keeps the current headline", factory.Llm.LastMessages[0].Text);
@@ -537,6 +541,7 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Contains("core professional", instructions);
         Assert.Contains("complete timeline", instructions);
         Assert.Contains("never leave paragraph null", instructions);
+        Assert.Contains("never changes which bullets you select", instructions);
         Assert.Contains("such as Norwegian", instructions);
         Assert.Contains("every paragraph in that", instructions);
         Assert.Contains("do not turn \"helped\" into \"led\"", instructions);

@@ -3,7 +3,8 @@ using System.Text.RegularExpressions;
 namespace JobHunt.Api.Features.TailoredCvDrafts;
 
 // How the AI may change a selected bullet: copy it (a base CV's DETAILED), keep to its own and the listing's words
-// (CONCISE, or any CV tailored to a listing), or restate it in plain words (a base CV's rewrite).
+// (a base CV's CONCISE, or a DETAILED CV tailored to a listing), or write it anew from its entry's facts (a base CV's
+// rewrite, or a CONCISE CV tailored to a listing, which merges and condenses bullets).
 public enum TailoredCvWordingMode { Exact, SourceWords, Rewrite }
 
 // Tailored, shortened and rewritten bullets and paragraphs are AI-written, so the server holds them to their source bullets.
@@ -16,30 +17,27 @@ public static partial class TailoredCvWording
 
     // listing: the CV is tailored to a listing, so even DETAILED bullets may take on its terms.
     public static TailoredCvWordingMode ModeFor(TailoredCvTemplate template, bool rewrite = false, bool listing = false) =>
-        rewrite ? TailoredCvWordingMode.Rewrite
+        rewrite || listing && template == TailoredCvTemplate.Concise ? TailoredCvWordingMode.Rewrite
         : listing || template == TailoredCvTemplate.Concise ? TailoredCvWordingMode.SourceWords
         : TailoredCvWordingMode.Exact;
 
     // A bullet that breaks the mode's rule falls back to its source text; such a paragraph is dropped, so the PDF joins
     // the bullets instead. Exact text is checked by ValidateSourceIdsAsync.
     // sourceTexts(id) is what a bullet may draw on: its own source and translation, or its whole entry when bullets may
-    // be combined.
+    // be combined. keepsParagraph(paragraph, selected ids), when given, replaces the mode's paragraph check.
     internal static TailoredCvContent KeepSourceWording(TailoredCvContent content, TailoredCvWordingMode mode,
         Func<int, IEnumerable<string>> sourceTexts, Func<int, string> fallback, string listingText,
-        IReadOnlyCollection<string> skillNames)
+        IReadOnlyCollection<string> skillNames, Func<string, List<int>, bool>? keepsParagraph = null)
     {
         if (mode == TailoredCvWordingMode.Exact) return content;
 
-        bool Keeps(string text, IEnumerable<int> ids, int maxNewWords)
-        {
-            var sources = ids.SelectMany(sourceTexts).ToList();
-            return mode == TailoredCvWordingMode.Rewrite
+        bool Keeps(string text, IEnumerable<string> sources, int maxNewWords) =>
+            mode == TailoredCvWordingMode.Rewrite
                 ? KeepsSourceFacts(text, sources, skillNames)
                 : KeepsSourceWords(text, sources, listingText, maxNewWords);
-        }
 
         var checkedBullets = content.MapBullets(bullets => [.. bullets.Select(b =>
-            b.SourceBulletId is not { } id || Keeps(b.Text, [id], MaxNewWords) ? b : b with { Text = fallback(id) })]);
+            b.SourceBulletId is not { } id || Keeps(b.Text, sourceTexts(id), MaxNewWords) ? b : b with { Text = fallback(id) })]);
         // A DETAILED paragraph may rephrase freely, even when its bullets take on the listing's terms.
         if (mode == TailoredCvWordingMode.SourceWords && content.Template == TailoredCvTemplate.Detailed)
             return checkedBullets;
@@ -47,7 +45,9 @@ public static partial class TailoredCvWording
             .MapParagraphs((bullets, paragraph) =>
             {
                 var ids = bullets.Where(b => b.SourceBulletId is not null).Select(b => b.SourceBulletId!.Value).ToList();
-                return paragraph is not null && ids.Count > 0 && Keeps(paragraph, ids, MaxNewParagraphWords) ? paragraph : null;
+                return paragraph is not null && ids.Count > 0 && (keepsParagraph is not null
+                    ? keepsParagraph(paragraph, ids)
+                    : Keeps(paragraph, ids.SelectMany(sourceTexts), MaxNewParagraphWords)) ? paragraph : null;
             });
     }
 

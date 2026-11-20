@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using JobHunt.Api.Data;
 using JobHunt.Api.Features.Listings;
+using JobHunt.Api.Features.Profiles;
 using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.TailoredCvDrafts;
@@ -26,10 +27,10 @@ public static class TailoredCvExternalPreviewMutations
         int listingId, string json, AppDbContext db, CancellationToken ct,
         TailoredCvTemplate? template = null, Language? language = null)
     {
-        var listing = await db.Listings.Where(l => l.Id == listingId)
-            .Select(l => new { l.PostingLanguage, l.Title, l.Description, Skills = l.Skills.Select(s => s.Skill.Name).ToList() })
-            .FirstOrDefaultAsync(ct)
+        var listing = await db.Listings.AsNoTracking().Include(l => l.Skills).ThenInclude(s => s.Skill)
+            .FirstOrDefaultAsync(l => l.Id == listingId, ct)
             ?? throw new ListingNotFoundException(listingId);
+        var skills = listing.Skills.Select(s => s.Skill.Name).ToList();
         var parsed = ParseCandidate(json);
         // The language the prompt was built for wins over whatever the pasted reply claims.
         var input = parsed.Content! with { Language = language ?? parsed.Content!.Language };
@@ -40,7 +41,7 @@ public static class TailoredCvExternalPreviewMutations
             requireSourceBulletText: mode == TailoredCvWordingMode.Exact);
         if (mode != TailoredCvWordingMode.Exact)
             content = await KeepSourceWordingAsync(content, mode,
-                TailoredCvWording.ListingText(listing.Title, listing.Description, listing.Skills), db, ct);
+                TailoredCvWording.ListingText(listing.Title, listing.DescriptionIn(content.Language), skills), skills, db, ct);
         content = await TailoredCvDraftValidation.FillMissingLocationsAsync(content, db, ct);
         content = await TailoredCvDraftValidation.FillMissingSourceDetailsAsync(content, db, ct);
         return new(parsed.SchemaVersion, content);
@@ -70,18 +71,28 @@ public static class TailoredCvExternalPreviewMutations
         return parsed;
     }
 
-    // Each bullet is checked against its own source text and its translation in the draft language.
+    // A DETAILED bullet is checked against its own source text and its translation in the draft language. A CONCISE
+    // bullet may merge bullets of its entry, so it is held to the whole entry's facts: no number, listing or profile
+    // skill those bullets do not state. A paragraph is an overview of the role in plain words, held to the same facts.
     private static async Task<TailoredCvContent> KeepSourceWordingAsync(TailoredCvContent content,
-        TailoredCvWordingMode mode, string listingText, AppDbContext db, CancellationToken ct)
+        TailoredCvWordingMode mode, string listingText, List<string> listingSkills, AppDbContext db, CancellationToken ct)
     {
-        var ids = content.BulletGroups().SelectMany(g => g.Bullets)
-            .Where(b => b.SourceBulletId is not null).Select(b => b.SourceBulletId!.Value).Distinct().ToArray();
         // Ids were already checked as the user's own by ValidateSourceIdsAsync.
-        var sources = await db.ProfileBullets.AsNoTracking().Where(b => ids.Contains(b.Id))
-            .Select(b => new { b.Id, b.Text, Translated = b.Translations.Where(t => t.Language == content.Language).Select(t => t.Text).FirstOrDefault() })
-            .ToDictionaryAsync(b => b.Id, ct);
+        var profile = await ProfileQueries.LoadAsync(db, ct);
+        var sources = profile.BulletLists()
+            .SelectMany(entry => entry.Select(bullet => (Bullet: bullet, Entry: entry)))
+            .ToDictionary(s => s.Bullet.Id);
+        IEnumerable<string> Texts(ProfileBullet bullet) => [bullet.Text, TailoredCvLanguageText.Bullet(bullet, content.Language)];
+        var rewrite = mode == TailoredCvWordingMode.Rewrite;
+        List<string> skillNames = rewrite
+            ? [.. profile.Skills.Select(s => s.Skill).Concat(profile.Experiences.SelectMany(e => e.Skills))
+                .Concat(profile.Projects.SelectMany(p => p.Skills))
+                .SelectMany(s => new[] { s.Name, s.NameIn(content.Language) }).Concat(listingSkills).Distinct()]
+            : [];
         return TailoredCvWording.KeepSourceWording(content, mode,
-            id => [sources[id].Text, sources[id].Translated ?? ""],
-            id => sources[id].Translated ?? sources[id].Text, listingText, []);
+            id => rewrite ? sources[id].Entry.SelectMany(Texts) : Texts(sources[id].Bullet),
+            id => TailoredCvLanguageText.Bullet(sources[id].Bullet, content.Language), listingText, skillNames,
+            (paragraph, ids) => TailoredCvWording.KeepsSourceFacts(paragraph,
+                ids.SelectMany(id => sources[id].Entry).Distinct().SelectMany(Texts), listingSkills));
     }
 }

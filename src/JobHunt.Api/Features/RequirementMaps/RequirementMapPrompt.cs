@@ -93,7 +93,8 @@ public static class RequirementMapPrompt
                 Url = external ? listing.Url : null,
                 listing.Seniority, listing.EmploymentType, listing.WorkMode,
                 Locations = listing.Locations.Select(l => new { l.Location.City, l.Location.CountryCode }),
-                listing.Description,
+                // Requirement text is written in the listing's language, so it gets the ad's own wording.
+                Description = listing.DescriptionIn(listing.PostingLanguage ?? Language.English),
                 Skills = listing.Skills.Select(s => new { s.Skill.Name, s.Level, s.MinYears, s.IsRequired }),
                 Languages = listing.Languages.Select(l => new { l.Language, l.Level, l.IsRequired }),
             },

@@ -19,7 +19,7 @@ public class LlmLimitTests(ApiFactory factory) : IClassFixture<ApiFactory>
     private static JsonElement For(JsonElement data, string provider) => data.GetProperty("llmCallLimits").EnumerateArray()
         .Single(l => l.GetProperty("provider").GetString() == provider);
     internal static Task<JsonElement> PersonalParse(HttpClient owner, Guid? id = null) => owner.GraphQLAsync("""
-        mutation($id:UUID){parseListing(input:{text:"Personal provider posting",mode:FULL,model:"openai:gpt-4.1-mini",requestId:$id}){
+        mutation($id:UUID){parseListing(input:{text:"Personal provider posting",mode:FULL,model:"openai:gpt-6-luna",requestId:$id}){
           parseJob{status} errors{... on AiSafetyError{code}}
         }}
         """, new { id });

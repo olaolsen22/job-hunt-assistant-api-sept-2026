@@ -93,7 +93,11 @@ public static class TailoredCvDraftMutations
         var draft = await db.TailoredCvDrafts.AsNoTracking().FirstOrDefaultAsync(d => d.ListingId == listingId, ct)
             ?? throw new TailoredCvDraftNotFoundException(listingId);
 
-        var bytes = await RenderPdfAsync(draft.Content, db, ct);
+        var listing = await db.Listings.AsNoTracking().Where(l => l.Id == listingId)
+            .Select(l => new { l.WorkMode, Cities = l.Locations.Select(x => x.Location.City).ToList() })
+            .SingleAsync(ct);
+        var relocateTo = TailoredCvPdfRenderer.RelocationTarget(draft.Content.Address, listing.WorkMode, listing.Cities);
+        var bytes = await RenderPdfAsync(draft.Content, db, ct, relocateTo);
         var document = DocumentMutations.AddFile(db, listingId, names, DocumentKind.Cv, DocumentOrigin.Tailored, bytes,
             time.GetUtcNow().UtcDateTime);
         await db.SaveChangesAsync(ct);
@@ -101,11 +105,12 @@ public static class TailoredCvDraftMutations
     }
 
     // With the user's skill categories, which the developer layout groups skills by.
-    internal static async Task<byte[]> RenderPdfAsync(TailoredCvContent content, AppDbContext db, CancellationToken ct)
+    internal static async Task<byte[]> RenderPdfAsync(TailoredCvContent content, AppDbContext db, CancellationToken ct,
+        string? relocateTo = null)
     {
         var categories = await db.SkillCategories.AsNoTracking().Include(c => c.Translations)
             .OrderBy(c => c.SortOrder).ThenBy(c => c.Id).ToListAsync(ct);
-        return TailoredCvPdfRenderer.Render(content, categories);
+        return TailoredCvPdfRenderer.Render(content, categories, relocateTo);
     }
 }
 

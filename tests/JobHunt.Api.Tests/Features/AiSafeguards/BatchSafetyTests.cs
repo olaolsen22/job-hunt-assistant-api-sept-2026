@@ -69,7 +69,7 @@ public class BatchSafetyTests(ApiFactory factory) : IClassFixture<ApiFactory>
         {
             await LlmLimitTests.Set(owner, "openai", 1); var before = factory.Providers.InferenceCalls;
             var id = Guid.NewGuid();
-            var results = (await owner.GraphQLAsync(All, new { listing, model = "openai:gpt-4.1-mini", id }))
+            var results = (await owner.GraphQLAsync(All, new { listing, model = "openai:gpt-6-luna", id }))
                 .GetProperty("analyzeAllTailoredCv").GetProperty("analysis").GetProperty("results");
             Assert.Equal("SUCCEEDED", results[0].GetProperty("status").GetString());
             Assert.Equal("SKIPPED", results[1].GetProperty("status").GetString());

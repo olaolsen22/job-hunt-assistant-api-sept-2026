@@ -25,7 +25,7 @@ public class InvalidTailoredCvAnalysisException(string message) : Exception(mess
 // Calls are deliberately bounded to one profile section so the current Flash model has a small task.
 public class TailoredCvAnalyzer(
     LlmExecution execution,
-    LlmModelResolver models, AiOperations operations)
+    LlmModelResolver models, AiOperations operations, TimeProvider time)
 {
     public const string Operation = "tailored-cv-section";
     public const int MaxContextLength = 100_000;
@@ -62,12 +62,14 @@ public class TailoredCvAnalyzer(
         int? sourceEntryId, ResolvedLlmModel model, AppDbContext db, CancellationToken ct, List<string>? cvBullets = null)
     {
         var (listing, profile, language, template) = sources;
+        var today = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
         var input = JsonSerializer.Serialize(
-            TailoredCvAnalysisContext.Build(listing, profile, section, sourceEntryId, language, cvBullets), TailoredCvJson.Options);
+            TailoredCvAnalysisContext.Build(listing, profile, section, sourceEntryId, language, cvBullets, today),
+            TailoredCvJson.Options);
         if (input.Length > MaxContextLength)
             throw new InvalidTailoredCvAnalysisException($"Analysis input must be at most {MaxContextLength} characters.");
 
-        var conciseCap = TailoredCvAnalysisInstructions.ConciseBulletCap(profile, section, sourceEntryId);
+        var conciseCap = TailoredCvAnalysisInstructions.ConciseBulletCap(profile, section, sourceEntryId, today);
         var tooLong = false;
         var call = await execution.RunJsonAsync(model,
             [new(ChatRole.System, TailoredCvAnalysisInstructions.For(section, language, template, conciseCap)),

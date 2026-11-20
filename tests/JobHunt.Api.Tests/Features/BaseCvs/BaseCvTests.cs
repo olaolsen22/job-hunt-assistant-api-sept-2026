@@ -358,6 +358,7 @@ public class BaseCvTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("application/pdf", response.Content.Headers.ContentType?.MediaType);
+        Assert.StartsWith("Kari-Nordmann_", response.Content.Headers.ContentDisposition?.FileNameStar);
         Assert.StartsWith("%PDF-", System.Text.Encoding.ASCII.GetString((await response.Content.ReadAsByteArrayAsync())[..5]));
         Assert.Equal(HttpStatusCode.Unauthorized, (await factory.CreateClient().GetAsync($"/api/base-cv-versions/{versionId}/pdf")).StatusCode);
     }

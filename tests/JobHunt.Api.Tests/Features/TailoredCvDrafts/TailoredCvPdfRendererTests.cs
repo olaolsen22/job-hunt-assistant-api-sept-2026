@@ -48,18 +48,20 @@ public class TailoredCvPdfRendererTests
         var text = ExtractText(FullDraft(Language.Norwegian));
 
         // NAV headings, experience before education, references last.
-        AssertInOrder(text, "Sammendrag", "Arbeidsforhold", "Utdanning", "Kurs og sertifiseringer", "Prosjekter",
-            "Språk", "Kompetanser", "Lenker", "Referanser");
+        AssertInOrder(text, "Sammendrag", "Arbeidserfaring", "Utdanning", "Kurs og sertifiseringer", "Prosjekter",
+            "Språk", "Kompetanser", "Referanser");
         AssertInOrder(text, "E-post: ola@example.com", "Telefon: +47 123 45 678",
-            "Adresse: Storgata 1, 0155 Oslo", "Fødselsdato: 15.06.1990", "Sammendrag");
+            "Bosted: Storgata 1, 0155 Oslo", "Fødselsdato: 15.06.1990", "GitHub: https://github.com/ola", "Sammendrag");
+        Assert.DoesNotContain("Lenker", text);
         foreach (var value in new[] { "Mars 2021 - Nåværende", "Januar 2018 - Februar 2021", "August 2014 - Juni 2018",
                      "Mai 2022, gyldig til Mai 2025", "Januar 2020 - Juni 2020", "Acme AS | Lagos, Nigeria", "MSc, CS",
                      "Oppgis ved forespørsel." })
             Assert.Contains(value, text);
 
-        // NAV's language block: name, then written and spoken on their own lines.
-        AssertInOrder(text, "Engelsk", "Skriftlig: Førstespråk (morsmål)", "Muntlig: Førstespråk (morsmål)",
-            "Filipino/Tagalog", "Skriftlig: Veldig godt", "Muntlig: Godt");
+        // One line per language; a shared level is shown once.
+        AssertInOrder(text, "Engelsk: Førstespråk (morsmål)",
+            "Filipino/Tagalog: Veldig godt (skriftlig), Godt (muntlig)");
+        Assert.DoesNotContain("Skriftlig:", text);
         Assert.DoesNotContain("–", text);
     }
 
@@ -68,12 +70,12 @@ public class TailoredCvPdfRendererTests
     {
         var text = ExtractText(FullDraft(Language.English));
 
-        AssertInOrder(text, "Summary", "Experience", "Education", "Courses and certifications", "Projects",
-            "Languages", "Skills", "Links", "References");
+        AssertInOrder(text, "GitHub: https://github.com/ola", "Professional summary", "Work experience", "Education",
+            "Courses and certifications", "Projects", "Languages", "Skills", "References");
         AssertInOrder(text, "Email: ola@example.com", "Phone: +47 123 45 678",
-            "Address: Storgata 1, 0155 Oslo", "Date of birth: 15 June 1990");
+            "Location: Storgata 1, 0155 Oslo", "Date of birth: 15 June 1990");
         foreach (var value in new[] { "March 2021 - Present", "January 2018 - February 2021", "May 2022, valid until May 2025",
-                     "Written: Native (first language)", "Spoken: Good", "Available on request." })
+                     "English: Native (first language)", "Filipino/Tagalog: Very good (written), Good (spoken)", "Available on request." })
             Assert.Contains(value, text);
         Assert.Contains("•", text);
         Assert.Contains("Led the migration", text);
@@ -87,7 +89,7 @@ public class TailoredCvPdfRendererTests
         var text = ExtractText(FullDraft(Language.Norwegian) with { SectionOrder = TailoredCvSectionOrder.Developer });
 
         AssertInOrder(text, "E-post: ola@example.com", "GitHub: https://github.com/ola", "Sammendrag", "Teknisk kompetanse",
-            "Arbeidsforhold", "Utvalgte prosjekter", "Utdanning", "Kurs og sertifiseringer", "Språk", "Referanser");
+            "Arbeidserfaring", "Utvalgte prosjekter", "Utdanning", "Kurs og sertifiseringer", "Språk", "Referanser");
         Assert.DoesNotContain("Lenker", text);
         Assert.DoesNotContain("Kompetanser", text);
     }
@@ -225,7 +227,7 @@ public class TailoredCvPdfRendererTests
 
         var text = ExtractText(content);
 
-        Assert.Contains("Arbeidsforhold", text);
+        Assert.Contains("Arbeidserfaring", text);
         foreach (var heading in new[] { "Prosjekter", "Kurs og sertifiseringer", "Utdanning", "Kompetanser",
                      "Språk", "Lenker", "Referanser", "Fødselsdato" })
             Assert.DoesNotContain(heading, text);
@@ -324,9 +326,9 @@ public class TailoredCvPdfRendererTests
         // Growing the summary one line at a time slides every later section across the page break.
         (string Heading, string FirstEntry)[] sections =
         [
-            ("Experience", "Senior Dev"), ("Education", "MSc, CS"), ("Courses and certifications", "AWS SA"),
-            ("Projects", "Side Project"), ("Languages", "Spoken: Native"), ("Skills", "C#"),
-            ("Links", "GitHub"), ("References", "Available on request."),
+            ("Work experience", "Senior Dev"), ("Education", "MSc, CS"), ("Courses and certifications", "AWS SA"),
+            ("Projects", "Side Project"), ("Languages", "English: Native"), ("Skills", "C#"),
+            ("References", "Available on request."),
         ];
         for (var lines = 1; lines <= 60; lines++)
         {
@@ -382,9 +384,49 @@ public class TailoredCvPdfRendererTests
         Assert.True(indices.SequenceEqual(indices.OrderBy(i => i)), $"out of order: {string.Join(", ", values)}");
     }
 
-    private static string ExtractText(TailoredCvContent content, IReadOnlyList<SkillCategory>? categories = null)
+    [Fact]
+    public void Render_WithRelocation_AppendsMoveToLocationLine()
     {
-        var bytes = TailoredCvPdfRenderer.Render(content, categories);
+        var text = ExtractText(FullDraft(Language.Norwegian) with { Address = "Bergen, Norge" }, relocateTo: "Oslo");
+        Assert.Contains("Bosted: Bergen, Norge | Vil flytte til Oslo", text);
+
+        text = ExtractText(FullDraft(Language.English) with { Address = "Bergen, Norway" }, relocateTo: "Oslo");
+        Assert.Contains("Location: Bergen, Norway | Will relocate to Oslo", text);
+    }
+
+    [Theory]
+    [InlineData("Bergen, Norge", null, new[] { "Oslo" }, "Oslo")]
+    [InlineData("Bergen, Norge", "HYBRID", new[] { "Oslo", "Trondheim" }, "Oslo / Trondheim")]
+    [InlineData("Storgata 1, 0155 oslo", null, new[] { "Oslo" }, null)]
+    [InlineData("Bergen, Norge", null, new[] { "Oslo", "Bergen" }, null)]
+    [InlineData("Bergen, Norge", "REMOTE", new[] { "Oslo" }, null)]
+    [InlineData("Bergen, Norge", null, new string[0], null)]
+    [InlineData(null, null, new[] { "Oslo" }, null)]
+    public void RelocationTarget_OnlyWhenLocationIsOutsideEveryListingCity(
+        string? address, string? workMode, string[] cities, string? expected) =>
+        Assert.Equal(expected, TailoredCvPdfRenderer.RelocationTarget(address,
+            workMode switch { "HYBRID" => WorkMode.Hybrid, "REMOTE" => WorkMode.Remote, _ => (WorkMode?)null }, cities));
+
+    [Fact]
+    public void Render_PageNumbers_OnlyOnMultiPageCvs()
+    {
+        using var single = PdfDocument.Open(TailoredCvPdfRenderer.Render(
+            new TailoredCvContent(FullName: "Short Person", Summary: "One line.")));
+        Assert.Equal(1, single.NumberOfPages);
+        Assert.DoesNotContain("1 / 1", single.GetPage(1).Text);
+
+        using var multi = PdfDocument.Open(TailoredCvPdfRenderer.Render(FullDraft(Language.English) with
+        {
+            Summary = string.Join("\n", Enumerable.Repeat("Summary line", 80)),
+        }));
+        Assert.True(multi.NumberOfPages > 1);
+        Assert.Contains($"1 / {multi.NumberOfPages}", multi.GetPage(1).Text);
+    }
+
+    private static string ExtractText(TailoredCvContent content, IReadOnlyList<SkillCategory>? categories = null,
+        string? relocateTo = null)
+    {
+        var bytes = TailoredCvPdfRenderer.Render(content, categories, relocateTo);
         using var document = PdfDocument.Open(bytes);
         return string.Join("\n", document.GetPages().Select(p => p.Text));
     }

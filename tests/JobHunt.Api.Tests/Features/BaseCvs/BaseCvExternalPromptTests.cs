@@ -40,6 +40,9 @@ public class BaseCvExternalPromptTests(ApiFactory factory) : IClassFixture<ApiFa
         Assert.Contains("Prompt Base Employer", instructions);
         Assert.Contains($"\"id\":{bulletIds[0]}", instructions);
         Assert.Contains("cherry-pick", instructions);
+        Assert.Contains("use experienceMonths", instructions);
+        Assert.Contains("\"experienceMonths\":", instructions);
+        Assert.Contains("arbeidstrening", instructions);
         Assert.Contains("copy the bullet exactly as supplied", instructions);
         Assert.DoesNotContain("combine it with", instructions);
         Assert.Contains("\"template\": \"DETAILED\"", instructions);

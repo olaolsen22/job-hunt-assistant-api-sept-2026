@@ -12,18 +12,19 @@ public record TailoredCvExternalPrompt(int Version, string Instructions);
 [QueryType]
 public static class TailoredCvExternalPromptQueries
 {
-    public const int Version = 19;
+    public const int Version = 21;
 
     public static async Task<TailoredCvExternalPrompt> GetTailoredCvExternalPromptAsync(
-        int listingId, AppDbContext db, CancellationToken ct, TailoredCvTemplate? template = null, Language? language = null)
+        int listingId, AppDbContext db, TimeProvider time, CancellationToken ct, TailoredCvTemplate? template = null,
+        Language? language = null)
     {
         var listing = await TailoredCvListingContext.LoadAsync(listingId, db, ct)
             ?? throw new GraphQLException(new ListingNotFoundException(listingId).Message);
         var profile = await ProfileQueries.LoadAsync(db, ct);
         var target = await TailoredCvLanguageText.TargetLanguageAsync(listing, language, db, ct);
         // Listing first and separate from the profile, so it is easy to spot in the pasted prompt.
-        var listingJson = JsonSerializer.Serialize(TailoredCvListingContext.ForExternalPrompt(listing), TailoredCvJson.Options);
-        var serialized = await ProfileJsonAsync(profile, target, db, ct);
+        var listingJson = JsonSerializer.Serialize(TailoredCvListingContext.ForExternalPrompt(listing, target), TailoredCvJson.Options);
+        var serialized = await ProfileJsonAsync(profile, target, DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime), db, ct);
         if (listingJson.Length + serialized.Length > TailoredCvAnalyzer.MaxContextLength)
             throw new GraphQLException($"Prompt context must be at most {TailoredCvAnalyzer.MaxContextLength} characters.");
 
@@ -31,12 +32,13 @@ public static class TailoredCvExternalPromptQueries
         var concise = templateValue == TailoredCvTemplate.Concise;
         var bulletRules = concise
             ? $"""
-                and set its text to that bullet shortened as follows. {CvGuidance.ConciseBullets} {CvGuidance.ListingWording}
-                {CvGuidance.Layout(templateValue)} {CvGuidance.RequirementCoverage}
+                and set its text to a bullet written as follows. {CvGuidance.ConciseWrittenBullets}
+                {CvGuidance.Layout(templateValue, listing: true)} {CvGuidance.RequirementCoverage}
                 """
             : $"""
                 and set its text to that bullet's full text, not shortened. {CvGuidance.ListingWording}
-                For paragraphs: {CvGuidance.ListingTerms} {CvGuidance.Layout(templateValue)}
+                For paragraphs: {CvGuidance.ListingTerms} {CvGuidance.Layout(templateValue, listing: true)} {CvGuidance.RequirementCoverage}
+                {CvGuidance.EducationWording}
                 """;
         const string bulletLanguage = "Keep each bullet in the language it is supplied in";
         var instructions = $$"""
@@ -64,9 +66,9 @@ public static class TailoredCvExternalPromptQueries
             profile; only when it is null, suggest one using the rule below. Include languages
             only when present in the profile. Write a concise listing-specific summary from supported profile facts,
             starting from the profile's own headline and summary and adjusting their emphasis rather than rewriting them,
-            or null when there is not enough evidence. {{CvGuidance.SummaryConsistency}}
+            or null when there is not enough evidence. {{CvGuidance.SummaryContent}} {{CvGuidance.SummaryConsistency}}
             {{CvGuidance.ExternalWriting(concise)}}
-            {{CvGuidance.Gap}} Follow Norwegian CV guidance for an ordinary job application. {{CvGuidance.BulletSelection(templateValue)}}
+            {{CvGuidance.Gap}} {{CvGuidance.BulletSelection(templateValue)}}
             Order experiences, educations, certifications, and projects newest first (ongoing entries first). The CV language is {{TailoredCvLanguageText.Name(target)}}:
             set "language" to "{{(target == Language.Norwegian ? "NORWEGIAN" : "ENGLISH")}}" and write the headline, the summary and every paragraph in that
             language, the summary as plain text without Markdown, {{CvGuidance.SummaryLength(templateValue)}}, reusing the listing's terminology only where the profile supports it.
@@ -85,7 +87,8 @@ public static class TailoredCvExternalPromptQueries
     }
 
     // Allowlisted profile data for an external AI: no contact details or other sensitive fields.
-    internal static async Task<string> ProfileJsonAsync(Profile profile, Language target, AppDbContext db, CancellationToken ct)
+    internal static async Task<string> ProfileJsonAsync(Profile profile, Language target, DateOnly today, AppDbContext db,
+        CancellationToken ct)
     {
         string BulletText(ProfileBullet b) => TailoredCvLanguageText.Bullet(b, target);
         var translation = profile.Translations.FirstOrDefault(t => t.Language == target);
@@ -97,9 +100,13 @@ public static class TailoredCvExternalPromptQueries
             {
                 Headline = translation?.Headline ?? profile.Headline,
                 Summary = translation?.Summary ?? profile.Summary,
+                // Counted here, since the summary states years.
+                ExperienceMonths = ProfileDataLoaders.ExperienceMonths(
+                    profile.Experiences.Select(e => (e.StartMonth, e.EndMonth)), today),
                 Experiences = profile.Experiences.Select(e => new
                 {
                     e.Id, e.Employer, Title = e.TitleIn(target), e.StartMonth, e.EndMonth,
+                    Months = ProfileDataLoaders.ExperienceMonths([(e.StartMonth, e.EndMonth)], today),
                     Location = e.Location is { } l ? new { l.City, l.CountryCode } : null,
                     Skills = e.Skills.Select(s => s.NameIn(target)),
                     Bullets = e.Bullets.Select(b => new { b.Id, Text = BulletText(b) }),

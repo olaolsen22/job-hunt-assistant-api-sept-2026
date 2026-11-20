@@ -6,7 +6,7 @@ public class PromptQueryErrorTests(ApiFactory factory) : IClassFixture<ApiFactor
     [Theory]
     [InlineData("{ tailoredCvExternalPrompt(listingId: 999999) { version } }", "Listing 999999 was not found.")]
     [InlineData("{ coverLetterExternalPrompt(listingId: 999999) { version } }", "Listing 999999 was not found.")]
-    [InlineData("{ applicationAnswerExternalPrompt(questionId: 999999) { version } }", "Application question 999999 was not found.")]
+    [InlineData("{ applicationAnswerExternalPrompt(listingId: 999999) { version } }", "Listing 999999 was not found.")]
     [InlineData("{ profileTranslationPrompt(language: ENGLISH) { version } }", "A translation can't be in the language the profile is written in.")]
     public async Task PromptQuery_ReportsTheRealReason(string query, string message)
     {

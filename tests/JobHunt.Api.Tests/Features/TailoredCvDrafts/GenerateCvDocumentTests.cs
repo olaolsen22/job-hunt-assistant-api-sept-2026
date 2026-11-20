@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using JobHunt.Api.Features.Documents;
 using JobHunt.Api.Tests.Features.Documents;
+using JobHunt.Api.Tests.Features.Listings;
 using UglyToad.PdfPig;
 
 namespace JobHunt.Api.Tests.Features.TailoredCvDrafts;
@@ -92,13 +93,27 @@ public class GenerateCvDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Empty((await GetListingAsync(owner, listingId)).GetProperty("documents").EnumerateArray());
     }
 
-    private static async Task SaveAsync(HttpClient client, int listingId, string summary)
+    [Fact]
+    public async Task Generate_LocationOutsideListingCity_AddsRelocationLine()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var listingId = (await ListingTests.CreateAsync(client, ListingTests.NewListing(ListingTests.Unique("Relocation"),
+            locations: [new { city = "Oslo", countryCode = "NO" }]))).GetProperty("id").GetInt32();
+        await SaveAsync(client, listingId, "Summary", address: "Bergen, Norge");
+
+        var id = (await GenerateAsync(client, listingId)).GetProperty("document").GetProperty("id").GetInt32();
+
+        using var pdf = PdfDocument.Open(await client.GetByteArrayAsync($"/api/documents/{id}"));
+        Assert.Contains("Bergen, Norge | Vil flytte til Oslo", string.Join("\n", pdf.GetPages().Select(p => p.Text)));
+    }
+
+    private static async Task SaveAsync(HttpClient client, int listingId, string summary, string? address = null)
     {
         var data = await client.GraphQLAsync("""
             mutation ($listingId: Int!, $content: TailoredCvContentInput!) {
               saveTailoredCvDraft(input: {listingId: $listingId, content: $content}) { errors { __typename } }
             }
-            """, new { listingId, content = new { summary } });
+            """, new { listingId, content = new { summary, address, language = "NORWEGIAN" } });
         Assert.Equal(JsonValueKind.Null, data.GetProperty("saveTailoredCvDraft").GetProperty("errors").ValueKind);
     }
 
