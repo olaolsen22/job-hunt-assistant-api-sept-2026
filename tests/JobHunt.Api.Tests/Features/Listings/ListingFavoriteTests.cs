@@ -1,4 +1,5 @@
 using System.Text.Json;
+using JobHunt.Api.Tests.Features.Applications;
 
 namespace JobHunt.Api.Tests.Features.Listings;
 
@@ -41,6 +42,31 @@ public class ListingFavoriteTests(ApiFactory factory) : IClassFixture<ApiFactory
         var removed = await SetAsync(client, second, false);
         Assert.Equal(JsonValueKind.Null, removed.GetProperty("favoritedAt").ValueKind);
         Assert.Equal([first], await FavoriteIdsAsync(client));
+    }
+
+    [Fact]
+    public async Task Favorites_SortedByStageRank_PutFurthestAlongFirst()
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var rejected = await ApplicationTests.AppliedListingAsync(client);
+        await client.GraphQLAsync("""
+            mutation ($listingId: Int!) { recordOutcome(input: { listingId: $listingId, outcome: REJECTED }) { errors { __typename } } }
+            """, new { listingId = rejected });
+        var interviewing = await ApplicationTests.AppliedListingAsync(client);
+        await client.GraphQLAsync("""
+            mutation ($listingId: Int!) { addInterview(input: { listingId: $listingId, scheduledAt: "2026-01-05T10:00:00Z" }) { errors { __typename } } }
+            """, new { listingId = interviewing });
+        var saved = await CreateIdAsync(client);
+        int[] mine = [interviewing, saved, rejected];
+        foreach (var id in mine)
+            await SetAsync(client, id, true);
+
+        var ids = (await client.GraphQLAsync("""
+            { listings(where: { favoritedAt: { neq: null } }, order: [{ stageRank: DESC }, { favoritedAt: DESC }]) { items { id status } } }
+            """))
+            .GetProperty("listings").GetProperty("items").EnumerateArray().Select(n => n.GetProperty("id").GetInt32());
+
+        Assert.Equal(mine, ids.Where(mine.Contains));
     }
 
     [Fact]

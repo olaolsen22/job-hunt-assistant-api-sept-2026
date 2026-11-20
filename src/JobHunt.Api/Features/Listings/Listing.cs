@@ -30,7 +30,10 @@ public class Listing
     // Stillingsprosent, 1–100. Kept next to Schedule, which only says full or part time; a range ("50–100 %") stores the top.
     public int? PositionPercent { get; set; }
     public WorkMode? WorkMode { get; set; }
+    // Always English, for the UI. OriginalDescription is the same text in the posting's language, so Norwegian CVs and
+    // letters can echo the ad's own wording; null for English ads and listings not re-analyzed since it was added.
     public string? Description { get; set; }
+    public string? OriginalDescription { get; set; }
     // Null only for an unsolicited application, which has no page and was never posted.
     public string? Url { get; set; }
     public DateOnly? PostedOn { get; set; }
@@ -64,6 +67,12 @@ public class Listing
     public List<ApplicationQuestion> ApplicationQuestions { get; set; } = [];
     // Set when the ad is a training program that leads to a job; null for ordinary jobs.
     public TrainingProgram? TrainingProgram { get; set; }
+
+    // The description to send a prompt that writes in this language. Falls back to the English one.
+    public string? DescriptionIn(Language language) =>
+        language != Language.English && language == PostingLanguage && OriginalDescription is not null
+            ? OriginalDescription
+            : Description;
 }
 
 public class ListingSkill

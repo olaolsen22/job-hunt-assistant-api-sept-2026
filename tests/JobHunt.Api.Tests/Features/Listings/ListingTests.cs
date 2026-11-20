@@ -641,11 +641,12 @@ public class ListingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         bool isAnalyzed = false,
         bool reanalyzed = false,
         string? schedule = null,
-        int? positionPercent = null) =>
+        int? positionPercent = null,
+        string? postingLanguage = null) =>
         new
         {
             title, companyName, jobRoleName, deadlineType, deadlineOn, url = url ?? UniqueUrl(), postedOn, isAnalyzed, reanalyzed,
-            schedule, positionPercent,
+            schedule, positionPercent, postingLanguage,
             skills = skills ?? [], languages = languages ?? [], locations = locations ?? [],
         };
 

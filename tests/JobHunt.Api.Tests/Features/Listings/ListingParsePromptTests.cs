@@ -17,7 +17,9 @@ public class ListingParsePromptTests(ApiFactory factory) : IClassFixture<ApiFact
         var guestPrompt = (await guest.GraphQLAsync(query)).GetProperty("listingParsePrompt");
 
         var instructions = ownerPrompt.GetProperty("instructions").GetString()!;
-        Assert.Equal(18, ownerPrompt.GetProperty("version").GetInt32());
+        Assert.Equal(20, ownerPrompt.GetProperty("version").GetInt32());
+        Assert.Contains("\"originalDescription\": string | null", instructions);
+        Assert.Contains("faithful translation of originalDescription", instructions);
         Assert.Contains("Application: what the ad or application page asks applicants", instructions);
         Assert.Contains("\"Referansenummer\"", instructions);
         Assert.Contains("what to submit and any reference number", instructions);
@@ -37,8 +39,8 @@ public class ListingParsePromptTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Contains("\"Løpende\"/\"fortløpende\"/\"rolling\" → ASAP", instructions);
         Assert.DoesNotContain("ROLLING", instructions);
         Assert.Contains("Stillingstittel", instructions);
-        Assert.Contains("short, direct job title in natural English", instructions);
-        Assert.DoesNotContain("original language", instructions);
+        Assert.Contains("Never translate it", instructions);
+        Assert.DoesNotContain("title in natural English", instructions);
         Assert.Contains("\"contacts\"", instructions);
         Assert.Contains("Kontaktperson", instructions);
         Assert.Contains("erfaren", instructions);
@@ -98,7 +100,7 @@ public class ListingParsePromptTests(ApiFactory factory) : IClassFixture<ApiFact
             .GetProperty("listingQuickParsePrompt");
 
         var instructions = prompt.GetProperty("instructions").GetString()!;
-        Assert.Equal(8, prompt.GetProperty("version").GetInt32());
+        Assert.Equal(9, prompt.GetProperty("version").GetInt32());
         Assert.Contains("\"kind\": \"VACANCY\" | \"OPEN_INVITATION\"", instructions);
         Assert.Contains("\"postingLanguage\": \"ENGLISH\" | \"NORWEGIAN\" | null", instructions);
         Assert.Contains("skandinavisk språk", instructions);
@@ -107,8 +109,8 @@ public class ListingParsePromptTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.DoesNotContain("Referansenummer", instructions);
         Assert.Contains("ONE JSON array", instructions);
         Assert.Contains("Stillingstittel", instructions);
-        Assert.Contains("short, direct job title in natural English", instructions);
-        Assert.DoesNotContain("original language", instructions);
+        Assert.Contains("Never translate it", instructions);
+        Assert.DoesNotContain("title in natural English", instructions);
         Assert.Contains("i dag", instructions);
         Assert.DoesNotContain("Don't guess", instructions);
         Assert.Contains("\"Løpende\"/\"fortløpende\"/\"rolling\" → ASAP", instructions);

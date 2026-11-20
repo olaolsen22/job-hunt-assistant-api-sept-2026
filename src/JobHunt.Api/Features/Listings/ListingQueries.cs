@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using HotChocolate.Data.Sorting;
 using JobHunt.Api.Data;
+using JobHunt.Api.Features.Applications;
 using Microsoft.EntityFrameworkCore;
 
 namespace JobHunt.Api.Features.Listings;
@@ -68,7 +69,7 @@ public static class ListingQueries
     [UseOffsetPaging(DefaultPageSize = 20, MaxPageSize = 100, IncludeTotalCount = true)]
     [UseProjection]
     [UseFiltering]
-    [UseSorting]
+    [UseSorting<ListingSortType>]
     public static IQueryable<Listing> GetListings(
         AppDbContext db, ISortingContext sorting, TimeProvider time, bool archived = false, int? dueWithinDays = null,
         string? search = null, bool? isTrainingProgram = null)
@@ -128,6 +129,20 @@ public record ListingUrlCheckResult(
     List<int> ExistingListingIds,
     int? DuplicateOfIndex,
     bool ShouldProcess);
+
+// Status is stored as a string, so sorting by it is alphabetical; stageRank sorts by how far an application got.
+public class ListingSortType : SortInputType<Listing>
+{
+    protected override void Configure(ISortInputTypeDescriptor<Listing> descriptor) =>
+        descriptor.Field(l =>
+                l.Status == ApplicationStatus.Offer ? 5
+                : l.Status == ApplicationStatus.Interviewing ? 4
+                : l.Status == ApplicationStatus.Applied ? 3
+                : l.Status == ApplicationStatus.Saved ? 2
+                : l.Status == ApplicationStatus.Accepted ? 1
+                : 0)
+            .Name("stageRank");
+}
 
 [ObjectType<Listing>]
 public static partial class ListingNode

@@ -14,10 +14,10 @@ public record ListingParsePrompt(int Version, string Instructions);
 public static class ListingParsePromptQueries
 {
     // Bump whenever the prompt or output shape changes.
-    public const int Version = 18;
+    public const int Version = 20;
 
     // Separate from Version: the quick prompt changes on its own schedule.
-    public const int QuickVersion = 8;
+    public const int QuickVersion = 9;
 
     public static Task<ListingParsePrompt> GetListingParsePromptAsync(
         AppDbContext db, TimeProvider time, CancellationToken ct) => BuildFullAsync(db, time, external: true, ct);
@@ -41,7 +41,7 @@ public static class ListingParsePromptQueries
 
             # Output
             {
-              "title": string,              // short job title in natural English
+              "title": string,              // the ad's job title as written, never translated
               "kind": "VACANCY" | "OPEN_INVITATION",
               "companyName": string,
               "jobRoleName": string,        // core role in English, no seniority or tech: "Backend Developer", "Warehouse Worker"
@@ -51,7 +51,8 @@ public static class ListingParsePromptQueries
               "schedule": {{PromptText.Values<Schedule>()}} | null,
               "positionPercent": 1-100 | null,
               "workMode": {{PromptText.Values<WorkMode>()}} | null,
-              "description": string,        // key points translated to English, format under Rules
+              "originalDescription": string | null,  // key points in the ad's own language; null for English ads
+              "description": string,        // the same key points in English, format under Rules
               "postedOn": "YYYY-MM-DD" | null,
               "deadlineType": {{PromptText.Values<DeadlineType>()}},
               "deadlineOn": "YYYY-MM-DD" | null,
@@ -102,24 +103,31 @@ public static class ListingParsePromptQueries
             {{PostedOnRule}}
             {{DeadlineRule}}
 
-            description: always in English; translate if the ad is in another language.
-              Plain text (no Markdown), max 1000 characters, not counting a requirements list kept as below.
-              Grouped key points in this order; leave out a section the ad says nothing about:
-                Company:
+            originalDescription: for an ad not in English, write it first, in the ad's own language, before description.
+              Same format and rules as description below, with the Requirements list copied word for word from the ad.
+              null when postingLanguage is ENGLISH.
+            description: always in English. For an ad in another language, a faithful translation of originalDescription
+              with the same sections and items; never add, drop or merge points in translation.
+              Markdown, max 1000 characters, not counting a requirements list kept as below.
+              Only "### " headings, "- " bullets and **bold** for a few key terms; no links, images, tables,
+              code or HTML. Grouped key points in this order; leave out a section the ad says nothing about:
+                ### Company
                 - …
-                Role:
+                ### Role
                 - …
-                Requirements:
+                ### Requirements
                 - …
-                Offer:
+                ### Offer
                 - …
-                Application:
+                ### Application
                 - …
               Short phrases, not full sentences. Blank line between sections.
+              In originalDescription, the headings are in the ad's own language.
               Role includes stated office attendance ("3 days a week in the Oslo office").
               When the ad lists its requirements or qualifications as bullet points, Requirements keeps that list
               item for item: copied word for word if the ad is in English, otherwise translated faithfully. Never
-              merge, shorten, reorder or drop an item. Mark items the ad calls an advantage with "(nice to have)".
+              merge, shorten, reorder or drop an item. Mark items the ad calls an advantage with "(nice to have)"
+              (in originalDescription, the ad's own word for it, such as "(fordel)").
               Application: what the ad or application page asks applicants to send or do (CV, cover letter or
               explicitly none, written questions, diplomas or transcripts, references), and its reference number
               ("Referansenummer", "Stillingsnummer", "Søknadsnummer", "Ref.") copied exactly.
@@ -182,7 +190,7 @@ public static class ListingParsePromptQueries
 
             # Output
             [{
-              "title": string,              // short job title in natural English
+              "title": string,              // the ad's job title as written, never translated
               "kind": "VACANCY" | "OPEN_INVITATION",
               "companyName": string,
               "jobRoleName": string,        // core role in English, no seniority or tech: "Backend Developer", "Warehouse Worker"
@@ -218,10 +226,10 @@ public static class ListingParsePromptQueries
 
     // Rules both listing prompts share, word for word.
     private const string TitleRule = """
-        title: a short, direct job title in natural English, based on the "Stillingstittel"/"Job title" field when the
-          page has one, otherwise the ad's heading. Translate it if the ad isn't in English. Keep seniority and
-          specialty; drop company, location, workload/employment type, slogans and duplicate bilingual variants.
-          "Senior systemutvikler .NET – Oslo, 100 % fast" → "Senior .NET Developer".
+        title: the job title as written in the ad, from the "Stillingstittel"/"Job title" field when the page has one,
+          otherwise the ad's heading. Never translate it; keep its language, wording, seniority and specialty. Drop only
+          company, location, workload/employment type and slogans; with bilingual variants, keep the ad's own language.
+          "Senior systemutvikler .NET – Oslo, 100 % fast" → "Senior systemutvikler .NET".
         """;
 
     private const string CompanyNameRule = """

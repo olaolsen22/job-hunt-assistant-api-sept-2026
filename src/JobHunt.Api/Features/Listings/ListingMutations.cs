@@ -37,7 +37,10 @@ public record ListingInput(
     string? JobRoleCategoryName = null,
     // True when this save applies a fresh re-analysis (the prompts change over time); stamps ReanalyzedAt.
     [property: DefaultValue(false)] bool Reanalyzed = false,
-    [property: DefaultValue(ListingKind.Vacancy)] ListingKind Kind = ListingKind.Vacancy);
+    [property: DefaultValue(ListingKind.Vacancy)] ListingKind Kind = ListingKind.Vacancy,
+    // Description in the posting's language. Omitted keeps it, so clients that don't know about it don't wipe it;
+    // dropped whenever the posting is English or has no language.
+    Optional<string?> OriginalDescription = default);
 
 // The end employer comes in by name like the listing's company; null when the ad doesn't name one.
 public record TrainingProgramInput(
@@ -260,6 +263,11 @@ public static class ListingMutations
         entity.DeadlineType = input.DeadlineType;
         entity.DeadlineOn = input.DeadlineOn;
         entity.PostingLanguage = input.PostingLanguage;
+        if (input.OriginalDescription.HasValue)
+            entity.OriginalDescription = string.IsNullOrWhiteSpace(input.OriginalDescription.Value)
+                ? null : input.OriginalDescription.Value.Trim();
+        if (input.PostingLanguage is null or Language.English)
+            entity.OriginalDescription = null;
         // ??= keeps the first time, so re-saving an analyzed listing doesn't reorder the list.
         if (input.IsAnalyzed)
             entity.AnalyzedAt ??= now;
@@ -368,6 +376,8 @@ public static class ListingMutations
         CheckNameLength(input.TrainingProgram.Value?.EndCompanyName, "End company name");
         if (input.Description?.Length > MaxDescriptionLength)
             throw new InvalidListingException($"Description is longer than {MaxDescriptionLength} characters.");
+        if (input.OriginalDescription.Value?.Length > MaxDescriptionLength)
+            throw new InvalidListingException($"Original description is longer than {MaxDescriptionLength} characters.");
     }
 
     private static void ValidateKindAndDates(ListingInput input, DateOnly today)

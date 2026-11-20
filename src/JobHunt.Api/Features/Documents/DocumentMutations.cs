@@ -48,7 +48,7 @@ public static partial class DocumentMutations
     internal static async Task<ListingNames> ListingNamesAsync(int listingId, AppDbContext db, CancellationToken ct) =>
         await db.Listings
             .Where(l => l.Id == listingId)
-            .Select(l => new ListingNames(l.Company.Name, l.JobRole.Name))
+            .Select(l => new ListingNames(l.Company.Name, RoleName(l.PostingLanguage, l.Title, l.JobRole.Name)))
             .FirstOrDefaultAsync(ct)
             ?? throw new ListingNotFoundException(listingId);
 
@@ -90,6 +90,10 @@ public static partial class DocumentMutations
     // The date is the upload date, then the applied date once sent, so a downloaded file shows when it went out.
     internal static string FileName(string company, string jobRole, DocumentKind kind, DateTime date) =>
         $"{Slug(company)}_{Slug(jobRole)}_{kind}_{date:yyyy-MM-dd}.pdf";
+
+    // A non-English posting's title keeps the ad's own wording ("Butikkmedarbeidere"); the job role is always English.
+    internal static string RoleName(Language? postingLanguage, string title, string jobRole) =>
+        postingLanguage is null or Language.English ? jobRole : title;
 
     // Letters and digits only (æøå included), so the name is safe on any OS: "Acme AS" → "Acme-AS".
     internal static string Slug(string name) => NonAlphanumeric().Replace(name, "-").Trim('-');

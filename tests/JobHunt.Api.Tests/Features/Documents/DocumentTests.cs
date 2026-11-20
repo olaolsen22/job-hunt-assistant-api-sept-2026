@@ -58,6 +58,22 @@ public class DocumentTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Theory]
+    [InlineData("NORWEGIAN", "Butikkmedarbeidere")]
+    [InlineData("ENGLISH", "Retail-Worker")]
+    [InlineData(null, "Retail-Worker")]
+    public async Task Upload_NamesNonEnglishListingByItsOwnTitle(string? postingLanguage, string role)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var listing = ListingTests.NewListing(ListingTests.Unique("Gutta"), title: "Butikkmedarbeidere",
+            jobRoleName: "Retail Worker", postingLanguage: postingLanguage);
+        var listingId = (await ListingTests.CreateAsync(client, listing)).GetProperty("id").GetInt32();
+
+        var document = (await UploadAsync(client, listingId, "CV", Pdf, "cv.pdf")).GetProperty("document");
+
+        Assert.Contains($"_{role}_Cv_", document.GetProperty("fileName").GetString());
+    }
+
+    [Theory]
     [InlineData("Jane Doe", "Jane-Doe_Acme_Dev_Cv.pdf")]
     [InlineData(null, "Acme_Dev_Cv.pdf")]
     [InlineData("  ", "Acme_Dev_Cv.pdf")]
