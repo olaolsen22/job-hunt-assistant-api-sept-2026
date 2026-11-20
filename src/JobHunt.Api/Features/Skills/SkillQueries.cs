@@ -19,7 +19,36 @@ public static class SkillQueries
         var name = Names.Normalize(search);
         return skills.Where(s => s.NormalizedName.Contains(name));
     }
+
+    // Most-requested skills across the user's listings, for a "popular tech" view. since filters on listing CreatedAt.
+    public static async Task<List<SkillPopularity>> GetTopSkillsAsync(
+        AppDbContext db, CancellationToken ct,
+        int limit = 10, DateTime? since = null, bool requiredOnly = false, bool includeArchived = false)
+    {
+        limit = Math.Clamp(limit, 1, 100);
+        var rows = db.ListingSkills.AsQueryable();
+        if (!includeArchived) rows = rows.Where(s => s.Listing.ArchivedAt == null);
+        if (requiredOnly) rows = rows.Where(s => s.IsRequired);
+        if (since is { } from)
+        {
+            var utc = from.ToUniversalTime();
+            rows = rows.Where(s => s.Listing.CreatedAt >= utc);
+        }
+
+        var counts = await rows
+            .GroupBy(s => s.SkillId)
+            .Select(g => new { SkillId = g.Key, Count = g.Count() })
+            .OrderByDescending(g => g.Count).ThenBy(g => g.SkillId)
+            .Take(limit)
+            .ToListAsync(ct);
+
+        var ids = counts.Select(c => c.SkillId).ToList();
+        var skills = await db.Skills.Where(s => ids.Contains(s.Id)).ToDictionaryAsync(s => s.Id, ct);
+        return [.. counts.Select(c => new SkillPopularity(skills[c.SkillId], c.Count))];
+    }
 }
+
+public record SkillPopularity(Skill Skill, int ListingCount);
 
 [ObjectType<Skill>]
 public static partial class SkillNode
