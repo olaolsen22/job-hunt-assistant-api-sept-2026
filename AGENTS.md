@@ -73,6 +73,16 @@ real data are required even for this personal app.
 - After notable behavior changes, use `log-progress` to update relevant STATUS
   sections; do not rewrite unrelated documentation.
 
+## New feature workflow
+- For a new feature, ask the owner for the user flow it serves. If changes are
+  requested and no flow exists, ask before coding.
+- Brainstorm with the owner: give a brief overview of the flow and the API
+  shape it needs (queries, mutations, errors, data). Wait for an explicit go.
+- Consult `$dotnet-expert` for API design and `$db-architect` for data-model
+  changes before building.
+- Write tests first, then implement. Keep tests light: the main success path
+  plus the validation, user isolation, and failure cases that matter.
+
 ## Communication and commits
 - Be direct and concise: outcome, meaningful changes, validation, limitations.
   Show snippets only when useful. Explain a new backend/.NET concept in 1–2
