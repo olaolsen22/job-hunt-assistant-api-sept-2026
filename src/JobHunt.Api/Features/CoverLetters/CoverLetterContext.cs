@@ -41,7 +41,8 @@ public static class CoverLetterContext
                 listing.Kind, listing.Title, Company = listing.Company.Name, Industry = listing.Company.Industry?.Name,
                 JobRole = listing.JobRole.Name, listing.Url, listing.Seniority, listing.EmploymentType,
                 listing.WorkMode, Locations = listing.Locations.Select(l => new { l.Location.City, l.Location.CountryCode }),
-                listing.Description,
+                // In the letter's language, so a Norwegian letter can echo the ad's own wording.
+                Description = listing.DescriptionIn(language),
                 Skills = listing.Skills.Select(s => new { s.Skill.Name, s.Level, s.MinYears, s.IsRequired }),
                 Languages = listing.Languages.Select(l => new { l.Language, l.Level, l.IsRequired }),
                 Recipient = header.RecipientName,
@@ -62,7 +63,13 @@ public static class CoverLetterContext
                     .Select(s => new { s.Status, s.Note }),
             },
             Candidate = cv is null ? FromProfile(profile, language) : FromCv(cv),
-            Availability = new { profile.NoticePeriodMonths },
+            Availability = new
+            {
+                profile.NoticePeriodMonths,
+                // The letter mentions relocation only when this differs from the listing's locations.
+                Location = profile.Location is { } home ? new { home.City, home.CountryCode } : null,
+                letter?.RelocationLeadWeeks,
+            },
             Story = new
             {
                 profile.Story.Origin, profile.Story.Upbringing, profile.Story.CareerJourney,

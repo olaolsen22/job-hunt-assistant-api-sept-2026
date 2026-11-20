@@ -597,6 +597,9 @@ namespace JobHunt.Api.Migrations
                     b.Property<int>("ListingId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("RelocationLeadWeeks")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
 
@@ -887,6 +890,9 @@ namespace JobHunt.Api.Migrations
 
                     b.Property<string>("NormalizedTitle")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OriginalDescription")
                         .HasColumnType("TEXT");
 
                     b.Property<int?>("PositionPercent")

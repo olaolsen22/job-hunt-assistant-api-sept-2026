@@ -24,7 +24,7 @@ public class CoverLetterModelOutput
 // Guidance distilled from docs/norwegian-cover-letter.md and the åpen søknad research.
 public static class CoverLetterPrompt
 {
-    public const int Version = 5;
+    public const int Version = 6;
     public const int MaxOutputLength = 30_000;
 
     public static string Instructions(Language language, ListingKind kind)
@@ -77,17 +77,20 @@ public static class CoverLetterPrompt
               libraries or design systems); otherwise present it as how the candidate works, not as a reason for fit.
             - Close briefly: interest in discussing how the candidate can contribute. Mention availability only from
               noticePeriodMonths; when it is null, say "{{(norwegian ? "Jeg kan tiltre etter avtale" : "I can start by agreement")}}" or leave it out.
+            {{RelocationGuidance}}
 
             Style: about 300-350 words in 3-4 short paragraphs of plain text, no Markdown, bullets or headings.
             Short, direct sentences the candidate would say aloud. Restrained and professional; match the employer's
             tone without copying its marketing language. No superlatives, filler, generic praise of the company,
             claims to be the perfect candidate, or polished generic phrasing. Write about the candidate's own
-            actions, not only the team's.
+            actions, not only the team's, and about what they would contribute, not what the role or employer would
+            give them.
             {{VoiceGuidance}}
 
             Language: write in {{TailoredCvLanguageText.Name(language)}}{{(norwegian ? ", natural idiomatic bokmål, not a translation" : "")}}, using the listing's terminology where the
             candidate's facts support it.
-            Subject: {{subject}}.
+            Subject: {{subject}}. <listing title> is listing.title copied exactly as supplied: never translate,
+            reword or shorten it, even when the letter is in another language than the title.
             Greeting: {{(norwegian ? "null; Norwegian letters go straight from the subject to the body" : "\"Dear <recipient>,\" or \"Dear hiring team,\" when no recipient is supplied")}}.
             Closing: {{(norwegian ? "\"Vennlig hilsen\"" : "\"Kind regards\"")}}. Do not write names, addresses, dates or contact details.
 
@@ -110,6 +113,16 @@ public static class CoverLetterPrompt
         and never present an internal stakeholder as an external client. A BROKER listing is usually a client
         assignment: answer its stated requirements directly. A RECRUITMENT listing is often for an unnamed client:
         write about the role described and never guess the client.
+        """;
+
+    // A distant home address raises doubt about availability (NTNU, UngInfo). Applying for an onsite or hybrid job
+    // elsewhere is the decision to move there if hired, so the destination is the listing's; only a date is unknown.
+    internal const string RelocationGuidance = """
+        - Relocation: when availability.location is in another city than every listing location and workMode is
+          not REMOTE, add one sentence near the close saying where the candidate lives now and that they will
+          relocate to the listing's city for this position: about availability.relocationLeadWeeks weeks before
+          the start date when that is set, otherwise in place before the start date. Never give a calendar date.
+          Otherwise do not mention location.
         """;
 
     internal const string NotesGuidance = """

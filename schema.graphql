@@ -5,7 +5,7 @@ schema {
 
 type Query {
   llmCallLimits: [LlmCallLimit!]! @cost(weight: "10")
-  applicationAnswerExternalPrompt(questionId: Int!): ApplicationAnswerExternalPrompt!
+  applicationAnswerExternalPrompt(listingId: Int!): ApplicationAnswerExternalPrompt!
     @cost(weight: "10")
   baseCvExternalPrompt(
     language: Language!
@@ -258,6 +258,12 @@ type Query {
       requireOneSlicingArgument: false
     )
     @cost(weight: "10")
+  topSkills(
+    limit: Int! = 10
+    since: DateTime
+    requiredOnly: Boolean! = false
+    includeArchived: Boolean! = false
+  ): [SkillPopularity!]! @cost(weight: "10")
   tailoredCvDraftFromProfile(listingId: Int!, language: Language): TailoredCvContent
     @cost(weight: "10")
   tailoredCvDraft(listingId: Int!): TailoredCvDraft @cost(weight: "10")
@@ -300,9 +306,9 @@ type Mutation {
     @cost(weight: "10")
   setLlmCallLimit(input: SetLlmCallLimitInput!): SetLlmCallLimitPayload!
     @cost(weight: "10")
-  generateApplicationAnswer(input: GenerateApplicationAnswerInput!): GenerateApplicationAnswerPayload!
+  generateApplicationAnswers(input: GenerateApplicationAnswersInput!): GenerateApplicationAnswersPayload!
     @cost(weight: "10")
-  previewApplicationAnswer(input: PreviewApplicationAnswerInput!): PreviewApplicationAnswerPayload!
+  previewApplicationAnswers(input: PreviewApplicationAnswersInput!): PreviewApplicationAnswersPayload!
     @cost(weight: "10")
   addApplicationQuestion(input: AddApplicationQuestionInput!): AddApplicationQuestionPayload!
     @cost(weight: "10")
@@ -635,6 +641,7 @@ type AnalyzeTailoredCvSectionPayload {
 }
 
 type ApplicationAnswerCandidate {
+  questionId: Int!
   answer: String!
   length: Int!
   overLimit: Boolean!
@@ -647,7 +654,7 @@ type ApplicationAnswerExternalPrompt {
 
 type ApplicationAnswerGenerationResult {
   status: ApplicationAnswerGenerationStatus!
-  candidate: ApplicationAnswerCandidate
+  candidates: [ApplicationAnswerCandidate!]
   error: String
   errorCode: String
 }
@@ -900,6 +907,7 @@ type CoverLetterContent {
 type CoverLetterDraft {
   id: Int!
   brief: String
+  relocationLeadWeeks: Int
   createdAt: DateTime!
   updatedAt: DateTime!
   content: CoverLetterContent!
@@ -1129,9 +1137,9 @@ type DuplicateSkillCategoryError implements Error {
   existingCategoryId: Int!
 }
 
-type GenerateApplicationAnswerPayload {
+type GenerateApplicationAnswersPayload {
   result: ApplicationAnswerGenerationResult
-  errors: [GenerateApplicationAnswerError!]
+  errors: [GenerateApplicationAnswersError!]
 }
 
 type GenerateBaseCvDocumentPayload {
@@ -1372,6 +1380,7 @@ type Listing {
   deadlineType: DeadlineType!
   postedOn: LocalDate
   deadlineOn: LocalDate
+  descriptionIn(language: Language!): String
   id: Int!
   title: String!
   companyId: Int!
@@ -1384,6 +1393,7 @@ type Listing {
   positionPercent: Int
   workMode: WorkMode
   description: String
+  originalDescription: String
   url: String
   postingLanguage: Language
   createdAt: DateTime!
@@ -1612,9 +1622,9 @@ type ParseUrlPayload {
   errors: [ParseUrlError!]
 }
 
-type PreviewApplicationAnswerPayload {
-  candidate: ApplicationAnswerCandidate
-  errors: [PreviewApplicationAnswerError!]
+type PreviewApplicationAnswersPayload {
+  candidates: [ApplicationAnswerCandidate!]
+  errors: [PreviewApplicationAnswersError!]
 }
 
 type PreviewBaseCvPayload {
@@ -2324,6 +2334,11 @@ type SkillNotFoundError implements Error {
   message: String!
 }
 
+type SkillPopularity {
+  skill: Skill!
+  listingCount: Int!
+}
+
 "A connection to a list of items."
 type SkillsConnection {
   "Information to aid in pagination."
@@ -2861,8 +2876,9 @@ union DeleteSkillTranslationError = SkillNotFoundError
 
 union DeleteWritingSampleError = WritingSampleNotFoundError
 
-union GenerateApplicationAnswerError =
-  | ApplicationQuestionNotFoundError
+union GenerateApplicationAnswersError =
+  | ListingNotFoundError
+  | InvalidApplicationQuestionError
   | InvalidCoverLetterError
   | UnknownLlmModelError
   | AiSafetyError
@@ -2927,8 +2943,8 @@ union ParseUrlError =
   | UnknownLlmModelError
   | AiSafetyError
 
-union PreviewApplicationAnswerError =
-  | ApplicationQuestionNotFoundError
+union PreviewApplicationAnswersError =
+  | ListingNotFoundError
   | InvalidApplicationQuestionError
 
 union PreviewBaseCvError = InvalidTailoredCvDraftError
@@ -3708,8 +3724,8 @@ input DocumentKindOperationFilterInput {
   nin: [DocumentKind!] @cost(weight: "10")
 }
 
-input GenerateApplicationAnswerInput {
-  questionId: Int!
+input GenerateApplicationAnswersInput {
+  listingId: Int!
   model: String
   requestId: UUID
 }
@@ -3959,6 +3975,7 @@ input ListingFilterInput {
   positionPercent: IntOperationFilterInput
   workMode: NullableOfWorkModeOperationFilterInput
   description: StringOperationFilterInput
+  originalDescription: StringOperationFilterInput
   url: StringOperationFilterInput
   postedOn: LocalDateOperationFilterInput
   deadlineType: DeadlineTypeOperationFilterInput
@@ -4034,6 +4051,7 @@ input ListingInput {
   jobRoleCategoryName: String
   reanalyzed: Boolean! = false
   kind: ListingKind! = VACANCY
+  originalDescription: String
 }
 
 input ListingKindOperationFilterInput {
@@ -4089,6 +4107,7 @@ input ListingSkillInput {
 }
 
 input ListingSortInput {
+  stageRank: SortEnumType @cost(weight: "10")
   id: SortEnumType @cost(weight: "10")
   title: SortEnumType @cost(weight: "10")
   kind: SortEnumType @cost(weight: "10")
@@ -4102,6 +4121,7 @@ input ListingSortInput {
   positionPercent: SortEnumType @cost(weight: "10")
   workMode: SortEnumType @cost(weight: "10")
   description: SortEnumType @cost(weight: "10")
+  originalDescription: SortEnumType @cost(weight: "10")
   url: SortEnumType @cost(weight: "10")
   postedOn: SortEnumType @cost(weight: "10")
   deadlineType: SortEnumType @cost(weight: "10")
@@ -4274,8 +4294,8 @@ input ParseUrlInput {
   mode: ParseMode
 }
 
-input PreviewApplicationAnswerInput {
-  questionId: Int!
+input PreviewApplicationAnswersInput {
+  listingId: Int!
   json: String!
 }
 
@@ -4480,6 +4500,7 @@ input SaveCoverLetterDraftInput {
   listingId: Int!
   content: CoverLetterContentInput!
   brief: String
+  relocationLeadWeeks: Int
 }
 
 input SaveDashboardLayoutInput {

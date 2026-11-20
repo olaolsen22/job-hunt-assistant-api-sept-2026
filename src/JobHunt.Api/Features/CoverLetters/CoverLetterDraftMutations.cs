@@ -39,13 +39,15 @@ public static class CoverLetterDraftMutations
     [Error<ListingNotFoundException>]
     [Error<InvalidCoverLetterException>]
     public static async Task<CoverLetterDraft> SaveCoverLetterDraftAsync(int listingId, CoverLetterContentInput content,
-        string? brief, AppDbContext db, TimeProvider time, CancellationToken ct)
+        string? brief, AppDbContext db, TimeProvider time, CancellationToken ct, int? relocationLeadWeeks = null)
     {
         var listing = await db.Listings.Where(l => l.Id == listingId)
             .Select(l => new { l.PostingLanguage }).FirstOrDefaultAsync(ct)
             ?? throw new ListingNotFoundException(listingId);
         var normalized = CoverLetterValidation.Normalize(content, listing.PostingLanguage);
         brief = CoverLetterValidation.Text(brief, "brief", CoverLetterValidation.MaxBriefLength);
+        if (relocationLeadWeeks is < 0 or > CoverLetterValidation.MaxRelocationLeadWeeks)
+            throw new InvalidCoverLetterException($"relocationLeadWeeks: 0-{CoverLetterValidation.MaxRelocationLeadWeeks} weeks.");
 
         var draft = await db.CoverLetterDrafts.FirstOrDefaultAsync(d => d.ListingId == listingId, ct);
         var now = time.GetUtcNow().UtcDateTime;
@@ -56,6 +58,7 @@ public static class CoverLetterDraftMutations
         }
         draft.Content = normalized;
         draft.Brief = brief;
+        draft.RelocationLeadWeeks = relocationLeadWeeks;
         draft.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
         return draft;
@@ -82,6 +85,7 @@ public static class CoverLetterDraftMutations
 internal static class CoverLetterValidation
 {
     public const int MaxBriefLength = 2000;
+    public const int MaxRelocationLeadWeeks = 52;
     private const int MaxLineLength = 200;
     private const int MaxAddressLength = 300;
     private const int MaxParagraphs = 10;

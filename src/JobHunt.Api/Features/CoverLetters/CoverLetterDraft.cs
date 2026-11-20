@@ -18,6 +18,9 @@ public class CoverLetterDraft
     public string ContentJson { get; set; } = "{}";
     // The user's notes for this application (why this company, what to stress). Input for the AI, never printed.
     public string? Brief { get; set; }
+    // Weeks before the start date the candidate would move for this job; the letter states it when the listing's
+    // city differs from the profile's. Per listing because the lead time depends on the job and city.
+    public int? RelocationLeadWeeks { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 

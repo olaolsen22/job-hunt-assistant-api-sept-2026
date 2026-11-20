@@ -13,9 +13,9 @@ public class CoverLetterTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     private const string Content = "language fullName date organization recipientName subject greeting paragraphs closing";
     private const string Save = $$"""
-        mutation ($listingId: Int!, $content: CoverLetterContentInput!, $brief: String) {
-          saveCoverLetterDraft(input: { listingId: $listingId, content: $content, brief: $brief }) {
-            coverLetterDraft { brief content { {{Content}} } }
+        mutation ($listingId: Int!, $content: CoverLetterContentInput!, $brief: String, $relocationLeadWeeks: Int) {
+          saveCoverLetterDraft(input: { listingId: $listingId, content: $content, brief: $brief, relocationLeadWeeks: $relocationLeadWeeks }) {
+            coverLetterDraft { brief relocationLeadWeeks content { {{Content}} } }
             errors { __typename }
           }
         }
@@ -46,12 +46,13 @@ public class CoverLetterTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
         var payload = (await client.GraphQLAsync(Save, new
         {
-            listingId, brief = "  Stress backend work  ",
+            listingId, brief = "  Stress backend work  ", relocationLeadWeeks = 2,
             content = new { greeting = " Hei, ", paragraphs = new[] { "Første avsnitt.", "  " } },
         })).GetProperty("saveCoverLetterDraft");
 
         var draft = payload.GetProperty("coverLetterDraft");
         Assert.Equal("Stress backend work", draft.GetProperty("brief").GetString());
+        Assert.Equal(2, draft.GetProperty("relocationLeadWeeks").GetInt32());
         var content = draft.GetProperty("content");
         Assert.Equal("NORWEGIAN", content.GetProperty("language").GetString());
         Assert.Equal("Hei,", content.GetProperty("greeting").GetString());
@@ -60,6 +61,20 @@ public class CoverLetterTests(ApiFactory factory) : IClassFixture<ApiFactory>
             query ($listingId: Int!) { coverLetterDraft(listingId: $listingId) { content { greeting } } }
             """, new { listingId });
         Assert.Equal("Hei,", read.GetProperty("coverLetterDraft").GetProperty("content").GetProperty("greeting").GetString());
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(53)]
+    public async Task Save_RelocationLeadWeeksOutOfRange_IsRejected(int weeks)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var listingId = await CreateListingAsync(client);
+
+        var payload = (await client.GraphQLAsync(Save, new { listingId, content = new { }, relocationLeadWeeks = weeks }))
+            .GetProperty("saveCoverLetterDraft");
+
+        Assert.Equal("InvalidCoverLetterError", payload.GetProperty("errors")[0].GetProperty("__typename").GetString());
     }
 
     [Fact]
@@ -106,7 +121,7 @@ public class CoverLetterTests(ApiFactory factory) : IClassFixture<ApiFactory>
         await WritingSampleTests.AddAsync(owner, "Owner sample", "OWNER_SAMPLE_TEXT");
         await WritingSampleTests.AddAsync(guest, "Guest sample", "GUEST_SAMPLE_TEXT");
         var listingId = await CreateListingAsync(owner);
-        await owner.GraphQLAsync(Save, new { listingId, content = new { }, brief = "BRIEF_TEXT" });
+        await owner.GraphQLAsync(Save, new { listingId, content = new { }, brief = "BRIEF_TEXT", relocationLeadWeeks = 3 });
         var companyId = (await owner.GraphQLAsync("query ($id: Int!) { listingById(id: $id) { company { id } } }", new { id = listingId }))
             .GetProperty("listingById").GetProperty("company").GetProperty("id").GetInt32();
         await owner.GraphQLAsync("mutation ($id: Int!) { setCompanyNotes(input: { id: $id, notes: \"COMPANY_NOTES\" }) { errors { __typename } } }", new { id = companyId });
@@ -122,7 +137,7 @@ public class CoverLetterTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal("Cover letter company", content.GetProperty("organization").GetString());
         Assert.Equal("Application: Backend developer", content.GetProperty("subject").GetString());
         var prompt = string.Join("\n", factory.Llm.LastMessages.Select(m => m.Text));
-        foreach (var expected in new[] { "STORY_ORIGIN", "STORY_MOTIVATION", "Climbing", "OWNER_SAMPLE_TEXT", "BRIEF_TEXT", "Build services", "COMPANY_NOTES", "https://" })
+        foreach (var expected in new[] { "STORY_ORIGIN", "STORY_MOTIVATION", "Climbing", "OWNER_SAMPLE_TEXT", "BRIEF_TEXT", "Build services", "COMPANY_NOTES", "https://", "\"relocationLeadWeeks\":3" })
             Assert.Contains(expected, prompt);
         Assert.DoesNotContain("PRIVATE_", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("GUEST_SAMPLE_TEXT", prompt, StringComparison.Ordinal);
@@ -198,12 +213,12 @@ public class CoverLetterTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var prompt = (await client.GraphQLAsync("""
             query ($listingId: Int!) { coverLetterExternalPrompt(listingId: $listingId) { version instructions } }
             """, new { listingId })).GetProperty("coverLetterExternalPrompt");
-        Assert.Equal(5, prompt.GetProperty("version").GetInt32());
+        Assert.Equal(6, prompt.GetProperty("version").GetInt32());
         Assert.Contains("Build services", prompt.GetProperty("instructions").GetString());
         Assert.Contains("Never search the web for the posting", prompt.GetProperty("instructions").GetString());
-        Assert.Contains("\"schemaVersion\": 5", prompt.GetProperty("instructions").GetString());
+        Assert.Contains("\"schemaVersion\": 6", prompt.GetProperty("instructions").GetString());
 
-        var valid = (await client.GraphQLAsync(Preview, new { listingId, json = LetterJson.Replace("{\"subject\"", "{\"schemaVersion\":5,\"subject\"") }))
+        var valid = (await client.GraphQLAsync(Preview, new { listingId, json = LetterJson.Replace("{\"subject\"", "{\"schemaVersion\":6,\"subject\"") }))
             .GetProperty("previewCoverLetterDraft");
         Assert.Equal("Dear Kari,", valid.GetProperty("candidate").GetProperty("greeting").GetString());
 
