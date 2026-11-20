@@ -13,7 +13,7 @@ public class PersonalAiTests(ApiFactory factory) : IClassFixture<ApiFactory>
     private static string Model(string provider) => provider switch
     {
         "gemini" => ApiFactory.DefaultModel,
-        "openai" => "openai:gpt-4.1-mini",
+        "openai" => "openai:gpt-6-luna",
         _ => "mistral:mistral-large-2512",
     };
 

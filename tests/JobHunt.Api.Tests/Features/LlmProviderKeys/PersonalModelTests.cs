@@ -10,7 +10,7 @@ namespace JobHunt.Api.Tests.Features.LlmProviderKeys;
 public class PersonalModelTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     private const string Models = "{ llmModels { defaultModel models { id provider modelId keySource credentialId } } }";
-    private const string OpenAiModel = "openai:gpt-4.1-mini";
+    private const string OpenAiModel = "openai:gpt-6-luna";
     private const string SetDefault = "mutation($model:String) { setDefaultLlmModel(input:{model:$model}) { llmModels { defaultModel } errors { __typename } } }";
 
     [Fact]
@@ -61,9 +61,10 @@ public class PersonalModelTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var guest = await factory.GetGuestClientAsync();
         await ProviderKeyTests.SetAsync(owner, "openai", "test-model-key");
         var allowed = (await owner.GraphQLAsync(Models)).GetProperty("llmModels").GetProperty("models");
-        var openai = allowed.EnumerateArray().Single(m => m.GetProperty("provider").GetString() == "openai");
-        Assert.Equal(OpenAiModel, openai.GetProperty("id").GetString());
-        Assert.Equal("gpt-4.1-mini", openai.GetProperty("modelId").GetString());
+        var openaiModels = allowed.EnumerateArray().Where(m => m.GetProperty("provider").GetString() == "openai").ToList();
+        Assert.Equal(4, openaiModels.Count);
+        var openai = openaiModels.Single(m => m.GetProperty("id").GetString() == OpenAiModel);
+        Assert.Equal("gpt-6-luna", openai.GetProperty("modelId").GetString());
         Assert.Equal("USER", openai.GetProperty("keySource").GetString());
         Assert.DoesNotContain((await other.GraphQLAsync(Models)).GetProperty("llmModels").GetProperty("models").EnumerateArray(),
             m => m.GetProperty("provider").GetString() == "openai");
