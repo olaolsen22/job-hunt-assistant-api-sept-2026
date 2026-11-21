@@ -42,6 +42,12 @@ Run `make restart`: it stops only this API's watch processes (SIGKILL for
 leftovers) and starts a detached `make watch` that outlives the Bash tool.
 Check `.local/watch.log` for startup.
 
+## Commits and PRs
+After committing, always end the reply with the link to open a PR for the current branch, so the owner can open it
+manually: `https://github.com/olaolsen22/job-hunt-assistant-api-sept-2026/compare/development...<branch>?expand=1`. PRs
+always target `development`, never `main`.
+Do not push or open the PR unless asked; note when the branch isn't pushed yet.
+
 ## Off-limits
 Never read `*.db*` / `*.db.bak*`, `src/JobHunt.Api/.local/` (data-protection
 keys), `src/JobHunt.Api/listing-imports/`, `.local/backup-*`, or user-secrets.
