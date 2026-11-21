@@ -42,6 +42,14 @@ public class BaseCvExternalPromptTests(ApiFactory factory) : IClassFixture<ApiFa
         Assert.Contains("cherry-pick", instructions);
         Assert.Contains("aim at the role in general", instructions);
         Assert.DoesNotContain("open application", instructions);
+        // A base CV has no listing, so no listing-only rule (requirements, gaps, language demands) is sent.
+        Assert.DoesNotContain("listing", instructions);
+        Assert.Contains("Essential rules", instructions);
+        Assert.Contains("foundations of the stack", instructions);
+        Assert.Contains("about 25-30 skills", instructions);
+        Assert.DoesNotContain("Frontend developer | React and TypeScript", instructions);
+        Assert.Contains("Reminder:", instructions[instructions.IndexOf("</profile_json>", StringComparison.Ordinal)..]);
+        Assert.Contains("Aim at fintech product teams", instructions[instructions.IndexOf("</profile_json>", StringComparison.Ordinal)..]);
         Assert.Contains("use experienceMonths", instructions);
         Assert.Contains("\"experienceMonths\":", instructions);
         Assert.Contains("arbeidstrening", instructions);
@@ -66,7 +74,9 @@ public class BaseCvExternalPromptTests(ApiFactory factory) : IClassFixture<ApiFa
         // A base CV has no listing to take terms from.
         Assert.DoesNotContain("listing's term", instructions);
         Assert.Contains("combine it with", instructions);
-        Assert.Contains("at most 5 bullets for the newest experience", instructions);
+        Assert.DoesNotContain("at most 5 bullets", instructions);
+        Assert.Contains("shorten older and less relevant roles", instructions);
+        Assert.Contains("about 15-20 skills", instructions);
         Assert.Contains("short paragraph of at most 2 sentences", instructions);
         Assert.Contains("outside the field of most of the candidate's experience", instructions.ReplaceLineEndings(" "));
         Assert.Contains("\"template\": \"CONCISE\"", instructions);
@@ -85,13 +95,13 @@ public class BaseCvExternalPromptTests(ApiFactory factory) : IClassFixture<ApiFa
             language = "NORWEGIAN", targetRole = "Barista", notes = "Explain IT work in plain words", template, rewrite = true,
         })).GetProperty("baseCvExternalPrompt").GetProperty("instructions").GetString()!.ReplaceLineEndings(" ");
 
-        Assert.Contains("follow them on how to word the summary, bullets, and paragraphs", instructions);
+        Assert.Contains("They also guide how to word the summary, bullets, and paragraphs", instructions);
         Assert.Contains("rewrite it in plain words", instructions);
         Assert.Contains("names a number or skill its entry's bullets do not state", instructions);
         Assert.DoesNotContain("shorten it by cutting words", instructions);
         Assert.DoesNotContain("copy the bullet exactly as supplied", instructions);
         Assert.DoesNotContain("at most 2 small linking words", instructions);
-        Assert.Contains("Translate the other entries rather than dropping them", instructions);
+        Assert.Contains("Translate IT entries into everyday words rather than dropping them", instructions);
         Assert.Contains("select at least its most relevant one, rewritten in plain words", instructions);
         Assert.DoesNotContain("Prefer no bullet over one that only makes sense to IT people", instructions);
         Assert.DoesNotContain("then select none and the entry shows only its title and dates", instructions);
@@ -111,9 +121,13 @@ public class BaseCvExternalPromptTests(ApiFactory factory) : IClassFixture<ApiFa
         Assert.Contains("\"role\":\"Frontend-leaning developer\"", instructions);
         Assert.Contains("open applications", instructions);
         Assert.Contains("no vacancy and no requirements", instructions);
-        Assert.Contains("read this market", instructions);
         Assert.Contains("count as relevant", instructions);
-        Assert.Contains("Always set content.headline", instructions);
+        // Notes outrank the preferences, and may ask for an honest transition line in the summary.
+        Assert.Contains("follow the notes", instructions);
+        Assert.Contains("transition", instructions);
+        Assert.Contains("never null", instructions);
+        Assert.DoesNotContain("listing", instructions);
+        Assert.DoesNotContain("keep only one or two bullets", instructions);
         Assert.Contains("copy the bullet exactly as supplied", instructions);
         Assert.DoesNotContain("aim at the role in general", instructions);
         Assert.DoesNotContain("read this target", instructions);
@@ -122,7 +136,7 @@ public class BaseCvExternalPromptTests(ApiFactory factory) : IClassFixture<ApiFa
     [Theory]
     [InlineData("DETAILED", false, "copy the bullet exactly as supplied")]
     [InlineData("CONCISE", false, "combine it with")]
-    [InlineData("DETAILED", true, "Translate the other entries rather than dropping them")]
+    [InlineData("DETAILED", true, "Translate IT entries into everyday words rather than dropping them")]
     [InlineData("CONCISE", true, "rewrite it in plain words")]
     public async Task Prompt_OpenApplication_KeepsTemplateAndRewrite(string template, bool rewrite, string expected)
     {

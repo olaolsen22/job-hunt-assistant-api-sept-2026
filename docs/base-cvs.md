@@ -67,9 +67,16 @@ mutation ($language: Language!, $json: String!, $template: TailoredCvTemplate, $
 - `purpose` is `ROLE` by default: the CV is matched to that kind of job like a listing. `OPEN_APPLICATION` is for
   åpen søknad: `targetRole` is the market or field approached (such as "Frontend-leaning developer" or
   "Customer-facing roles"), and there are no requirements to answer. The CV shows the main focus first, then the
-  breadth the evidence supports. Areas the notes ask to show (for example "also show backend") count as relevant,
-  and the AI always returns a headline for that market. `template` and `rewrite` work as for `ROLE`; for a market
-  outside IT use `rewrite: true`, or IT jobs mostly show only title and dates. The preview takes no `purpose`.
+  breadth the evidence supports. `template` and `rewrite` work as for `ROLE`; for a market outside IT use
+  `rewrite: true`, or IT jobs mostly show only title and dates. The preview takes no `purpose`.
+- Prompt version 7, for both purposes: areas the notes ask to show (for example "also show backend") count as
+  relevant, and the notes win over the selection preferences, never over the essential rules (profile facts only,
+  honest claims, no title the job titles don't show). When the notes ask to show a career direction, the summary may
+  end with one factual transition clause backed by profile evidence; other motivation is left to the application
+  message. There are no per-role bullet counts: the CV fits 1-2 pages (`CONCISE`: one), keeps bullets that show a
+  distinct capability, and shortens older, less relevant roles only when space runs short. Skills: about 25-30
+  (`CONCISE` 15-20), always with the stack's foundations. The headline is never null and uses the target's role title
+  when the job titles support it. The prompt contains no listing rules.
 - `template` is `DETAILED` by default. Pass the same `language`, `template` and `rewrite` to the preview.
 - `rewrite: true` lets the AI reword bullets, paragraphs and the summary in plain words, following `notes` (for
   example IT work explained for a shop job). For a target outside the candidate's field, IT entries keep at least one

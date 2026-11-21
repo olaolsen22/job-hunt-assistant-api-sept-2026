@@ -234,8 +234,8 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Contains("\"endMonth\":null,\"months\":", factory.Llm.LastMessages[1].Text);
         Assert.Contains("years of work experience the candidate has", factory.Llm.LastMessages[0].Text);
         Assert.Contains("never claim it", factory.Llm.LastMessages[0].Text);
-        Assert.Contains("never relabel them as fullstack", factory.Llm.LastMessages[0].Text);
-        Assert.Contains("null keeps the current headline", factory.Llm.LastMessages[0].Text);
+        Assert.Contains("Never call the candidate fullstack", factory.Llm.LastMessages[0].Text);
+        Assert.Contains("never null", factory.Llm.LastMessages[0].Text);
     }
 
     [Theory]
@@ -538,19 +538,19 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Contains("https://tailored-cv-analysis.example/", instructions);
         Assert.Contains("open exactly its url", instructions);
         Assert.Contains("Never search the web for the posting", instructions);
-        Assert.Contains("core professional", instructions);
+        Assert.Contains("foundations of the stack", instructions);
         Assert.Contains("complete timeline", instructions);
         Assert.Contains("never leave paragraph null", instructions);
         Assert.Contains("never changes which bullets you select", instructions);
         Assert.Contains("such as Norwegian", instructions);
-        Assert.Contains("every paragraph in that", instructions);
+        Assert.Contains("paragraph in that language", instructions);
         Assert.Contains("do not turn \"helped\" into \"led\"", instructions);
         Assert.Contains("never claim it", instructions);
         Assert.Contains("\"companyResearch\":{\"kind\":\"BROKER\"", instructions);
         Assert.Contains("CONSULTANCY or BROKER", instructions);
         Assert.Contains("\"headline\": null", instructions);
-        Assert.Contains("Set content.headline: one short title line", instructions);
-        Assert.Contains("never relabel them as fullstack", instructions);
+        Assert.Contains("Set content.headline: one title line", instructions);
+        Assert.Contains("Never call the candidate fullstack", instructions);
         Assert.True(instructions.IndexOf("Go developer", StringComparison.Ordinal)
             < instructions.IndexOf("Prompt Employer", StringComparison.Ordinal));
         Assert.DoesNotContain("PRIVATE_", instructions, StringComparison.Ordinal);

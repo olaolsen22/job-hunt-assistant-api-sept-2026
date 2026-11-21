@@ -84,7 +84,9 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Equal("Worked on deployment scripts with the team", texts[1]);
         Assert.Equal("Ran the weekly demo", texts[2]);
         var instructions = factory.Llm.LastMessages[0].Text;
-        Assert.Contains("Write at most 5 CV bullets for this experience", instructions);
+        // No per-entry bullet cap: space is a preference, shortening older and less relevant roles first.
+        Assert.DoesNotContain("Write at most", instructions);
+        Assert.Contains("shorten older and less relevant roles", instructions);
         Assert.Contains("raw notes, not a finished CV", instructions);
         Assert.Contains("Merge related bullets of the same entry", instructions);
         Assert.Contains("one page", instructions);
@@ -121,7 +123,7 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
     [InlineData("EXPERIENCE", "IT jargon such as UI, UX, frontend, backend")]
     [InlineData("EXPERIENCE", "this overrides any rule here about keeping such facts")]
     [InlineData("SKILLS", "leave out the technical stack")]
-    [InlineData("SUMMARY", "present them by that title instead")]
+    [InlineData("SUMMARY", "present them by that title")]
     public async Task Analysis_AimsAtAListingOutsideTheCandidatesField(string section, string expected)
     {
         var client = await factory.GetOwnerClientAsync();
@@ -139,38 +141,6 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
             await AnalyzeAsync(client, listingId, section, section == "EXPERIENCE" ? entryId : null, template);
             Assert.Contains(expected, factory.Llm.LastMessages[0].Text.ReplaceLineEndings(" "));
         }
-    }
-
-    [Fact]
-    public async Task ConciseAnalysis_OlderRole_AllowsTwoBullets()
-    {
-        var client = await factory.GetOwnerClientAsync();
-        for (var i = 0; i < 3; i++)
-            await ProfileEntryTests.AddExperienceAsync(client, employer: $"Newer {i}", start: "2029-01-01", skills: []);
-        var (entryId, _) = await AddExperienceAsync(client, "Old Employer", "1990-01-01", "1991-01-01", "Maintained reports");
-        var listingId = await TailoredCvAnalysisTests.CreateListingAsync(client, "Developer", "Build software", []);
-        factory.Llm.Respond = () => Reply("""{"bullets":[]}""");
-
-        var result = await AnalyzeAsync(client, listingId, "EXPERIENCE", entryId, "CONCISE");
-
-        Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
-        Assert.Contains("Write at most 2 CV bullets for this experience", factory.Llm.LastMessages[0].Text);
-    }
-
-    [Fact]
-    public async Task ConciseAnalysis_LongOlderRole_AllowsFiveBullets()
-    {
-        var client = await factory.GetOwnerClientAsync();
-        for (var i = 0; i < 3; i++)
-            await ProfileEntryTests.AddExperienceAsync(client, employer: $"Internship {i}", start: "2029-01-01", skills: []);
-        var (entryId, _) = await AddExperienceAsync(client, "Senior Employer", "1990-01-01", "1994-01-01", "Led the frontend team");
-        var listingId = await TailoredCvAnalysisTests.CreateListingAsync(client, "Developer", "Build software", []);
-        factory.Llm.Respond = () => Reply("""{"bullets":[]}""");
-
-        var result = await AnalyzeAsync(client, listingId, "EXPERIENCE", entryId, "CONCISE");
-
-        Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
-        Assert.Contains("Write at most 5 CV bullets for this experience", factory.Llm.LastMessages[0].Text);
     }
 
     [Fact]
@@ -198,7 +168,8 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
 
         factory.Llm.Respond = () => Reply("""{"selectedSkillIds":[]}""");
         await AnalyzeAsync(client, listingId, "SKILLS", null, "CONCISE");
-        Assert.Contains("8-12 skills", factory.Llm.LastMessages[0].Text);
+        Assert.Contains("about 15-20 skills", factory.Llm.LastMessages[0].Text);
+        Assert.Contains("foundations of the stack", factory.Llm.LastMessages[0].Text);
     }
 
     [Fact]
@@ -253,8 +224,8 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
         var instructions = concise.GetProperty("instructions").GetString()!;
         Assert.Contains("raw notes, not a finished CV", instructions);
         Assert.DoesNotContain("raw notes, not a finished CV", detailed);
-        Assert.Contains("at most 5 bullets for the newest experience", instructions);
-        Assert.Contains("every requirement the profile supports is shown", instructions);
+        Assert.DoesNotContain("at most 5 bullets", instructions);
+        Assert.Contains("requirements the profile supports show somewhere", instructions);
         Assert.Contains("The summary and the CV body must agree", detailed);
         Assert.Contains("\"template\": \"CONCISE\"", instructions);
         Assert.Contains("at most 220 characters", instructions);
@@ -268,6 +239,12 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
         {
             Assert.Contains("outside the field of most of the candidate's experience", prompt);
             Assert.Contains("select none and the entry shows only its title and dates", prompt);
+            Assert.Contains("Essential rules", prompt);
+            Assert.Contains(prompt.Contains("\"template\": \"CONCISE\"", StringComparison.Ordinal) ? "about 15-20 skills" : "about 25-30 skills", prompt);
+            // A profile-like example got copied verbatim into the headline.
+            Assert.DoesNotContain("Frontend developer | React and TypeScript", prompt);
+            // The task is restated after the long profile block.
+            Assert.Contains("Reminder:", prompt[prompt.IndexOf("</profile_json>", StringComparison.Ordinal)..]);
         }
     }
 
