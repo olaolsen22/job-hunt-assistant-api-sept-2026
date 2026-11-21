@@ -1,3 +1,5 @@
+using JobHunt.Api.Features.Companies;
+using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.TailoredCvDrafts;
 
 namespace JobHunt.Api.Features.Prompts;
@@ -14,24 +16,24 @@ internal static class CvGuidance
         - {Seniority.ReplaceLineEndings(" ")}
         - Present the candidate by the titles they held; for a broader target, as that specialist with experience in
           the other areas the evidence supports. Never call the candidate fullstack, backend, or any other role their
-          job titles do not show, however the target words it. When the target is outside their main field and they
-          held a job title in it (for example "butikkmedarbeider" for a shop or café job), present them by that title
-          and mention their main field briefly at most.
+          job titles do not show, however the target words it.
         """;
 
     // Recruiters look for contribution and results, in the candidate's own words (docs/norwegian-cv-formatting.md §10).
-    internal static string BulletSelection(TailoredCvTemplate template) => $"""
-        {BulletStrength(template)} When companyResearch.kind is CONSULTANCY or BROKER, also prefer client or stakeholder work,
-        learning a new domain, and clarifying requirements.
-        """;
+    // Consultancies and brokers sell work with clients, so that evidence counts more there; sent only for them.
+    internal static string BulletSelection(TailoredCvTemplate template, CompanyKind? companyKind) =>
+        companyKind is CompanyKind.Consultancy or CompanyKind.Broker
+            ? BulletStrength(template) + " The employer is a consultancy or broker: also prefer client or stakeholder"
+              + " work, learning a new domain, and clarifying requirements."
+            : BulletStrength(template);
 
-    internal static string BulletStrength(TailoredCvTemplate template, bool rewrite = false) => $"""
+    internal static string BulletStrength(TailoredCvTemplate template) => $"""
         {Space(template)} Prefer specific bullets showing what the candidate delivered, their own part, and a problem
         solved or a result over near-duplicates, generic duties, or bare lists of technologies, because recruiters
         assess contribution rather than keywords. Lean toward the kind of work the target emphasises, for example
         user-facing features, components, accessibility, and testing for frontend; endpoints, integrations, and data
         for backend; deployment, automation, and operations for platform; decisions, ownership, and mentoring for
-        senior roles. {OutOfField(rewrite)} {EngagementTerms}
+        senior roles.
         """;
 
     // Norwegian guidance: 1-2 pages, the most space for relevant work, and "shorten older and less relevant material
@@ -46,38 +48,65 @@ internal static class CvGuidance
         """;
 
     // A bullet such as "Arbeidstrening via NAV" shows a role was unpaid work training, not employment; dropped as
-    // weak evidence, the CV passes it off as a paid job.
-    private const string EngagementTerms = """
+    // weak evidence, the CV passes it off as a paid job. An honesty rule, so the prompts list it among the essentials.
+    internal const string EngagementTerms = """
         A bullet that states the terms of the role, such as arbeidstrening, work training, internship, volunteer
         work, or unpaid work, is not evidence but tells the reader the role was not ordinary paid employment: always
         select it as its own bullet, never combined with others, and keep those terms in its text, even when it
         is the entry's only selected bullet.
         """;
 
+    [Flags]
+    internal enum OutOfFieldParts
+    {
+        Presentation = 1, Bullets = 2, Timeline = 4, Skills = 8,
+        All = Presentation | Bullets | Timeline | Skills,
+    }
+
     // A software developer applying for a café or shop job still has relevant evidence in their IT roles, but not in
-    // the technical detail; those recruiters look for people skills and reliability. With rewrite, IT work is
-    // translated instead of dropped, held to the source's facts by TailoredCvWording.KeepsSourceFacts.
-    private static string OutOfField(bool rewrite) => $"""
-        If the target is outside the field of most of the candidate's experience (for example a shop, café, care, or
-        warehouse job for a software developer), write for a reader outside that field: prefer work such as contact
-        with customers, clients, or users, teamwork, helping or training others, taking responsibility, and routines
-        or deadlines, and leave out tool names, IT jargon such as UI, UX, frontend, backend, or deployment, and
-        technical metrics; this overrides any rule here about keeping such facts. {(rewrite
-            ? "Translate IT entries into everyday words rather than dropping them, for example \"Har vedlikeholdt en intern backend-applikasjon utviklet i C# og .NET ved å rette feil\" becomes \"Holdt et internt dataprogram i drift og rettet feil\"."
-            : "Where you shorten such a bullet, keep only its plain fact. Prefer no bullet over one that only makes sense to IT people.")}
-        Users, clients, or colleagues are not customers unless the bullet says so.
-        """;
+    // the technical detail; those recruiters look for people skills and reliability. One block, after the rules it
+    // bends, so normal CVs don't carry the case inside every rule; each built-in section takes only its parts.
+    // With rewrite, IT work is translated instead of dropped, held to the source's facts by
+    // TailoredCvWording.KeepsSourceFacts. Without it, title and dates alone still close the timeline gap, where an
+    // unrelated bullet forced onto the entry would read as padding.
+    internal static string OutOfFieldTarget(OutOfFieldParts parts, bool rewrite = false)
+    {
+        List<string> lines =
+        [
+            "If the target is outside the field of most of the candidate's experience (for example a shop, café, care, or warehouse job for a software developer), write for a reader outside that field:",
+        ];
+        if (parts.HasFlag(OutOfFieldParts.Presentation))
+            lines.Add("- When they held a job title in the target's field (for example \"butikkmedarbeider\" for a shop or café job), present them by that title and mention their main field briefly at most.");
+        if (parts.HasFlag(OutOfFieldParts.Bullets))
+            lines.Add("- Prefer work such as contact with customers, clients, or users, teamwork, helping or training others, taking responsibility, and routines or deadlines, and leave out tool names, IT jargon such as UI, UX, frontend, backend, or deployment, and technical metrics; this overrides any rule here about keeping such facts. "
+                + (rewrite
+                    ? "Translate IT entries into everyday words rather than dropping them, for example \"Har vedlikeholdt en intern backend-applikasjon utviklet i C# og .NET ved å rette feil\" becomes \"Holdt et internt dataprogram i drift og rettet feil\"."
+                    : "Where you shorten such a bullet, keep only its plain fact. Prefer no bullet over one that only makes sense to IT people.")
+                + " Users, clients, or colleagues are not customers unless the bullet says so.");
+        if (parts.HasFlag(OutOfFieldParts.Timeline))
+            lines.Add(rewrite
+                ? "- For every work experience and education entry with bullets, select at least its most relevant one, rewritten in plain words."
+                : "- For a work experience or education entry none of whose bullets makes sense to that reader, select none and the entry shows only its title and dates, unless one of its bullets states the terms of the role; then select only that one.");
+        if (parts.HasFlag(OutOfFieldParts.Skills))
+            lines.Add("- Select only skills the target names or that transfer to it, such as service skills, licences, and certifications, and leave out the technical stack.");
+        return string.Join("\n", lines);
+    }
 
     // Listings stress themes without naming them as skills; show supported evidence, not just keywords.
-    internal const string Theme = """
+    // The kind sentences go only to the listings they describe.
+    internal static string Theme(ListingKind kind) => """
         Identify the themes the listing emphasises, such as AI-powered features, LLMs, cloud, accessibility,
-        customer service, or food hygiene, and
-        actively surface supported evidence of them; never invent it. Keep using AI tools, such as coding
-        assistants, distinct from building AI features or machine learning; never present one as the other.
-        An UNSOLICITED listing (open application, no posting) has no requirements: take the themes from its job role and
-        companyResearch, the employer's described work and stack, instead. For OPEN_INVITATION the description is the
-        work profile the employer invites open applications for.
-        """;
+        customer service, or food hygiene, and actively surface supported evidence of them; never invent it. Keep
+        using AI tools, such as coding assistants, distinct from building AI features or machine learning; never
+        present one as the other.
+        """ + kind switch
+    {
+        ListingKind.Unsolicited => " This is an open application with no posting and no requirements: take the themes"
+            + " from its job role and companyResearch, the employer's described work and stack, instead.",
+        ListingKind.OpenInvitation => " The listing invites open applications: its description is the work profile the"
+            + " employer invites them for.",
+        _ => "",
+    };
 
     // Non-technical recruiters and keyword filters read the list literally and don't infer HTML or CSS from React.
     // No source caps the list (docs/norwegian-cv-formatting.md §10); category ids group it, so it stays scannable.
@@ -88,23 +117,13 @@ internal static class CvGuidance
         backend, databases, testing, and delivery. Order by relevance to the target, most relevant first; within
         that, skills used in work first, then in projects, then higher level. Include a skill not used in work or
         projects only when the target names it, and leave out ordinary office tools unless the target requires them.
-        If the target is outside the candidate's field, select only skills it names or that transfer to it, such as
-        service skills, licences, and certifications, and leave out the technical stack.
         """;
 
-    // A missing job or school leaves a visible gap in the timeline; an unrelated bullet forced onto every entry reads
-    // as padding, and title and dates alone still close the gap. A translated bullet explains an IT job better.
-    private static string Timeline(bool rewrite) => rewrite
-        ? """
-          Keep every work experience and education entry so the CV shows a complete timeline: when such an entry has
-          bullets, select at least its most relevant one, rewritten in plain words when the target is outside the
-          candidate's field.
-          """
-        : """
-          Keep every work experience and education entry so the CV shows a complete timeline: when such an entry has
-          bullets, select at least its most relevant one, unless the target is outside the candidate's field and none
-          of its bullets makes sense to that reader; then select none and the entry shows only its title and dates.
-          """;
+    // A missing job or school leaves a visible gap in the timeline. OutOfFieldTarget holds the exception.
+    private const string Timeline = """
+        Keep every work experience and education entry so the CV shows a complete timeline: when such an entry has
+        bullets, select at least its most relevant one.
+        """;
 
     // Course codes and internal module names say nothing to a reader outside the institution.
     internal const string EducationWording = """
@@ -126,7 +145,7 @@ internal static class CvGuidance
         """;
 
     // Recruiters look for years in the summary, and models miscount them from dates, so the server counts months.
-    private const string SummaryYears = """
+    internal const string SummaryYears = """
         State how many years of work experience the candidate has in their field, in whole years rounded down:
         use experienceMonths when all their work experiences are in that field, otherwise add up the months of
         the experiences in that field. Never count years from the dates yourself, and omit years under one.
@@ -145,27 +164,30 @@ internal static class CvGuidance
         certifications in that language as relevant evidence and never drop them.
         """;
 
-    internal const string Voice = """
+    internal const string Voice = $"""
         Write in the candidate's own voice: match the person, tense, tone, and formality of their supplied text and
-        reuse their wording and terms where they fit, rather than generic CV phrasing. Norwegian must read as
-        natural, idiomatic bokmål, not a literal translation or anglicized CV phrasing.
+        reuse their wording and terms where they fit, rather than generic CV phrasing. {Bokmal}
         """;
+
+    // For prompts that already have a more specific voice rule of their own.
+    internal const string Bokmal = "Norwegian must read as natural, idiomatic bokmål, not a literal translation or anglicized CV phrasing.";
 
     // Recruiters and hiring managers read stock phrasing as AI-written (Wikipedia's "Signs of AI writing").
     internal const string Style = """
         Avoid stock CV and AI phrasing: no em dashes, no lists of three adjectives, no "not only ... but also"
         constructions, and none of these words: spearheaded, leveraged, utilized, orchestrated, passionate,
-        results-driven, innovative, seamless, cutting-edge, dynamic, resultatorientert, løsningsorientert, brennende
-        engasjert, dynamisk, innovativ.
+        results-driven, results-oriented, innovative, seamless, cutting-edge, dynamic, resultatorientert,
+        løsningsorientert, brennende engasjert, dynamisk, innovativ. Show qualities through what the candidate did,
+        not adjectives.
         """;
 
-    // One-line bullets cut from the candidate's wording (TailoredCvWording checks).
+    // One-line bullets cut from the candidate's wording (TailoredCvWording checks). Up to ~160 rather than the 140 of
+    // ConciseWrittenBullets: cutting words can't merge or condense, so a bullet needs more room to keep its fact.
     internal const string ConciseBullets = """
         Shorten each selected bullet by cutting words: keep the candidate's own verbs and terms, and drop only filler
         and repeated context. Never cut a fact the target cares about, such as what was built, a technology, a
-        domain, the scale, or a result (for a target outside the candidate's field, technical facts are not among
-        them); aim for one line of about 100 characters and use up to about 160 when cutting further would lose such
-        a fact. Never add a technology, tool, number, or claim the bullet does not state. Do not shorten a bullet
+        domain, the scale, or a result; aim for one line of about 100 characters and use up to about 160 when cutting
+        further would lose such a fact. Never add a technology, tool, number, or claim the bullet does not state. Do not shorten a bullet
         that is already short.
         """;
 
@@ -210,15 +232,14 @@ internal static class CvGuidance
     internal const string HonestClaims = """
         Keep every claim as strong as its source: add no numbers, percentages, or metrics; keep team results as the
         team's and the candidate's stated part as theirs (do not turn "helped" into "led"); do not present one task
-        as the whole role; keep coursework, personal projects, and learning distinct from professional work. Show
-        qualities through what the candidate did, not adjectives such as passionate, innovative, or results-oriented.
+        as the whole role; keep coursework, personal projects, and learning distinct from professional work.
         """;
 
     // Years and self-rated skill levels are easy to turn into "senior" or "expert" claims the CV can't back up.
     internal const string Seniority = """
         Do not state a seniority level or a management role the job titles do not show; years alone are not
-        seniority, and years are counted only from the experience dates. Skill levels are the candidate's own
-        ratings for emphasis; never turn them into claims such as "expert" or "advanced".
+        seniority. Skill levels are the candidate's own ratings for emphasis; never turn them into claims such as
+        "expert" or "advanced".
         """;
 
     // A broad listing tempts the model to rebrand a specialist as fullstack, hiding their strongest case.
@@ -268,6 +289,17 @@ internal static class CvGuidance
         ? "2 short sentences, at most 220 characters so it fits three lines"
         : "2-3 short sentences, at most 280 characters so it fits three lines";
 
+    // The essential language rule of both external CV prompts. A paragraph checked word by word against its bullets
+    // (ConciseParagraph) must stay in their language; the others are written in the CV's language.
+    internal static string LanguageRule(Language target, bool paragraphsInBulletLanguage)
+    {
+        var code = target == Language.Norwegian ? "NORWEGIAN" : "ENGLISH";
+        var start = $"Write in {TailoredCvLanguageText.Name(target)}: set \"language\" to \"{code}\" and write the headline";
+        return paragraphsInBulletLanguage
+            ? start + " and the summary in that language. Keep each bullet and each paragraph in the language its bullets are supplied in; the user translates them."
+            : start + ", the summary, and every paragraph in that language. Keep each bullet in the language it is supplied in; the user translates it.";
+    }
+
     // The headline and wording rules of both external CV prompts; honesty lives in Essentials.
     // writesBullets: the AI words the bullets too, rather than copying them.
     internal static string ExternalWriting(bool writesBullets) => $$"""
@@ -286,7 +318,7 @@ internal static class CvGuidance
     // against all of the entry's bullets: no new number or listing skill.
     internal const string ConciseListingParagraph = $"""
         For every entry with selected bullets, also return a short overview paragraph of at most 2 sentences (about
-        250 characters), in the language the bullets are supplied in: first say plainly what the role involved, based
+        250 characters): first say plainly what the role involved, based
         on its title and all of its bullets, not only the selected ones; then what carries over to the listing. For a
         role outside the listing's field, describe the work in general terms (for example that the candidate
         developed software in a team) and focus on transferable qualities such as collaboration, customer contact,
@@ -297,8 +329,8 @@ internal static class CvGuidance
     // Checked by TailoredCvWording.KeepsSourceFacts instead: new words are fine, new numbers and skills are not.
     internal const string RewrittenConciseParagraph = """
         For every entry with selected bullets, also return a short paragraph of at most 2 sentences (about 250
-        characters) that restates only those selected bullets' facts in plain words, in the language they are supplied
-        in: no fact, number, technology, or tool the bullets do not state.
+        characters) that restates only those selected bullets' facts in plain words: no fact, number, technology, or
+        tool the bullets do not state.
         """;
 
     // A mix of entries with and without a paragraph looks unfinished when the user switches to paragraph style.
@@ -334,13 +366,14 @@ internal static class CvGuidance
             : rewrite ? RewrittenConciseParagraph : listing ? ConciseListingParagraph : ConciseParagraph;
         return $"""
             {paragraph} Set content.contentStyle to BULLETS by default so the user can choose the presentation for
-            the whole CV. {Timeline(rewrite)}
+            the whole CV. {Timeline}
             """;
     }
 
+    // Dates, places, project kinds, skill levels, language levels and entry order come from the profile on preview
+    // (TailoredCvDraftValidation.ApplySourceFacts), so the prompt doesn't ask the AI to copy them.
     internal const string OutputRules = """
-        For an entry with a location, set "location" to "City, Country" with the country name in the CV language,
-        or just the country when the city is null. Copy language names and written/spoken levels from the profile.
+        Include only languages from the profile.
         Skill categoryId: the id of the profile's skillCategories entry whose name and description fit the skill,
         or null for anything that fits none (licences, certifications, trade and service skills) and when unsure.
         Never invent category ids.

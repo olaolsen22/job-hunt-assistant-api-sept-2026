@@ -29,8 +29,8 @@ public class CoverLetterGenerator(LlmExecution execution, LlmModelResolver model
     {
         var context = await CoverLetterContext.BuildAsync(listingId, db, time, ct);
         var call = await execution.RunJsonAsync(model,
-            [new(ChatRole.System, CoverLetterPrompt.Instructions(context.Language, context.Kind)),
-             new(ChatRole.User, $"<cover_letter_context>\n{context.Json}\n</cover_letter_context>")],
+            [new(ChatRole.System, CoverLetterPrompt.Instructions(context.Language, context.Kind, context.CompanyKind)),
+             new(ChatRole.User, $"<cover_letter_context>\n{context.Json}\n</cover_letter_context>\n{CoverLetterPrompt.Reminder}")],
             new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0.7f, MaxOutputTokens = 4096 },
             Operation, db, text => Decode(text, context),
             "The AI's answer couldn't be read. Try again, or use the external prompt.", ct);
@@ -61,13 +61,14 @@ public static class CoverLetterExternalPromptQueries
             throw new GraphQLException(e.Message);
         }
         var prompt = $$"""
-            {{CoverLetterPrompt.Instructions(context.Language, context.Kind)}}
+            {{CoverLetterPrompt.Instructions(context.Language, context.Kind, context.CompanyKind)}}
             Return it in a single ```json code block without prose, and include "schemaVersion": {{CoverLetterPrompt.Version}} in the object.
 
             Listing, candidate, and writing sample data:
             <cover_letter_context>
             {{context.Json}}
             </cover_letter_context>
+            {{CoverLetterPrompt.Reminder}}
             """;
         return new(CoverLetterPrompt.Version, prompt);
     }

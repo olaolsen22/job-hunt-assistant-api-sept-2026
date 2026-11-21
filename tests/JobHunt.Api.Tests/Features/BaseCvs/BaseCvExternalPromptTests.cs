@@ -81,6 +81,9 @@ public class BaseCvExternalPromptTests(ApiFactory factory) : IClassFixture<ApiFa
         Assert.Contains("outside the field of most of the candidate's experience", instructions.ReplaceLineEndings(" "));
         Assert.Contains("\"template\": \"CONCISE\"", instructions);
         Assert.Contains("\"language\" to \"NORWEGIAN\"", instructions);
+        // Its paragraph is checked word by word against the bullets, so it can't be in another language.
+        Assert.Contains("Keep each bullet and each paragraph in the language its bullets are supplied in", instructions);
+        Assert.DoesNotContain("every paragraph in that language", instructions);
     }
 
     [Theory]
@@ -97,6 +100,8 @@ public class BaseCvExternalPromptTests(ApiFactory factory) : IClassFixture<ApiFa
 
         Assert.Contains("They also guide how to word the summary, bullets, and paragraphs", instructions);
         Assert.Contains("rewrite it in plain words", instructions);
+        Assert.Contains("every paragraph in that language", instructions);
+        Assert.DoesNotContain("in the language they are supplied in", instructions);
         Assert.Contains("names a number or skill its entry's bullets do not state", instructions);
         Assert.DoesNotContain("shorten it by cutting words", instructions);
         Assert.DoesNotContain("copy the bullet exactly as supplied", instructions);
@@ -149,7 +154,10 @@ public class BaseCvExternalPromptTests(ApiFactory factory) : IClassFixture<ApiFa
         })).GetProperty("baseCvExternalPrompt").GetProperty("instructions").GetString()!.ReplaceLineEndings(" ");
 
         Assert.Contains(expected, instructions);
-        Assert.Contains("outside the field of most of the candidate's experience", instructions);
+        // One block for the out-of-field case, not a clause inside every rule.
+        Assert.Equal(2, instructions.Split("outside the field of most of the candidate's experience").Length);
+        Assert.DoesNotContain("newest first", instructions);
+        Assert.DoesNotContain("Copy dates", instructions);
         Assert.Contains($"\"template\": \"{template}\"", instructions);
     }
 

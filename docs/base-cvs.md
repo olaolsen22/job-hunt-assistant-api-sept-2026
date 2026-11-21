@@ -88,12 +88,15 @@ mutation ($language: Language!, $json: String!, $template: TailoredCvTemplate, $
 - `CONCISE` shortens relevant bullets, and it and `rewrite` may combine less relevant ones of one entry into one short
   bullet whose `sourceBulletId` is the first combined bullet. The preview checks each such bullet's words against the
   bullets of its own entry: at most 2 new words and no new numbers; a failing bullet falls back to its source text.
-  A paragraph gets the same check with up to 4 new words; one that fails becomes `null`. The check looks at words, not
+  A paragraph gets the same check with up to 4 new words, so without `rewrite` it stays in the bullets' language; one
+  that fails becomes `null`. The check looks at words, not
   meaning, so review combined bullets.
 - `InvalidTailoredCvDraftError`: invalid JSON, a bullet without `sourceBulletId`, a source that isn't in that entry
   of this profile, or (`DETAILED`) changed bullet text.
 - The result fills name, email, phone, address, links, and date of birth from the profile, plus the headline when the
   AI returned none, so it can be saved as-is.
+- Like the tailored preview, entries take their dates, location and project kind from the profile and follow its
+  order; skills and languages take the profile's levels, and languages the profile lacks are dropped.
 - A combined or shortened bullet differs from its source, so `baseCvTranslation` keeps its text and lists it in
   `untranslatedFields`.
 

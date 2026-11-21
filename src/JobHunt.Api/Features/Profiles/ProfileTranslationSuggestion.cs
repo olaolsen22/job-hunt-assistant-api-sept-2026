@@ -33,7 +33,7 @@ public record ProfileTranslationSuggestion(ProfileTranslationStatus Status, Prof
 [QueryType]
 public static class ProfileTranslationPromptQueries
 {
-    public const int Version = 2;
+    public const int Version = 3;
     private const int SampleBudget = 12_000;
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -159,7 +159,7 @@ public static class ProfileTranslationPromptQueries
         - Learn how the candidate writes in the target language from the writing samples and the "current"
           translations: their word choice, phrasing, sentence length, formality and recurring terms. Write the
           translations the way they would, not as generic CV language.
-        - {{CvGuidance.Voice.ReplaceLineEndings(" ")}}
+        - {{CvGuidance.Bokmal}}
         - Keep each bullet's meaning, register and length: terse CV bullets stay terse, same person and tense.
           Add, drop or strengthen no facts, numbers or skills.
         - For a "stale" item, start from its old translation and change only what the original changed.

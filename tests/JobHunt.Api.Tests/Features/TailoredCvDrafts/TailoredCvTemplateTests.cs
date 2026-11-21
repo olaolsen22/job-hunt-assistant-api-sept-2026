@@ -115,13 +115,55 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Equal("SUCCEEDED", result.GetProperty("status").GetString());
         Assert.Equal(kept ? paragraph : null, result.GetProperty("paragraph").GetString());
         Assert.Contains("short overview paragraph of at most 2 sentences", factory.Llm.LastMessages[0].Text);
+        // The paragraph is fact-checked, not word-checked, so it follows the CV's language like a DETAILED one.
+        Assert.Contains("Write the paragraph in American English", factory.Llm.LastMessages[0].Text);
+        Assert.DoesNotContain("in the language the bullets are supplied in", factory.Llm.LastMessages[0].Text);
+        // No soft cap: Space decides what a one-page CV keeps.
+        Assert.DoesNotContain("few bullets", factory.Llm.LastMessages[0].Text);
+        var system = factory.Llm.LastMessages[0].Text;
+        // Keeping work-training terms is an honesty rule, listed with the essentials.
+        Assert.True(system.IndexOf("arbeidstrening", StringComparison.Ordinal) < system.IndexOf("Preferences:", StringComparison.Ordinal));
+        // A vacancy at an employer of unknown kind gets neither kind sentence.
+        Assert.DoesNotContain("open application with no posting", system);
+        Assert.DoesNotContain("consultancy or broker", system);
+        Assert.Contains("Reminder: choose and write the bullets of experience", factory.Llm.LastMessages[1].Text);
+    }
+
+    // Each built-in section gets only its part of the out-of-field block.
+    [Theory]
+    [InlineData("SKILLS", "IT jargon")]
+    [InlineData("EXPERIENCE", "present them by that title")]
+    [InlineData("EXPERIENCE", "leave out the technical stack")]
+    [InlineData("SUMMARY", "leave out the technical stack")]
+    [InlineData("PROJECT", "title and dates")]
+    public async Task Analysis_SendsOnlyTheSectionsOutOfFieldPart(string section, string absent)
+    {
+        var client = await factory.GetOwnerClientAsync();
+        var (entryId, _) = await AddExperienceAsync(client, "Part Employer", "2020-01-01", null, "Built services");
+        var projectId = await AddProjectAsync(client);
+        var listingId = await TailoredCvAnalysisTests.CreateListingAsync(client, "Barista", "Serve coffee", []);
+        factory.Llm.Respond = () => Reply(section switch
+        {
+            "SKILLS" => """{"selectedSkillIds":[]}""",
+            "SUMMARY" => """{"summary":null}""",
+            _ => """{"bullets":[]}""",
+        });
+
+        await AnalyzeAsync(client, listingId, section, section switch
+        {
+            "EXPERIENCE" => entryId, "PROJECT" => projectId, _ => null,
+        }, "DETAILED");
+
+        Assert.Contains("outside the field of most of the candidate's experience", factory.Llm.LastMessages[0].Text);
+        Assert.DoesNotContain(absent, factory.Llm.LastMessages[0].Text.ReplaceLineEndings(" "));
     }
 
     [Theory]
     [InlineData("EXPERIENCE", "outside the field of most of the candidate's experience")]
-    [InlineData("EXPERIENCE", "the entry then shows only its title and dates")]
+    [InlineData("EXPERIENCE", "the entry shows only its title and dates")]
     [InlineData("EXPERIENCE", "IT jargon such as UI, UX, frontend, backend")]
     [InlineData("EXPERIENCE", "this overrides any rule here about keeping such facts")]
+    [InlineData("EXPERIENCE", "unless one of its bullets states the terms of the role")]
     [InlineData("SKILLS", "leave out the technical stack")]
     [InlineData("SUMMARY", "present them by that title")]
     public async Task Analysis_AimsAtAListingOutsideTheCandidatesField(string section, string expected)
@@ -237,7 +279,12 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Contains("no em dashes", detailed);
         foreach (var prompt in new[] { instructions, detailed }.Select(p => p.ReplaceLineEndings(" ")))
         {
-            Assert.Contains("outside the field of most of the candidate's experience", prompt);
+            // One block for the out-of-field case, not a clause inside every rule.
+            Assert.Equal(2, prompt.Split("outside the field of most of the candidate's experience").Length);
+            // The preview takes these from the profile, so the prompt doesn't ask the AI to copy them.
+            Assert.DoesNotContain("newest first", prompt);
+            Assert.DoesNotContain("Copy dates", prompt);
+            Assert.DoesNotContain("Copy each project's kind", prompt);
             Assert.Contains("select none and the entry shows only its title and dates", prompt);
             Assert.Contains("Essential rules", prompt);
             Assert.Contains(prompt.Contains("\"template\": \"CONCISE\"", StringComparison.Ordinal) ? "about 15-20 skills" : "about 25-30 skills", prompt);
@@ -379,6 +426,11 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
         string template) =>
         (await client.GraphQLAsync(Analyze, new { listingId, section, sourceEntryId, template }))
             .GetProperty("analyzeTailoredCvSection").GetProperty("result");
+
+    private static async Task<int> AddProjectAsync(HttpClient client) =>
+        (await client.GraphQLAsync("""
+            mutation { addProfileProject(input: { name: "Part project", skillNames: [] }) { profileProject { id } } }
+            """)).GetProperty("addProfileProject").GetProperty("profileProject").GetProperty("id").GetInt32();
 
     private static async Task<(int EntryId, List<int> BulletIds)> AddExperienceAsync(HttpClient client, string employer,
         string start, string? end, params string[] bullets)

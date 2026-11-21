@@ -195,12 +195,12 @@ public class RequirementMapTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
         var prompt = (await client.GraphQLAsync(Prompt, new { listingId })).GetProperty("requirementMapExternalPrompt");
 
-        Assert.Equal(1, prompt.GetProperty("version").GetInt32());
+        Assert.Equal(2, prompt.GetProperty("version").GetInt32());
         var instructions = prompt.GetProperty("instructions").GetString()!;
         foreach (var expected in new[]
         {
             "the profile shows nothing for it", "A similar tool is not the tool asked for", "untrusted data",
-            "\"schemaVersion\": 1", "Build accessible interfaces", "https://requirement-map.example/", "PROMPT_BULLET_TEXT",
+            "\"schemaVersion\": 2", "Build accessible interfaces", "https://requirement-map.example/", "PROMPT_BULLET_TEXT",
             $"\"id\":{bulletId}", "PROFILE_SUMMARY", "HYBRID",
         })
             Assert.Contains(expected, instructions);
@@ -237,10 +237,10 @@ public class RequirementMapTests(ApiFactory factory) : IClassFixture<ApiFactory>
     [Theory]
     [InlineData("not json")]
     [InlineData("   ")]
-    [InlineData("""{"schemaVersion":1,"needs":[]}""")]
-    [InlineData("""{"schemaVersion":1}""")]
+    [InlineData("""{"schemaVersion":2,"needs":[]}""")]
+    [InlineData("""{"schemaVersion":2}""")]
     [InlineData("""{"needs":[{"text":"x","kind":"DUTY","importance":"REQUIRED","match":"GAP"}]}""")]
-    [InlineData("""{"schemaVersion":1,"needs":[{"text":"x","kind":"NONSENSE","importance":"REQUIRED","match":"GAP"}]}""")]
+    [InlineData("""{"schemaVersion":2,"needs":[{"text":"x","kind":"NONSENSE","importance":"REQUIRED","match":"GAP"}]}""")]
     public async Task Preview_InvalidPaste_IsRejected(string json)
     {
         var client = await factory.GetOwnerClientAsync();
@@ -267,6 +267,8 @@ public class RequirementMapTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var needs = result.GetProperty("content").GetProperty("needs");
         Assert.Equal([bulletId], needs[0].GetProperty("bulletIds").EnumerateArray().Select(i => i.GetInt32()));
         Assert.Equal("GAP", needs[1].GetProperty("match").GetString());
+        // The task is restated after the data.
+        Assert.EndsWith("return one JSON object only.", factory.Llm.LastMessages[1].Text);
         var prompt = string.Join("\n", factory.Llm.LastMessages.Select(m => m.Text));
         Assert.Contains("GENERATE_BULLET_TEXT", prompt);
         Assert.Contains("Build accessible interfaces", prompt);
@@ -317,7 +319,7 @@ public class RequirementMapTests(ApiFactory factory) : IClassFixture<ApiFactory>
         int[]? bulletIds = null, object[]? entries = null, string? note = null) =>
         new { text, kind, importance, match, bulletIds, entries, note };
 
-    private static string MapJson(params string[] needs) => $$"""{"schemaVersion":1,"needs":[{{string.Join(",", needs)}}]}""";
+    private static string MapJson(params string[] needs) => $$"""{"schemaVersion":2,"needs":[{{string.Join(",", needs)}}]}""";
 
     private static async Task<JsonElement> SaveOkAsync(HttpClient client, int listingId, params object[] needs) =>
         (await client.GraphQLAsync(Save, new { listingId, needs })).GetProperty("saveRequirementMap").GetProperty("requirementMap");

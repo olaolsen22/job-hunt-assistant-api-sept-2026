@@ -16,7 +16,7 @@ public enum BaseCvPurpose { Role, OpenApplication }
 [QueryType]
 public static class BaseCvExternalPromptQueries
 {
-    public const int Version = 7;
+    public const int Version = 11;
     private const int MaxNotesLength = 2000;
 
     // Copy-paste instructions that pick a CV for a kind of role out of the master profile. Nothing is saved.
@@ -122,30 +122,28 @@ public static class BaseCvExternalPromptQueries
             application message.
 
             {{CvGuidance.Essentials}}
-            - Write in {{TailoredCvLanguageText.Name(language)}}: set "language" to "{{(language == Language.Norwegian ? "NORWEGIAN" : "ENGLISH")}}" and write the headline, the summary, and every
-              paragraph in that language. Keep each bullet in the language it is supplied in; the user translates it.
+            - {{CvGuidance.EngagementTerms.ReplaceLineEndings(" ")}}
+            - {{CvGuidance.LanguageRule(language, paragraphsInBulletLanguage: concise && mode == TailoredCvWordingMode.SourceWords)}}
             - Do not present the same work in full under both an experience and a project, and never present a personal
-              or school project as employment. Copy dates from the profile unchanged.
+              or school project as employment.
 
-            Preferences, with the reason for each:
+            Preferences:
             The profile holds more than one CV should show, so cherry-pick from it. Include each sourceEntryId, and for
             each bullet of an experience, education, certification, or project, decide:
             {{bulletSteps}}
             {{layout}}
-            {{CvGuidance.BulletStrength(templateValue, rewrite)}}
+            {{CvGuidance.BulletStrength(templateValue)}}
             Identify the themes this target values and surface supported evidence of them. Keep using AI tools, such as
             coding assistants, distinct from building AI features or machine learning.
-            Omit projects or certifications that are irrelevant. Copy each project's kind from the profile (null when it
-            has none). For every experience and project, set "technologies" to the names, exactly as supplied in its
-            skills, of {{CvGuidance.Technologies}}
+            Omit projects or certifications that are irrelevant. For every experience and project, set "technologies" to
+            the names, exactly as supplied in its skills, of {{CvGuidance.Technologies}}
             Select profile skills by sourceSkillId: {{CvGuidance.SkillSelection(templateValue)}}
-            Copy each skill's categoryId from the profile; only when it is null, suggest one using the rule below.
-            Include languages only when present in the profile.
+            When a profile skill's categoryId is null, suggest one using the rule below.
             Write a concise summary for this target from supported profile facts, {{summaryStart}}, or null when there
             is not enough evidence. {{CvGuidance.SummaryContent}} {{CvGuidance.SummaryConsistency}}
             {{CvGuidance.ExternalWriting(mode != TailoredCvWordingMode.Exact)}}
-            Order experiences, educations, certifications, and projects newest first (ongoing entries first). Write the
-            summary as plain text without Markdown, {{CvGuidance.SummaryLength(templateValue)}}.
+            Write the summary as plain text without Markdown, {{CvGuidance.SummaryLength(templateValue)}}.
+            {{CvGuidance.OutOfFieldTarget(CvGuidance.OutOfFieldParts.All, rewrite)}}
             {{CvGuidance.OutputRules}}
 
             {{CvGuidance.ContentShape(concise)}}
@@ -182,9 +180,7 @@ public static class BaseCvExternalPreviewMutations
         await TailoredCvDraftValidation.ValidateSourceIdsAsync(content, db, ct,
             requireSourceBulletText: mode == TailoredCvWordingMode.Exact);
         var profile = await ProfileQueries.LoadAsync(db, ct);
-        content = KeepEntryWording(content, profile, mode);
-        content = await TailoredCvDraftValidation.FillMissingLocationsAsync(content, db, ct);
-        content = await TailoredCvDraftValidation.FillMissingSourceDetailsAsync(content, db, ct);
+        content = TailoredCvDraftValidation.ApplySourceFacts(KeepEntryWording(content, profile, mode), profile);
 
         var contact = TailoredCvDraftFromProfileQueries.FromProfile(profile, language);
         return new(parsed.SchemaVersion, content with

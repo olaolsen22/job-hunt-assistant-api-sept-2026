@@ -71,10 +71,16 @@ public class TailoredCvAnalyzer(
 
         var tooLong = false;
         // The task is restated after the context block, which can be long (docs/llm-prompting-research-2026-11-21.md §5).
+        var task = section switch
+        {
+            TailoredCvSection.Skills => "select the profile skills",
+            TailoredCvSection.Summary => "write the summary and headline",
+            _ => $"choose and write the bullets of {section.ToString().ToLowerInvariant()} {sourceEntryId}",
+        };
         var call = await execution.RunJsonAsync(model,
-            [new(ChatRole.System, TailoredCvAnalysisInstructions.For(section, language, template)),
+            [new(ChatRole.System, TailoredCvAnalysisInstructions.For(section, language, template, listing.Kind, listing.Company.Kind)),
                 new(ChatRole.User, $"<cv_context>\n{input}\n</cv_context>\n"
-                    + "Reminder: follow the system instructions for this section and return one JSON object only.")],
+                    + $"Reminder: {task} for the listing above, following the system instructions, and return one JSON object only.")],
             new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0, MaxOutputTokens = 4096 },
             Operation, db, text => (tooLong = text.Length > MaxOutputLength)
                 ? null : TailoredCvAnalysisDecoder.Decode(text, section, sourceEntryId, input, template),

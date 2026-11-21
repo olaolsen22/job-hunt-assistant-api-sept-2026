@@ -12,7 +12,7 @@ public record TailoredCvExternalPrompt(int Version, string Instructions);
 [QueryType]
 public static class TailoredCvExternalPromptQueries
 {
-    public const int Version = 23;
+    public const int Version = 27;
 
     public static async Task<TailoredCvExternalPrompt> GetTailoredCvExternalPromptAsync(
         int listingId, AppDbContext db, TimeProvider time, CancellationToken ct, TailoredCvTemplate? template = null,
@@ -58,29 +58,27 @@ public static class TailoredCvExternalPromptQueries
 
             {{CvGuidance.Essentials}}
             - {{CvGuidance.Gap.ReplaceLineEndings(" ")}}
-            - Write in {{TailoredCvLanguageText.Name(target)}}: set "language" to "{{(target == Language.Norwegian ? "NORWEGIAN" : "ENGLISH")}}" and write the headline, the summary, and every
-              paragraph in that language. Keep each bullet in the language it is supplied in; the user translates it.
+            - {{CvGuidance.EngagementTerms.ReplaceLineEndings(" ")}}
+            - {{CvGuidance.LanguageRule(target, paragraphsInBulletLanguage: false)}}
             - Do not present the same work in full under both an experience and a project, and never present a personal
-              or school project as employment. Copy dates from the profile unchanged.
+              or school project as employment.
 
-            Preferences, with the reason for each:
-            {{CvGuidance.Theme}}
+            Preferences:
+            {{CvGuidance.Theme(listing.Kind)}}
             For experience, education, certification, and project bullets, include their sourceEntryId and sourceBulletId
             {{bulletRules}} {{CvGuidance.LanguageEvidence}}
             Omit irrelevant bullets, and projects or certifications that are irrelevant.
-            {{CvGuidance.BulletSelection(templateValue)}}
-            Copy each project's kind from the profile (null when it has none). For every experience and project, set
-            "technologies" to the names, exactly as supplied in its skills, of {{CvGuidance.Technologies}}
+            {{CvGuidance.BulletSelection(templateValue, listing.Company.Kind)}}
+            For every experience and project, set "technologies" to the names, exactly as supplied in its skills, of {{CvGuidance.Technologies}}
             Select profile skills by sourceSkillId: {{CvGuidance.SkillSelection(templateValue)}}
-            Copy each skill's categoryId from the profile; only when it is null, suggest one using the rule below.
-            Include languages only when present in the profile.
+            When a profile skill's categoryId is null, suggest one using the rule below.
             Write a concise listing-specific summary from supported profile facts, starting from the profile's own
             headline and summary and adjusting their emphasis rather than rewriting them, or null when there is not
             enough evidence. {{CvGuidance.SummaryContent}} {{CvGuidance.SummaryConsistency}}
             {{CvGuidance.ExternalWriting(concise)}}
-            Order experiences, educations, certifications, and projects newest first (ongoing entries first). Write the
-            summary as plain text without Markdown, {{CvGuidance.SummaryLength(templateValue)}}, reusing the listing's
+            Write the summary as plain text without Markdown, {{CvGuidance.SummaryLength(templateValue)}}, reusing the listing's
             terminology only where the profile supports it.
+            {{CvGuidance.OutOfFieldTarget(CvGuidance.OutOfFieldParts.All)}}
             {{CvGuidance.OutputRules}}
 
             {{CvGuidance.ContentShape(concise)}}

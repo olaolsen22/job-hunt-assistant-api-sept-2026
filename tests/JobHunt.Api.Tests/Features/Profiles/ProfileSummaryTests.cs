@@ -40,6 +40,11 @@ public class ProfileSummaryTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal("Vue developer who ships.", result.GetProperty("summary").GetString());
         Assert.Equal(ProfileSummaryPromptQueries.Instructions(Language.English, external: false), factory.Llm.LastMessages[0].Text);
         Assert.Contains("years alone are not seniority", factory.Llm.LastMessages[0].Text);
+        // Years come from the server's month count, not the model's date arithmetic.
+        Assert.Contains("Never count years from the dates yourself", factory.Llm.LastMessages[0].Text);
+        Assert.Contains("no em dashes", factory.Llm.LastMessages[0].Text);
+        Assert.Contains("\"experienceMonths\":", factory.Llm.LastMessages[1].Text);
+        Assert.Contains("\"months\":", factory.Llm.LastMessages[1].Text);
         Assert.DoesNotContain("at what level", factory.Llm.LastMessages[0].Text);
         Assert.Contains("Summary Employer", factory.Llm.LastMessages[1].Text);
         Assert.Contains("Old summary", factory.Llm.LastMessages[1].Text);

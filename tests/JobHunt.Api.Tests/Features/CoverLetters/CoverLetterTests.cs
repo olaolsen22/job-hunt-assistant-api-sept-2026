@@ -1,5 +1,8 @@
 using System.Text.Json;
 using JobHunt.Api.Data;
+using JobHunt.Api.Features.Companies;
+using JobHunt.Api.Features.CoverLetters;
+using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Tests.Features.Listings;
 using JobHunt.Api.Tests.Features.Profiles;
 using JobHunt.Api.Tests.Features.WritingSamples;
@@ -179,10 +182,58 @@ public class CoverLetterTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
         var instructions = factory.Llm.LastMessages[0].Text;
         Assert.Contains("writing in a language is not evidence of speaking it", instructions);
-        Assert.Contains("A BROKER listing is usually a client", instructions);
+        // No company kind set, so no company-kind rule.
+        Assert.DoesNotContain("The employer is a", instructions);
         Assert.Contains("never relabel them as fullstack", instructions);
         Assert.Contains("reference number from the description's Application section", instructions);
         Assert.Contains($"\"technologies\":[\"{skill}\"]", factory.Llm.LastMessages[1].Text);
+        Assert.EndsWith(CoverLetterPrompt.Reminder, factory.Llm.LastMessages[1].Text);
+    }
+
+    // The kind picks the opening and close, so no rule overrides advice given elsewhere in the prompt.
+    [Fact]
+    public void Instructions_PickOpeningAndCloseByKind()
+    {
+        var unsolicited = CoverLetterPrompt.Instructions(Language.English, ListingKind.Unsolicited, null).ReplaceLineEndings(" ");
+        var vacancy = CoverLetterPrompt.Instructions(Language.English, ListingKind.Vacancy, null).ReplaceLineEndings(" ");
+
+        Assert.Contains("say this is an open application within the field", unsolicited);
+        Assert.Contains("whether the candidate's experience could be useful, now or later", unsolicited);
+        Assert.DoesNotContain("These replace", unsolicited);
+        Assert.DoesNotContain("vacancy was found", unsolicited);
+        Assert.Contains("vacancy was found", vacancy);
+        Assert.Contains("interest in discussing how the candidate can contribute", vacancy);
+        Assert.DoesNotContain("open application within the field", vacancy);
+    }
+
+    // Honesty and privacy rules come first as essentials; fit states the result wanted, not a sequence of steps.
+    [Theory]
+    [InlineData("VACANCY")]
+    [InlineData("UNSOLICITED")]
+    public void Instructions_ListEssentialsFirst_AndNoStepScript(string kind)
+    {
+        var instructions = CoverLetterPrompt.Instructions(Language.English, Enum.Parse<ListingKind>(kind, ignoreCase: true), null);
+
+        var preferences = instructions.IndexOf("Preferences:", StringComparison.Ordinal);
+        Assert.True(instructions.IndexOf("Essential rules", StringComparison.Ordinal) is var essentials && essentials >= 0 && essentials < preferences);
+        Assert.True(instructions.IndexOf("Never include family, health", StringComparison.Ordinal) < preferences);
+        Assert.True(instructions.IndexOf("never quote them", StringComparison.Ordinal) < preferences);
+        Assert.Contains("Fit:", instructions);
+        Assert.DoesNotContain("worked out before writing", instructions);
+    }
+
+    // Company-kind rules go only to that kind of employer.
+    [Fact]
+    public void Instructions_SendOnlyTheEmployersKindRule()
+    {
+        var consultancy = CoverLetterPrompt.Instructions(Language.English, ListingKind.Vacancy, CompanyKind.Consultancy);
+        var unknown = CoverLetterPrompt.Instructions(Language.English, ListingKind.Vacancy, null);
+
+        Assert.Contains("The employer is a consultancy", consultancy);
+        Assert.Contains("people outside the candidate's own", consultancy);
+        Assert.DoesNotContain("recruitment agency", consultancy);
+        Assert.DoesNotContain("people outside the candidate's own", unknown);
+        Assert.DoesNotContain("BROKER", unknown);
     }
 
     [Fact]
@@ -213,12 +264,12 @@ public class CoverLetterTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var prompt = (await client.GraphQLAsync("""
             query ($listingId: Int!) { coverLetterExternalPrompt(listingId: $listingId) { version instructions } }
             """, new { listingId })).GetProperty("coverLetterExternalPrompt");
-        Assert.Equal(6, prompt.GetProperty("version").GetInt32());
+        Assert.Equal(9, prompt.GetProperty("version").GetInt32());
         Assert.Contains("Build services", prompt.GetProperty("instructions").GetString());
         Assert.Contains("Never search the web for the posting", prompt.GetProperty("instructions").GetString());
-        Assert.Contains("\"schemaVersion\": 6", prompt.GetProperty("instructions").GetString());
+        Assert.Contains("\"schemaVersion\": 9", prompt.GetProperty("instructions").GetString());
 
-        var valid = (await client.GraphQLAsync(Preview, new { listingId, json = LetterJson.Replace("{\"subject\"", "{\"schemaVersion\":6,\"subject\"") }))
+        var valid = (await client.GraphQLAsync(Preview, new { listingId, json = LetterJson.Replace("{\"subject\"", "{\"schemaVersion\":9,\"subject\"") }))
             .GetProperty("previewCoverLetterDraft");
         Assert.Equal("Dear Kari,", valid.GetProperty("candidate").GetProperty("greeting").GetString());
 

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using JobHunt.Api.Data;
+using JobHunt.Api.Features.Companies;
 using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Features.Profiles;
 using JobHunt.Api.Features.TailoredCvDrafts;
@@ -10,7 +11,8 @@ using Microsoft.EntityFrameworkCore;
 namespace JobHunt.Api.Features.CoverLetters;
 
 // A complete letter without a body: names, contact details and dates never come from the model or the paste.
-public record CoverLetterPromptContext(string Json, Language Language, ListingKind Kind, CoverLetterContent Header);
+public record CoverLetterPromptContext(string Json, Language Language, ListingKind Kind, CoverLetterContent Header,
+    CompanyKind? CompanyKind = null);
 
 // Shared by the built-in and external paths, so both send the model exactly the same allowlisted data.
 public static class CoverLetterContext
@@ -82,7 +84,7 @@ public static class CoverLetterContext
         var json = JsonSerializer.Serialize(context, JsonOptions);
         if (json.Length > MaxContextLength)
             throw new InvalidCoverLetterException($"Prompt context must be at most {MaxContextLength} characters.");
-        return new(json, language, listing.Kind, header);
+        return new(json, language, listing.Kind, header, listing.Company.Kind);
     }
 
     private static async Task<Sources> LoadAsync(int listingId, AppDbContext db, TimeProvider time, CancellationToken ct)
