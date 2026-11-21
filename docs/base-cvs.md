@@ -49,8 +49,8 @@ Cherry-picks a CV for a kind of role from the master profile: copy the prompt to
 into the preview, review in the editor, then save with `createBaseCv` or `saveBaseCvVersion`. Nothing is saved before that.
 
 ```graphql
-query ($language: Language!, $targetRole: String!, $notes: String, $template: TailoredCvTemplate, $rewrite: Boolean! = false) {
-  baseCvExternalPrompt(language: $language, targetRole: $targetRole, notes: $notes, template: $template, rewrite: $rewrite) { version instructions }
+query ($language: Language!, $targetRole: String!, $notes: String, $template: TailoredCvTemplate, $rewrite: Boolean! = false, $purpose: BaseCvPurpose! = ROLE) {
+  baseCvExternalPrompt(language: $language, targetRole: $targetRole, notes: $notes, template: $template, rewrite: $rewrite, purpose: $purpose) { version instructions }
 }
 
 mutation ($language: Language!, $json: String!, $template: TailoredCvTemplate, $rewrite: Boolean! = false) {
@@ -64,6 +64,12 @@ mutation ($language: Language!, $json: String!, $template: TailoredCvTemplate, $
 - `targetRole` (1-100 characters) is the kind of job, such as "Frontend developer". `notes` (at most 2000 characters,
   optional) add context on the target, such as the employers, domains, or strengths to aim at. The AI uses them for
   emphasis, never as facts about the candidate. Invalid values are a GraphQL error on the prompt query.
+- `purpose` is `ROLE` by default: the CV is matched to that kind of job like a listing. `OPEN_APPLICATION` is for
+  åpen søknad: `targetRole` is the market or field approached (such as "Frontend-leaning developer" or
+  "Customer-facing roles"), and there are no requirements to answer. The CV shows the main focus first, then the
+  breadth the evidence supports. Areas the notes ask to show (for example "also show backend") count as relevant,
+  and the AI always returns a headline for that market. `template` and `rewrite` work as for `ROLE`; for a market
+  outside IT use `rewrite: true`, or IT jobs mostly show only title and dates. The preview takes no `purpose`.
 - `template` is `DETAILED` by default. Pass the same `language`, `template` and `rewrite` to the preview.
 - `rewrite: true` lets the AI reword bullets, paragraphs and the summary in plain words, following `notes` (for
   example IT work explained for a shop job). For a target outside the candidate's field, IT entries keep at least one

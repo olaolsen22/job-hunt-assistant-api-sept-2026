@@ -9,8 +9,8 @@ namespace JobHunt.Api.Tests.Features.BaseCvs;
 public class BaseCvExternalPromptTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     private const string Prompt = """
-        query ($language: Language!, $targetRole: String!, $notes: String, $template: TailoredCvTemplate, $rewrite: Boolean! = false) {
-          baseCvExternalPrompt(language: $language, targetRole: $targetRole, notes: $notes, template: $template, rewrite: $rewrite) { version instructions }
+        query ($language: Language!, $targetRole: String!, $notes: String, $template: TailoredCvTemplate, $rewrite: Boolean! = false, $purpose: BaseCvPurpose! = ROLE) {
+          baseCvExternalPrompt(language: $language, targetRole: $targetRole, notes: $notes, template: $template, rewrite: $rewrite, purpose: $purpose) { version instructions }
         }
         """;
     private const string Preview = """
@@ -40,6 +40,8 @@ public class BaseCvExternalPromptTests(ApiFactory factory) : IClassFixture<ApiFa
         Assert.Contains("Prompt Base Employer", instructions);
         Assert.Contains($"\"id\":{bulletIds[0]}", instructions);
         Assert.Contains("cherry-pick", instructions);
+        Assert.Contains("aim at the role in general", instructions);
+        Assert.DoesNotContain("open application", instructions);
         Assert.Contains("use experienceMonths", instructions);
         Assert.Contains("\"experienceMonths\":", instructions);
         Assert.Contains("arbeidstrening", instructions);
@@ -93,6 +95,48 @@ public class BaseCvExternalPromptTests(ApiFactory factory) : IClassFixture<ApiFa
         Assert.Contains("select at least its most relevant one, rewritten in plain words", instructions);
         Assert.DoesNotContain("Prefer no bullet over one that only makes sense to IT people", instructions);
         Assert.DoesNotContain("then select none and the entry shows only its title and dates", instructions);
+    }
+
+    [Fact]
+    public async Task Prompt_OpenApplication_AimsAtAMarket_AndNotesWidenScope()
+    {
+        var client = await factory.GetOwnerClientAsync();
+
+        var instructions = (await client.GraphQLAsync(Prompt, new
+        {
+            language = "ENGLISH", targetRole = "Frontend-leaning developer", notes = "Also show backend capabilities",
+            template = (string?)null, purpose = "OPEN_APPLICATION",
+        })).GetProperty("baseCvExternalPrompt").GetProperty("instructions").GetString()!.ReplaceLineEndings(" ");
+
+        Assert.Contains("\"role\":\"Frontend-leaning developer\"", instructions);
+        Assert.Contains("open applications", instructions);
+        Assert.Contains("no vacancy and no requirements", instructions);
+        Assert.Contains("read this market", instructions);
+        Assert.Contains("count as relevant", instructions);
+        Assert.Contains("Always set content.headline", instructions);
+        Assert.Contains("copy the bullet exactly as supplied", instructions);
+        Assert.DoesNotContain("aim at the role in general", instructions);
+        Assert.DoesNotContain("read this target", instructions);
+    }
+
+    [Theory]
+    [InlineData("DETAILED", false, "copy the bullet exactly as supplied")]
+    [InlineData("CONCISE", false, "combine it with")]
+    [InlineData("DETAILED", true, "Translate the other entries rather than dropping them")]
+    [InlineData("CONCISE", true, "rewrite it in plain words")]
+    public async Task Prompt_OpenApplication_KeepsTemplateAndRewrite(string template, bool rewrite, string expected)
+    {
+        var client = await factory.GetOwnerClientAsync();
+
+        var instructions = (await client.GraphQLAsync(Prompt, new
+        {
+            language = "NORWEGIAN", targetRole = "Customer-facing roles", notes = (string?)null, template, rewrite,
+            purpose = "OPEN_APPLICATION",
+        })).GetProperty("baseCvExternalPrompt").GetProperty("instructions").GetString()!.ReplaceLineEndings(" ");
+
+        Assert.Contains(expected, instructions);
+        Assert.Contains("outside the field of most of the candidate's experience", instructions);
+        Assert.Contains($"\"template\": \"{template}\"", instructions);
     }
 
     [Theory]
