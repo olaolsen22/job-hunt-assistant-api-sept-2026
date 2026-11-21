@@ -233,9 +233,10 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Contains("\"experienceMonths\":", factory.Llm.LastMessages[1].Text);
         Assert.Contains("\"endMonth\":null,\"months\":", factory.Llm.LastMessages[1].Text);
         Assert.Contains("years of work experience the candidate has", factory.Llm.LastMessages[0].Text);
+        Assert.DoesNotContain("years are counted only from the experience dates", factory.Llm.LastMessages[0].Text);
         Assert.Contains("never claim it", factory.Llm.LastMessages[0].Text);
-        Assert.Contains("never relabel them as fullstack", factory.Llm.LastMessages[0].Text);
-        Assert.Contains("null keeps the current headline", factory.Llm.LastMessages[0].Text);
+        Assert.Contains("Never call the candidate fullstack", factory.Llm.LastMessages[0].Text);
+        Assert.Contains("never null", factory.Llm.LastMessages[0].Text);
     }
 
     [Theory]
@@ -435,6 +436,67 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Equal(0, projects[1].GetProperty("technologies").GetArrayLength());
     }
 
+    // The prompt no longer asks the AI to copy these, so the preview takes them from the profile.
+    [Fact]
+    public async Task ExternalPreview_TakesDatesPlacesLevelsAndOrderFromTheProfile()
+    {
+        var client = await factory.GetGuestClientAsync();
+        var old = $"Old{Guid.NewGuid():N}";
+        var current = $"Current{Guid.NewGuid():N}";
+        var oldId = (await ProfileEntryTests.AddExperienceAsync(client, employer: old, start: "2015-01-01", end: "2016-01-01"))
+            .GetProperty("id").GetInt32();
+        var currentId = (await ProfileEntryTests.AddExperienceAsync(client, employer: current, start: "2023-01-01"))
+            .GetProperty("id").GetInt32();
+        var skillName = $"Facts{Guid.NewGuid():N}";
+        var skillId = (await client.GraphQLAsync("""
+            mutation ($name: String!) { setProfileSkill(input: { name: $name, level: 4 }) { profileSkill { skill { id } } } }
+            """, new { name = skillName })).GetProperty("setProfileSkill").GetProperty("profileSkill").GetProperty("skill")
+            .GetProperty("id").GetInt32();
+        await client.GraphQLAsync("""
+            mutation { setProfileLanguage(input: { name: "Norwegian", written: VERY_GOOD, spoken: GOOD }) { profileLanguage { name } } }
+            """);
+        var listingId = await CreateListingAsync(client, "Developer", "Build software", []);
+        var json = JsonSerializer.Serialize(new
+        {
+            schemaVersion = 1,
+            content = new
+            {
+                experiences = new object[]
+                {
+                    new { sourceEntryId = oldId, employer = old, title = "Developer", startMonth = "2010-01-01", location = "Mars", bullets = Array.Empty<object>() },
+                    new { sourceEntryId = currentId, employer = current, title = "Developer", startMonth = "2023-01-01", bullets = Array.Empty<object>() },
+                },
+                skills = new object[] { new { sourceSkillId = skillId, name = skillName, level = 1 } },
+                languages = new object[]
+                {
+                    new { name = "norwegian", written = "BEGINNER", spoken = "BEGINNER" },
+                    new { name = "Klingon", written = "NATIVE", spoken = "NATIVE" },
+                },
+            },
+        });
+
+        var content = (await client.GraphQLAsync("""
+            mutation ($listingId: Int!, $json: String!) {
+              previewTailoredCvDraft(input: { listingId: $listingId, json: $json }) {
+                candidate { content {
+                  experiences { employer startMonth endMonth location }
+                  skills { level } languages { name written spoken }
+                } } errors { __typename }
+              }
+            }
+            """, new { listingId, json })).GetProperty("previewTailoredCvDraft").GetProperty("candidate").GetProperty("content");
+
+        var experiences = content.GetProperty("experiences");
+        Assert.Equal([current, old], experiences.EnumerateArray().Select(e => e.GetProperty("employer").GetString()));
+        Assert.Equal("2015-01-01", experiences[1].GetProperty("startMonth").GetString());
+        Assert.Equal("2016-01-01", experiences[1].GetProperty("endMonth").GetString());
+        Assert.Equal(JsonValueKind.Null, experiences[1].GetProperty("location").ValueKind);
+        Assert.Equal(4, content.GetProperty("skills")[0].GetProperty("level").GetInt32());
+        var language = Assert.Single(content.GetProperty("languages").EnumerateArray());
+        Assert.Equal(("Norwegian", "VERY_GOOD", "GOOD"), (language.GetProperty("name").GetString(),
+            language.GetProperty("written").GetString(), language.GetProperty("spoken").GetString()));
+    }
+
     [Fact]
     public async Task ExternalPreview_NorwegianListing_AcceptsTranslatedBulletText()
     {
@@ -538,19 +600,19 @@ public class TailoredCvAnalysisTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Contains("https://tailored-cv-analysis.example/", instructions);
         Assert.Contains("open exactly its url", instructions);
         Assert.Contains("Never search the web for the posting", instructions);
-        Assert.Contains("core professional", instructions);
+        Assert.Contains("foundations of the stack", instructions);
         Assert.Contains("complete timeline", instructions);
         Assert.Contains("never leave paragraph null", instructions);
         Assert.Contains("never changes which bullets you select", instructions);
         Assert.Contains("such as Norwegian", instructions);
-        Assert.Contains("every paragraph in that", instructions);
+        Assert.Contains("paragraph in that language", instructions);
         Assert.Contains("do not turn \"helped\" into \"led\"", instructions);
         Assert.Contains("never claim it", instructions);
         Assert.Contains("\"companyResearch\":{\"kind\":\"BROKER\"", instructions);
-        Assert.Contains("CONSULTANCY or BROKER", instructions);
+        Assert.Contains("The employer is a consultancy or broker", instructions);
         Assert.Contains("\"headline\": null", instructions);
-        Assert.Contains("Set content.headline: one short title line", instructions);
-        Assert.Contains("never relabel them as fullstack", instructions);
+        Assert.Contains("Set content.headline: one title line", instructions);
+        Assert.Contains("Never call the candidate fullstack", instructions);
         Assert.True(instructions.IndexOf("Go developer", StringComparison.Ordinal)
             < instructions.IndexOf("Prompt Employer", StringComparison.Ordinal));
         Assert.DoesNotContain("PRIVATE_", instructions, StringComparison.Ordinal);

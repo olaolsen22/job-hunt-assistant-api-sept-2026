@@ -19,7 +19,7 @@ public record RequirementMapModelOutput(int? SchemaVersion = null, List<Requirem
 public static class RequirementMapPrompt
 {
     // Bump when the instructions or the output shape change.
-    public const int Version = 1;
+    public const int Version = 2;
     public const int MaxContextLength = 100_000;
     private const int MaxOutputLength = 50_000;
 
@@ -138,8 +138,10 @@ public static class RequirementMapPrompt
         return new(json, profile);
     }
 
+    // Shared by both paths; restates the task after the context (docs/llm-prompting-research-2026-11-21.md §5).
     public static string UserMessage(RequirementMapPromptContext context) =>
-        $"<requirement_map_context>\n{context.Json}\n</requirement_map_context>";
+        $"<requirement_map_context>\n{context.Json}\n</requirement_map_context>\n"
+        + "Reminder: map the listing's needs to the profile evidence, following the instructions, and return one JSON object only.";
 
     public static RequirementMapContent Decode(string json, Profile profile, bool external)
     {

@@ -49,8 +49,8 @@ Cherry-picks a CV for a kind of role from the master profile: copy the prompt to
 into the preview, review in the editor, then save with `createBaseCv` or `saveBaseCvVersion`. Nothing is saved before that.
 
 ```graphql
-query ($language: Language!, $targetRole: String!, $notes: String, $template: TailoredCvTemplate, $rewrite: Boolean! = false) {
-  baseCvExternalPrompt(language: $language, targetRole: $targetRole, notes: $notes, template: $template, rewrite: $rewrite) { version instructions }
+query ($language: Language!, $targetRole: String!, $notes: String, $template: TailoredCvTemplate, $rewrite: Boolean! = false, $purpose: BaseCvPurpose! = ROLE) {
+  baseCvExternalPrompt(language: $language, targetRole: $targetRole, notes: $notes, template: $template, rewrite: $rewrite, purpose: $purpose) { version instructions }
 }
 
 mutation ($language: Language!, $json: String!, $template: TailoredCvTemplate, $rewrite: Boolean! = false) {
@@ -64,6 +64,19 @@ mutation ($language: Language!, $json: String!, $template: TailoredCvTemplate, $
 - `targetRole` (1-100 characters) is the kind of job, such as "Frontend developer". `notes` (at most 2000 characters,
   optional) add context on the target, such as the employers, domains, or strengths to aim at. The AI uses them for
   emphasis, never as facts about the candidate. Invalid values are a GraphQL error on the prompt query.
+- `purpose` is `ROLE` by default: the CV is matched to that kind of job like a listing. `OPEN_APPLICATION` is for
+  åpen søknad: `targetRole` is the market or field approached (such as "Frontend-leaning developer" or
+  "Customer-facing roles"), and there are no requirements to answer. The CV shows the main focus first, then the
+  breadth the evidence supports. `template` and `rewrite` work as for `ROLE`; for a market outside IT use
+  `rewrite: true`, or IT jobs mostly show only title and dates. The preview takes no `purpose`.
+- Prompt version 7, for both purposes: areas the notes ask to show (for example "also show backend") count as
+  relevant, and the notes win over the selection preferences, never over the essential rules (profile facts only,
+  honest claims, no title the job titles don't show). When the notes ask to show a career direction, the summary may
+  end with one factual transition clause backed by profile evidence; other motivation is left to the application
+  message. There are no per-role bullet counts: the CV fits 1-2 pages (`CONCISE`: one), keeps bullets that show a
+  distinct capability, and shortens older, less relevant roles only when space runs short. Skills: about 25-30
+  (`CONCISE` 15-20), always with the stack's foundations. The headline is never null and uses the target's role title
+  when the job titles support it. The prompt contains no listing rules.
 - `template` is `DETAILED` by default. Pass the same `language`, `template` and `rewrite` to the preview.
 - `rewrite: true` lets the AI reword bullets, paragraphs and the summary in plain words, following `notes` (for
   example IT work explained for a shop job). For a target outside the candidate's field, IT entries keep at least one
@@ -75,12 +88,15 @@ mutation ($language: Language!, $json: String!, $template: TailoredCvTemplate, $
 - `CONCISE` shortens relevant bullets, and it and `rewrite` may combine less relevant ones of one entry into one short
   bullet whose `sourceBulletId` is the first combined bullet. The preview checks each such bullet's words against the
   bullets of its own entry: at most 2 new words and no new numbers; a failing bullet falls back to its source text.
-  A paragraph gets the same check with up to 4 new words; one that fails becomes `null`. The check looks at words, not
+  A paragraph gets the same check with up to 4 new words, so without `rewrite` it stays in the bullets' language; one
+  that fails becomes `null`. The check looks at words, not
   meaning, so review combined bullets.
 - `InvalidTailoredCvDraftError`: invalid JSON, a bullet without `sourceBulletId`, a source that isn't in that entry
   of this profile, or (`DETAILED`) changed bullet text.
 - The result fills name, email, phone, address, links, and date of birth from the profile, plus the headline when the
   AI returned none, so it can be saved as-is.
+- Like the tailored preview, entries take their dates, location and project kind from the profile and follow its
+  order; skills and languages take the profile's levels, and languages the profile lacks are dropped.
 - A combined or shortened bullet differs from its source, so `baseCvTranslation` keeps its text and lists it in
   `untranslatedFields`.
 

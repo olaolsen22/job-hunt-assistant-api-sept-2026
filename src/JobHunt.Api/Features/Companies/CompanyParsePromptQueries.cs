@@ -13,7 +13,7 @@ public record CompanyParsePrompt(int Version, string Instructions);
 public static class CompanyParsePromptQueries
 {
     // Bump whenever the prompt or output shape changes.
-    public const int Version = 4;
+    public const int Version = 5;
 
     public static Task<CompanyParsePrompt> GetCompanyParsePromptAsync(AppDbContext db, CancellationToken ct) =>
         BuildAsync(db, external: true, ct);
@@ -25,6 +25,13 @@ public static class CompanyParsePromptQueries
 
         // Only an external chat can browse; the built-in call sees nothing but the pasted or fetched text.
         var contactSource = external ? " or on the company's own site and LinkedIn pages you open" : "";
+        // Without browsing, memory is fine for what a company does but not for numbers, links or people.
+        var memory = external
+            ? "When the text is only names, you may use what you know or can look up about the companies, including researched facts from their own sites and public registers."
+            : "When the text is only names, you may use what you know for industryName, kind and description only; take orgNumber, sizeBand, foundedYear, URLs, workMode, workingLanguage and contacts only from the text.";
+        var orgNumber = external
+            ? "only when you know it for certain (e.g. from Brønnøysundregistrene); digits only."
+            : "only when the text states it; digits only.";
 
         var instructions = $$"""
             You extract companies for a job-tracking app.
@@ -59,7 +66,7 @@ public static class CompanyParsePromptQueries
               Existing industries: {{PromptText.NameList(industries)}}
             locations: offices the text mentions. Use the city name as written locally ("Tromsø", not "Tromso").
               A country with no city → { "city": null, "countryCode": "NO" }.
-            orgNumber: only when you know it for certain (e.g. from Brønnøysundregistrene); digits only.
+            orgNumber: {{orgNumber}}
             URLs: absolute https links to the company's own site, careers page and LinkedIn company page.
             kind: PRODUCT builds its own software products; CONSULTANCY employs its own consultants and delivers
               people or projects to clients; IN_HOUSE is a non-software business with its own IT department;
@@ -77,8 +84,7 @@ public static class CompanyParsePromptQueries
               memory, and never invent anyone. Copy name, title, email, phone and url (LinkedIn or profile page) exactly
               as written; never build an email from a pattern like firstname.lastname@. null for anything not given.
               Skip shared inboxes and switchboards without a person ("jobb@firma.no", "post@firma.no"). None → [].
-            Fill the fields from the text. When the text is only names, you may use what you know or can look up about
-            the companies, including researched facts from their own sites and public registers.
+            Fill the fields from the text. {{memory}}
             Use null or [] when unsure. Don't guess.
             """;
 

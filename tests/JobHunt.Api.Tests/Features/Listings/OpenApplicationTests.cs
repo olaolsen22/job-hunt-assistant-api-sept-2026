@@ -220,6 +220,6 @@ public class OpenApplicationTests(ApiFactory factory) : IClassFixture<ApiFactory
 
         Assert.Contains("\"kind\":\"UNSOLICITED\"", instructions);
         Assert.Contains("\"companyResearch\":", instructions);
-        Assert.Contains("An UNSOLICITED listing", instructions);
+        Assert.Contains("This is an open application with no posting", instructions);
     }
 }

@@ -39,12 +39,12 @@ public static class TailoredCvExternalPreviewMutations
         var content = TailoredCvDraftValidation.Normalize(input, listing.PostingLanguage) with { Template = templateValue };
         await TailoredCvDraftValidation.ValidateSourceIdsAsync(content, db, ct,
             requireSourceBulletText: mode == TailoredCvWordingMode.Exact);
+        // Ids were already checked as the user's own by ValidateSourceIdsAsync.
+        var profile = await ProfileQueries.LoadAsync(db, ct);
         if (mode != TailoredCvWordingMode.Exact)
-            content = await KeepSourceWordingAsync(content, mode,
-                TailoredCvWording.ListingText(listing.Title, listing.DescriptionIn(content.Language), skills), skills, db, ct);
-        content = await TailoredCvDraftValidation.FillMissingLocationsAsync(content, db, ct);
-        content = await TailoredCvDraftValidation.FillMissingSourceDetailsAsync(content, db, ct);
-        return new(parsed.SchemaVersion, content);
+            content = KeepSourceWording(content, mode,
+                TailoredCvWording.ListingText(listing.Title, listing.DescriptionIn(content.Language), skills), skills, profile);
+        return new(parsed.SchemaVersion, TailoredCvDraftValidation.ApplySourceFacts(content, profile));
     }
 
     // The pasted reply's shape and limits, shared with the base CV preview.
@@ -74,11 +74,9 @@ public static class TailoredCvExternalPreviewMutations
     // A DETAILED bullet is checked against its own source text and its translation in the draft language. A CONCISE
     // bullet may merge bullets of its entry, so it is held to the whole entry's facts: no number, listing or profile
     // skill those bullets do not state. A paragraph is an overview of the role in plain words, held to the same facts.
-    private static async Task<TailoredCvContent> KeepSourceWordingAsync(TailoredCvContent content,
-        TailoredCvWordingMode mode, string listingText, List<string> listingSkills, AppDbContext db, CancellationToken ct)
+    private static TailoredCvContent KeepSourceWording(TailoredCvContent content,
+        TailoredCvWordingMode mode, string listingText, List<string> listingSkills, Profile profile)
     {
-        // Ids were already checked as the user's own by ValidateSourceIdsAsync.
-        var profile = await ProfileQueries.LoadAsync(db, ct);
         var sources = profile.BulletLists()
             .SelectMany(entry => entry.Select(bullet => (Bullet: bullet, Entry: entry)))
             .ToDictionary(s => s.Bullet.Id);

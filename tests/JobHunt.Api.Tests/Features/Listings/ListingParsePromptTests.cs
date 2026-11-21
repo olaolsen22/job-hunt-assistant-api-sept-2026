@@ -17,7 +17,7 @@ public class ListingParsePromptTests(ApiFactory factory) : IClassFixture<ApiFact
         var guestPrompt = (await guest.GraphQLAsync(query)).GetProperty("listingParsePrompt");
 
         var instructions = ownerPrompt.GetProperty("instructions").GetString()!;
-        Assert.Equal(20, ownerPrompt.GetProperty("version").GetInt32());
+        Assert.Equal(21, ownerPrompt.GetProperty("version").GetInt32());
         Assert.Contains("\"originalDescription\": string | null", instructions);
         Assert.Contains("faithful translation of originalDescription", instructions);
         Assert.Contains("Application: what the ad or application page asks applicants", instructions);
@@ -85,7 +85,7 @@ public class ListingParsePromptTests(ApiFactory factory) : IClassFixture<ApiFact
         }
         var companies = (await owner.GraphQLAsync("{companyParsePrompt{version instructions}}"))
             .GetProperty("companyParsePrompt");
-        Assert.Equal(4, companies.GetProperty("version").GetInt32());
+        Assert.Equal(5, companies.GetProperty("version").GetInt32());
         Assert.DoesNotContain("jobRoleCategoryName", companies.GetProperty("instructions").GetString());
     }
 
@@ -100,7 +100,7 @@ public class ListingParsePromptTests(ApiFactory factory) : IClassFixture<ApiFact
             .GetProperty("listingQuickParsePrompt");
 
         var instructions = prompt.GetProperty("instructions").GetString()!;
-        Assert.Equal(9, prompt.GetProperty("version").GetInt32());
+        Assert.Equal(10, prompt.GetProperty("version").GetInt32());
         Assert.Contains("\"kind\": \"VACANCY\" | \"OPEN_INVITATION\"", instructions);
         Assert.Contains("\"postingLanguage\": \"ENGLISH\" | \"NORWEGIAN\" | null", instructions);
         Assert.Contains("skandinavisk språk", instructions);

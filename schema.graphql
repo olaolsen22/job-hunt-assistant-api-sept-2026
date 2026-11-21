@@ -13,6 +13,7 @@ type Query {
     notes: String
     template: TailoredCvTemplate
     rewrite: Boolean! = false
+    purpose: BaseCvPurpose! = ROLE
   ): BaseCvExternalPrompt! @cost(weight: "10")
   baseCvs(archived: Boolean! = false): [BaseCv!]! @cost(weight: "10")
   baseCvVersion(id: Int!): BaseCvVersion @cost(weight: "10")
@@ -5125,6 +5126,11 @@ enum ApplicationStatus {
   ACCEPTED
   REJECTED
   WITHDRAWN
+}
+
+enum BaseCvPurpose {
+  ROLE
+  OPEN_APPLICATION
 }
 
 enum CefrLevel {

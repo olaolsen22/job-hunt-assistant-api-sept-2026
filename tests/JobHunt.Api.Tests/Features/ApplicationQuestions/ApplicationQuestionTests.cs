@@ -1,5 +1,7 @@
 using System.Text.Json;
 using JobHunt.Api.Data;
+using JobHunt.Api.Features.ApplicationQuestions;
+using JobHunt.Api.Features.Listings;
 using JobHunt.Api.Tests.Features.Listings;
 using JobHunt.Api.Tests.Features.Profiles;
 using Microsoft.EntityFrameworkCore;
@@ -10,6 +12,22 @@ namespace JobHunt.Api.Tests.Features.ApplicationQuestions;
 
 public class ApplicationQuestionTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
+    // Honesty rules hold for every question, so they sit with the essentials, once, not under one question type.
+    [Fact]
+    public void Instructions_ListHonestyRulesAsEssentials_WithoutAFinalChecklist()
+    {
+        var instructions = ApplicationAnswerPrompt.Instructions(Language.English, null);
+
+        var types = instructions.IndexOf("Question types:", StringComparison.Ordinal);
+        foreach (var rule in new[] { "never round up", "never as a regular job", "[fill in: salary expectation]",
+                     "add no productivity gains", "criticize former employers" })
+        {
+            Assert.True(instructions.IndexOf(rule, StringComparison.Ordinal) is var at && at >= 0 && at < types, rule);
+            Assert.Equal(2, instructions.Split(rule).Length);
+        }
+        Assert.DoesNotContain("Before returning, check", instructions);
+    }
+
     private const string Add = """
         mutation ($listingId: Int!, $question: String!, $charLimit: Int, $answer: String, $notes: String) {
           addApplicationQuestion(input: { listingId: $listingId, question: $question, charLimit: $charLimit,
@@ -136,6 +154,9 @@ public class ApplicationQuestionTests(ApiFactory factory) : IClassFixture<ApiFac
         Assert.Equal(second, candidates[1].GetProperty("questionId").GetInt32());
         Assert.False(candidates[1].GetProperty("overLimit").GetBoolean());
         Assert.Equal(before + 1, await UsageCountAsync());
+        // The task is restated after the data.
+        Assert.EndsWith("return one JSON object only.", factory.Llm.LastMessages[1].Text.TrimEnd());
+        Assert.Contains("Reminder: answer every question", factory.Llm.LastMessages[1].Text);
         var prompt = string.Join("\n", factory.Llm.LastMessages.Select(m => m.Text));
         foreach (var expected in new[]
         {
@@ -254,11 +275,11 @@ public class ApplicationQuestionTests(ApiFactory factory) : IClassFixture<ApiFac
         var prompt = (await client.GraphQLAsync("""
             query ($listingId: Int!) { applicationAnswerExternalPrompt(listingId: $listingId) { version instructions } }
             """, new { listingId })).GetProperty("applicationAnswerExternalPrompt");
-        Assert.Equal(4, prompt.GetProperty("version").GetInt32());
-        foreach (var expected in new[] { "QUESTION_NOTES", "\"draft\":\"MY_DRAFT\"", "OTHER_QUESTION", "Build services", "\"schemaVersion\": 4", "never more than 10" })
+        Assert.Equal(6, prompt.GetProperty("version").GetInt32());
+        foreach (var expected in new[] { "QUESTION_NOTES", "\"draft\":\"MY_DRAFT\"", "OTHER_QUESTION", "Build services", "\"schemaVersion\": 6", "never more than 10" })
             Assert.Contains(expected, prompt.GetProperty("instructions").GetString());
 
-        var json = $$"""{"schemaVersion":4,"answers":[{"questionId":{{id}},"answer":" Longer than ten "},{"questionId":{{other}},"answer":"Other."}]}""";
+        var json = $$"""{"schemaVersion":6,"answers":[{"questionId":{{id}},"answer":" Longer than ten "},{"questionId":{{other}},"answer":"Other."}]}""";
         var candidates = (await client.GraphQLAsync(Preview, new { listingId, json }))
             .GetProperty("previewApplicationAnswers").GetProperty("candidates");
         Assert.Equal("Longer than ten", candidates[0].GetProperty("answer").GetString());
@@ -269,10 +290,10 @@ public class ApplicationQuestionTests(ApiFactory factory) : IClassFixture<ApiFac
         {
             $$"""{"answers":[{"questionId":{{id}},"answer":"A"},{"questionId":{{other}},"answer":"B"}]}""",
             $$"""{"schemaVersion":3,"answers":[{"questionId":{{id}},"answer":"A"},{"questionId":{{other}},"answer":"B"}]}""",
-            $$"""{"schemaVersion":4,"answers":[{"questionId":{{id}},"answer":"  "},{"questionId":{{other}},"answer":"B"}]}""",
-            $$"""{"schemaVersion":4,"answers":[{"questionId":{{id}},"answer":"A"}]}""",
-            $$"""{"schemaVersion":4,"answers":[{"questionId":{{id}},"answer":"A"},{"questionId":{{id}},"answer":"B"}]}""",
-            $$"""{"schemaVersion":4,"answers":[{"questionId":{{id}},"answer":"A"},{"questionId":{{other}},"answer":"B"},{"questionId":-1,"answer":"C"}]}""",
+            $$"""{"schemaVersion":6,"answers":[{"questionId":{{id}},"answer":"  "},{"questionId":{{other}},"answer":"B"}]}""",
+            $$"""{"schemaVersion":6,"answers":[{"questionId":{{id}},"answer":"A"}]}""",
+            $$"""{"schemaVersion":6,"answers":[{"questionId":{{id}},"answer":"A"},{"questionId":{{id}},"answer":"B"}]}""",
+            $$"""{"schemaVersion":6,"answers":[{"questionId":{{id}},"answer":"A"},{"questionId":{{other}},"answer":"B"},{"questionId":-1,"answer":"C"}]}""",
             "not json",
         })
         {

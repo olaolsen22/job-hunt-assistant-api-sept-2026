@@ -28,7 +28,7 @@ public record ProfileBulletRefinementSuggestion(
 [QueryType]
 public static class ProfileBulletRefinementPromptQueries
 {
-    public const int Version = 1;
+    public const int Version = 2;
     internal const int MaxNoteLength = 300;
     private const int SampleBudget = 12_000;
 
@@ -168,7 +168,7 @@ public static class ProfileBulletRefinementPromptQueries
         - Write like the candidate: learn their person, tense, sentence length, punctuation (such as a final period,
           or "~30%" for approximations), and recurring verbs and terms from the writing samples and the bullets with
           "refine": false, and keep every refined bullet in that style.
-        - {{CvGuidance.Voice.ReplaceLineEndings(" ")}}
+        - {{CvGuidance.Bokmal}}
         - {{CvGuidance.Style.ReplaceLineEndings(" ")}}
         - {{CvGuidance.HonestClaims.ReplaceLineEndings(" ")}}
         - Write the text in {{TailoredCvLanguageText.Name(language)}}, at most {{ProfileBulletMutations.MaxTextLength}} characters.

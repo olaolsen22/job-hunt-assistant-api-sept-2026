@@ -182,26 +182,51 @@ public static class TailoredCvDraftValidation
         };
     }
 
-    // Only for the external preview: the model may leave out details it was told to copy. On save, null is the
-    // user's choice and stays.
-    public static async Task<TailoredCvContent> FillMissingSourceDetailsAsync(TailoredCvContent content,
-        AppDbContext db, CancellationToken ct)
+    // Only for the external previews: facts the AI would just copy come from the profile instead, so the prompt
+    // spends no rules on them. Entries follow the profile's order (newest first, ongoing first); entries without a
+    // source keep their order after them. On save, the user's own values and order stay.
+    internal static TailoredCvContent ApplySourceFacts(TailoredCvContent content, Profile profile)
     {
-        if (!(content.Experiences ?? []).Any(e => e.SourceEntryId is not null && e.Technologies is null)
-            && !(content.Projects ?? []).Any(p => p.SourceEntryId is not null && (p.Kind is null || p.Technologies is null)))
-            return content;
-        var profile = await ProfileQueries.LoadAsync(db, ct);
-        var experiences = profile.Experiences.ToDictionary(e => e.Id);
-        var projects = profile.Projects.ToDictionary(p => p.Id);
-        List<string> Technologies(List<Skill> skills) =>
-            TailoredCvLanguageText.Technologies(skills, profile, content.Language);
+        var source = TailoredCvDraftFromProfileQueries.FromProfile(profile, content.Language);
+        var skills = profile.Skills.ToDictionary(s => s.SkillId);
+        var languages = profile.Languages.ToDictionary(l => l.Name, StringComparer.OrdinalIgnoreCase);
         return content with
         {
-            Experiences = content.Experiences?.Select(e => e.Technologies is null && e.SourceEntryId is { } id
-                && experiences.GetValueOrDefault(id) is { } source ? e with { Technologies = Technologies(source.Skills) } : e).ToList(),
-            Projects = content.Projects?.Select(p => p.SourceEntryId is { } id && projects.GetValueOrDefault(id) is { } source
-                ? p with { Kind = p.Kind ?? source.Kind, Technologies = p.Technologies ?? Technologies(source.Skills) } : p).ToList(),
+            Experiences = InSourceOrder(content.Experiences, source.Experiences, e => e.SourceEntryId, (e, s) => e with
+            {
+                StartMonth = s.StartMonth, EndMonth = s.EndMonth, Location = s.Location,
+                Technologies = e.Technologies ?? s.Technologies,
+            }),
+            Educations = InSourceOrder(content.Educations, source.Educations, e => e.SourceEntryId, (e, s) => e with
+            {
+                StartMonth = s.StartMonth, EndMonth = s.EndMonth, Location = s.Location,
+            }),
+            Certifications = InSourceOrder(content.Certifications, source.Certifications, e => e.SourceEntryId,
+                (e, s) => e with { IssuedMonth = s.IssuedMonth, ExpiresMonth = s.ExpiresMonth }),
+            Projects = InSourceOrder(content.Projects, source.Projects, p => p.SourceEntryId, (p, s) => p with
+            {
+                StartMonth = s.StartMonth, EndMonth = s.EndMonth, Location = s.Location, Kind = s.Kind,
+                Technologies = p.Technologies ?? s.Technologies,
+            }),
+            // A suggested category only fills a skill the user hasn't categorized.
+            Skills = content.Skills?.Select(k => k.SourceSkillId is { } id && skills.GetValueOrDefault(id) is { } s
+                ? k with { Level = s.Level, CategoryId = s.Skill.CategoryId ?? k.CategoryId } : k).ToList(),
+            Languages = content.Languages?.Where(l => languages.ContainsKey(l.Name))
+                .Select(l => languages[l.Name] is var own ? new TailoredCvLanguage(own.Name, own.Written, own.Spoken) : l)
+                .ToList(),
         };
+    }
+
+    private static List<T>? InSourceOrder<T>(List<T>? entries, List<T>? sources, Func<T, int?> id, Func<T, T, T> copy)
+    {
+        if (entries is null) return null;
+        var index = (sources ?? []).Select((entry, position) => (Id: id(entry), Entry: entry, Position: position))
+            .Where(s => s.Id is not null).ToDictionary(s => s.Id!.Value);
+        return [.. entries
+            .Select((entry, position) => id(entry) is { } key && index.TryGetValue(key, out var match)
+                ? (Entry: copy(entry, match.Entry), Order: match.Position, Position: position)
+                : (Entry: entry, Order: int.MaxValue, Position: position))
+            .OrderBy(e => e.Order).ThenBy(e => e.Position).Select(e => e.Entry)];
     }
 
     // "City, Country" per the CV guidance (docs/norwegian-cv-formatting.md).

@@ -24,7 +24,7 @@ public record ProfileSummarySuggestion(ProfileSummaryStatus Status, string? Summ
 [QueryType]
 public static class ProfileSummaryPromptQueries
 {
-    public const int Version = 3;
+    public const int Version = 5;
     // Same cap as a tailored CV summary: about three lines in the PDF.
     public const int MaxLength = TailoredCvDraftValidation.MaxSummaryLength;
 
@@ -34,14 +34,15 @@ public static class ProfileSummaryPromptQueries
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseUpper) },
     };
 
-    public static async Task<ProfileSummaryPrompt> GetProfileSummaryPromptAsync(AppDbContext db, CancellationToken ct) =>
-        new(Version, $"{Instructions(await LanguageAsync(db, ct), external: true)}\n\n{await ContentAsync(db, ct)}");
+    public static async Task<ProfileSummaryPrompt> GetProfileSummaryPromptAsync(AppDbContext db, TimeProvider time,
+        CancellationToken ct) =>
+        new(Version, $"{Instructions(await LanguageAsync(db, ct), external: true)}\n\n{await ContentAsync(db, time, ct)}");
 
     internal static Task<Language> LanguageAsync(AppDbContext db, CancellationToken ct) =>
         db.Profiles.Select(p => p.ContentLanguage).SingleAsync(ct);
 
     // The user message on the built-in path, so both paths send the same data.
-    internal static async Task<string> ContentAsync(AppDbContext db, CancellationToken ct)
+    internal static async Task<string> ContentAsync(AppDbContext db, TimeProvider time, CancellationToken ct)
     {
         // Split: one joined query multiplies every sibling collection (skills × roles × bullets...) into millions of rows.
         var profile = await db.Profiles.AsNoTracking().AsSplitQuery().Select(p => new
@@ -67,9 +68,24 @@ public static class ProfileSummaryPromptQueries
             }).ToList(),
             Skills = p.Skills.OrderByDescending(s => s.Level).Select(s => new { s.Skill.Name, s.Level }).ToList(),
         }).SingleAsync(ct);
+        // Counted here, like the tailored summary: models miscount years from dates.
+        var today = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
+        var content = new
+        {
+            profile.Headline, profile.Summary, profile.TargetRoles,
+            ExperienceMonths = ProfileDataLoaders.ExperienceMonths(
+                profile.Experience.Select(e => (e.StartMonth, e.EndMonth)), today),
+            Experience = profile.Experience.Select(e => new
+            {
+                e.Title, e.Employer, e.StartMonth, e.EndMonth,
+                Months = ProfileDataLoaders.ExperienceMonths([(e.StartMonth, e.EndMonth)], today),
+                e.Skills, e.Bullets,
+            }),
+            profile.Education, profile.Projects, profile.Skills,
+        };
         return $"""
             <profile>
-            {JsonSerializer.Serialize(profile, JsonOptions)}
+            {JsonSerializer.Serialize(content, JsonOptions)}
             </profile>
             """;
     }
@@ -86,14 +102,16 @@ public static class ProfileSummaryPromptQueries
         - Say who the candidate is, their role and specialization as their job titles show it, their core strengths
           and domain, one or two concrete things they have built or solved, and the direction their target roles
           point to.
-        - Use only facts in the profile. Do not add skills, seniority, years, achievements, or qualifications it
-          does not support. Count years only from the experience dates.
+        - Use only facts in the profile. Do not add skills, seniority, achievements, or qualifications it does not
+          support.
+        - {{CvGuidance.SummaryYears.ReplaceLineEndings(" ")}}
         - If the profile has a summary, keep what still holds and improve it rather than starting over.
         - {{CvGuidance.Seniority.ReplaceLineEndings(" ")}}
         - {{CvGuidance.Specialization.ReplaceLineEndings(" ")}}
         - {{CvGuidance.HonestClaims.ReplaceLineEndings(" ")}}
         - Favour concrete evidence over a list of technology names.
         - {{CvGuidance.Voice.ReplaceLineEndings(" ")}}
+        - {{CvGuidance.Style.ReplaceLineEndings(" ")}}
         - 3 short sentences of plain text (no Markdown, headings, or lists), at most {{MaxLength}} characters
           including spaces, so it fits three lines.
         - Write in {{TailoredCvLanguageText.Name(language)}}.
@@ -101,7 +119,8 @@ public static class ProfileSummaryPromptQueries
         """;
 }
 
-public class ProfileSummarySuggester(LlmExecution execution, LlmModelResolver models, AiOperations operations)
+public class ProfileSummarySuggester(LlmExecution execution, LlmModelResolver models, AiOperations operations,
+    TimeProvider time)
 {
     public const string Operation = "suggest-profile-summary";
 
@@ -117,7 +136,7 @@ public class ProfileSummarySuggester(LlmExecution execution, LlmModelResolver mo
         var language = await ProfileSummaryPromptQueries.LanguageAsync(db, ct);
         var call = await execution.RunJsonAsync(resolved,
             [new(ChatRole.System, ProfileSummaryPromptQueries.Instructions(language, external: false)),
-             new(ChatRole.User, await ProfileSummaryPromptQueries.ContentAsync(db, ct))],
+             new(ChatRole.User, await ProfileSummaryPromptQueries.ContentAsync(db, time, ct))],
             new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0.3f, MaxOutputTokens = 4_096 },
             Operation, db, Decode, "The AI's answer couldn't be read. Try again.", ct);
         return call.Value is { } reply

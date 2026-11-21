@@ -69,11 +69,18 @@ public class TailoredCvAnalyzer(
         if (input.Length > MaxContextLength)
             throw new InvalidTailoredCvAnalysisException($"Analysis input must be at most {MaxContextLength} characters.");
 
-        var conciseCap = TailoredCvAnalysisInstructions.ConciseBulletCap(profile, section, sourceEntryId, today);
         var tooLong = false;
+        // The task is restated after the context block, which can be long (docs/llm-prompting-research-2026-11-21.md §5).
+        var task = section switch
+        {
+            TailoredCvSection.Skills => "select the profile skills",
+            TailoredCvSection.Summary => "write the summary and headline",
+            _ => $"choose and write the bullets of {section.ToString().ToLowerInvariant()} {sourceEntryId}",
+        };
         var call = await execution.RunJsonAsync(model,
-            [new(ChatRole.System, TailoredCvAnalysisInstructions.For(section, language, template, conciseCap)),
-                new(ChatRole.User, $"<cv_context>\n{input}\n</cv_context>")],
+            [new(ChatRole.System, TailoredCvAnalysisInstructions.For(section, language, template, listing.Kind, listing.Company.Kind)),
+                new(ChatRole.User, $"<cv_context>\n{input}\n</cv_context>\n"
+                    + $"Reminder: {task} for the listing above, following the system instructions, and return one JSON object only.")],
             new ChatOptions { ResponseFormat = ChatResponseFormat.Json, Temperature = 0, MaxOutputTokens = 4096 },
             Operation, db, text => (tooLong = text.Length > MaxOutputLength)
                 ? null : TailoredCvAnalysisDecoder.Decode(text, section, sourceEntryId, input, template),

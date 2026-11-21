@@ -42,7 +42,7 @@ public class CompanyParsingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var guestPrompt = (await guest.GraphQLAsync(Prompt)).GetProperty("companyParsePrompt");
 
         var instructions = ownerPrompt.GetProperty("instructions").GetString()!;
-        Assert.Equal(4, ownerPrompt.GetProperty("version").GetInt32());
+        Assert.Equal(5, ownerPrompt.GetProperty("version").GetInt32());
         Assert.Contains("\"RECRUITMENT\" | \"BROKER\"", instructions);
         Assert.Contains("RECRUITMENT is a recruitment or", instructions);
         Assert.Contains("BROKER matches", instructions);
@@ -75,9 +75,12 @@ public class CompanyParsingTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal("<posting>\nEquinor, Aker BP\n</posting>", factory.Llm.LastMessages[1].Text);
 
         var prompt = (await client.GraphQLAsync(Prompt)).GetProperty("companyParsePrompt");
-        Assert.Equal(prompt.GetProperty("instructions").GetString()!
-            .Replace(JsonReply.Rule("array", external: true), JsonReply.Rule("array", external: false))
-            .Replace(" or on the company's own site and LinkedIn pages you open", ""), factory.Llm.LastMessages[0].Text);
+        // Without browsing, the built-in call may fill only safe fields from memory.
+        var external = prompt.GetProperty("instructions").GetString()!;
+        Assert.Contains("industryName, kind and description only", factory.Llm.LastMessages[0].Text);
+        Assert.Contains("orgNumber: only when the text states it", factory.Llm.LastMessages[0].Text);
+        Assert.DoesNotContain("industryName, kind and description only", external);
+        Assert.Contains("you may use what you know or can look up", external);
 
         var companies = await client.GraphQLAsync(
             "query ($s: String) { companies(search: $s) { totalCount } }", new { s = name });
