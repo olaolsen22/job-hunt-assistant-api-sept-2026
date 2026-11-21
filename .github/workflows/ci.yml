@@ -15,6 +15,8 @@ jobs:
           dotnet-version: 10.0.x
           # Caches ~/.nuget/packages keyed on packages.lock.json.
           cache: true
+          # Lock files live per project, not at the repo root.
+          cache-dependency-path: '**/packages.lock.json'
       - run: dotnet restore --locked-mode
       - run: dotnet build --no-restore
       - run: dotnet test --no-build
