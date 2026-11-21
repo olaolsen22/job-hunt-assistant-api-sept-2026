@@ -28,6 +28,8 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
     [InlineData("Streamlined development process from start to finish within cross-functional product, design, and mobile teams, making it ~30% faster with a more consistent UI.", true)]
     [InlineData("Streamlined development process within cross-functional product, design, and mobile teams, making it ~40% faster.", false)]
     [InlineData("Led every cross-functional team at the company and owned the whole web platform alone.", false)]
+    // Tightened toward the listing: words cut, none added.
+    [InlineData("Made development ~30% faster within cross-functional product, design, and mobile teams.", true)]
     public async Task DetailedAnalysis_KeepsListingWordingAndFallsBackOtherwise(string text, bool kept)
     {
         var client = await factory.GetOwnerClientAsync();
@@ -256,8 +258,8 @@ public class TailoredCvTemplateTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Contains("The summary and the CV body must agree", detailed);
         Assert.Contains("\"template\": \"CONCISE\"", instructions);
         Assert.Contains("at most 220 characters", instructions);
-        Assert.DoesNotContain("full text, not shortened", instructions);
-        Assert.Contains("full text, not shortened", detailed);
+        Assert.DoesNotContain("Make each selected bullet direct for this listing", instructions);
+        Assert.Contains("Make each selected bullet direct for this listing", detailed);
         Assert.Contains("Merge related bullets of the same entry", instructions);
         Assert.Contains("reword it with the listing's term", detailed);
         Assert.Contains("\"template\": \"DETAILED\"", detailed);

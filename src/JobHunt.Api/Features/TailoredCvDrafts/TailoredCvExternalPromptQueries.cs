@@ -12,7 +12,7 @@ public record TailoredCvExternalPrompt(int Version, string Instructions);
 [QueryType]
 public static class TailoredCvExternalPromptQueries
 {
-    public const int Version = 21;
+    public const int Version = 22;
 
     public static async Task<TailoredCvExternalPrompt> GetTailoredCvExternalPromptAsync(
         int listingId, AppDbContext db, TimeProvider time, CancellationToken ct, TailoredCvTemplate? template = null,
@@ -36,7 +36,7 @@ public static class TailoredCvExternalPromptQueries
                 {CvGuidance.Layout(templateValue, listing: true)} {CvGuidance.RequirementCoverage}
                 """
             : $"""
-                and set its text to that bullet's full text, not shortened. {CvGuidance.ListingWording}
+                and set its text to that bullet tailored as follows. {CvGuidance.ListingWording}
                 For paragraphs: {CvGuidance.ListingTerms} {CvGuidance.Layout(templateValue, listing: true)} {CvGuidance.RequirementCoverage}
                 {CvGuidance.EducationWording}
                 """;
