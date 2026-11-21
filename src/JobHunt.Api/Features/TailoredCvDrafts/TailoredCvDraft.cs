@@ -87,7 +87,7 @@ public enum TailoredCvSectionOrder { Standard, Developer }
 public record TailoredCvBullet(string Text, int? SourceBulletId = null);
 // One style for the whole CV, so entries print consistently: as bullets or as one paragraph each.
 public enum TailoredCvContentStyle { Bullets, Paragraph }
-// Detailed keeps full bullets (worded to the listing in a tailored CV); Concise shortens them for a one-page CV a recruiter can scan
+// Detailed keeps the bullets (tightened and worded to the listing in a tailored CV); Concise shortens them for a one-page CV a recruiter can scan
 // in seconds. TailoredCvWording.ModeFor and CvGuidance.Layout hold what each asks of the AI.
 public enum TailoredCvTemplate { Detailed, Concise }
 // Location is display text ("Lagos, Nigeria"). Technologies print under the entry in the developer order.

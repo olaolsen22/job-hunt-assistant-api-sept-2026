@@ -195,15 +195,20 @@ internal static class CvGuidance
         legacy code".
         """;
 
-    // Recruiters and ATS match the listing's own terms, but a CV that parrots the listing reads as fake.
-    // TailoredCvWording.KeepsSourceWords holds the result to the bullet's and the listing's words.
+    // Recruiters and ATS match the listing's own terms, but a CV that parrots the listing reads as fake. Profile
+    // bullets are often long notes, so a DETAILED tailored CV also tightens them toward the listing; cutting words
+    // passes TailoredCvWording.KeepsSourceWords, which holds the result to the bullet's and the listing's words.
     internal const string ListingWording = """
-        Where a bullet shows work the listing names or values, reword it with the listing's term for that work, for
-        example "with product, design, and mobile teams" becomes "within cross-functional product, design, and
-        mobile teams" when the listing asks for cross-functional teamwork. Keep the bullet's facts, numbers, and the
-        candidate's voice; use only the bullet's and the listing's words plus at most 2 small linking or grammar
-        words. Never copy a listing sentence, stack several listing phrases into one bullet, or add a term for work
-        the bullet does not show. Leave a bullet as it is when no listing term fits.
+        Make each selected bullet direct for this listing: lead with the work and result the listing cares about,
+        and cut filler, repeated context, and details the listing does not care about, so it reads in one or two
+        lines. Never cut a fact the listing cares about, such as what was built, a technology, a domain, the scale,
+        or a result. Where a bullet shows work the listing names or values, reword it with the listing's term for
+        that work, for example "with product, design, and mobile teams" becomes "within cross-functional product,
+        design, and mobile teams" when the listing asks for cross-functional teamwork. Keep the bullet's facts,
+        numbers, and the candidate's voice; use only the bullet's and the listing's words plus at most 2 small
+        linking or grammar words. Never copy a listing sentence, stack several listing phrases into one bullet, add
+        a term for work the bullet does not show, or merge bullets. Leave a bullet that is already short and direct
+        as it is.
         """;
 
     // Every line must hold up in an interview; models tend to inflate verbs, add metrics, and borrow credit.
