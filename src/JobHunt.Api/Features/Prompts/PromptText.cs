@@ -4,8 +4,9 @@ namespace JobHunt.Api.Features.Prompts;
 
 internal static partial class PromptText
 {
-    // Keeps prompts short (and cheap on the API-key path) for users with many roles, skills or industries.
-    public const int MaxNames = 100;
+    // Enough for a real lookup list, alphabetical, so names late in the alphabet are still reused; still caps the
+    // prompt (and its cost on the API-key path) for users with very many roles, skills or industries.
+    public const int MaxNames = 300;
 
     // Built from the C# enums, using Hot Chocolate's naming (FixedTerm → FIXED_TERM), so values can't drift.
     public static string Values<TEnum>() where TEnum : struct, Enum =>

@@ -14,10 +14,10 @@ public record ListingParsePrompt(int Version, string Instructions);
 public static class ListingParsePromptQueries
 {
     // Bump whenever the prompt or output shape changes.
-    public const int Version = 20;
+    public const int Version = 21;
 
     // Separate from Version: the quick prompt changes on its own schedule.
-    public const int QuickVersion = 9;
+    public const int QuickVersion = 10;
 
     public static Task<ListingParsePrompt> GetListingParsePromptAsync(
         AppDbContext db, TimeProvider time, CancellationToken ct) => BuildFullAsync(db, time, external: true, ct);
