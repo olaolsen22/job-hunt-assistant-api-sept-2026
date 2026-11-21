@@ -45,4 +45,4 @@ Check `.local/watch.log` for startup.
 ## Off-limits
 Never read `*.db*` / `*.db.bak*`, `src/JobHunt.Api/.local/` (data-protection
 keys), `src/JobHunt.Api/listing-imports/`, `.local/backup-*`, or user-secrets.
-`.local/commit-notes.md` is fine to read and edit.
+`.local/changelog.md` is fine to read and edit.

@@ -92,12 +92,35 @@ real data are required even for this personal app.
   behavior; never restate the schema. Always output them as Markdown inside a
   fenced code block (use a longer fence if the content has code fences) so they
   can be copied as-is.
-- Commit only when asked. One logical change per commit; imperative subject
-  ≤50 chars. Body explains why, wrapped at 72 chars. For owner requests, use
-  `Owner requested <x>, so <goal>:` with concise change bullets.
-- Record one rationale per logical change in `.local/commit-notes.md`:
-  `- <area>: <what> — owner requested: <why>` for owner requests. Reuse these
-  notes in commit messages, then remove only the consumed lines.
+- The history is public and read by other developers; keep it clean.
+- Log each logical change in `.local/changelog.md` (gitignored) when it is
+  finished, newest first:
+  ```md
+  ## YYYY-MM-DD · <area>: <what>
+  - Goal: <the request's goal, neutral and concise>
+  - Why: <problem it solves>
+  - Files: <main files>
+  - Branch: <type>/<slug>
+  - Status: uncommitted
+  ```
+- Branches: `development` is the integration branch; `main` is for publishing
+  and only gets `development` merged in when the owner asks. Each feature or
+  fix gets a short-lived branch off `development` named `<type>/<slug>`
+  (`feat/listing-shortlist`, `fix/quick-add-limit`), holding one feature in
+  one or more small commits. Before starting a change on the wrong branch,
+  flag it and offer to create the right one.
+- Finish a branch: on the owner's yes, open a GitHub PR into `development`
+  (`gh pr create`, short description of what and why), merge it with a merge
+  commit, and delete the branch.
+- Commit boundary: when a logical change is done and its tests pass, stop and
+  propose the commit subject; commit only on the owner's yes. Before starting
+  a different change while another is uncommitted, flag it first.
+- On "commit", group uncommitted changes by changelog entry, one commit each,
+  then set each entry's `Status` to its short hash.
+- Message: Conventional Commits subject `<type>(<scope>): <imperative>` ≤50
+  chars (`feat`, `fix`, `refactor`, `test`, `docs`, `chore`). Body: the why as
+  product reasoning in 1–3 lines, wrapped at 72. No prompts, "owner
+  requested", or AI wording in commits.
 
 ## Skills
 
